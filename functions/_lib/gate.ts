@@ -1,7 +1,7 @@
-/** Shared gate cookie helpers */
+/** Shared gate cookie helpers — must live under functions/ for Pages bundler */
 
 export const COOKIE_NAME = 'nn_gate';
-export const COOKIE_MAX_AGE = 60 * 60 * 24; // 24h
+export const COOKIE_MAX_AGE = 60 * 60 * 24;
 
 function toHex(buffer: ArrayBuffer): string {
   return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -64,6 +64,7 @@ export function isBypassedPath(pathname: string): boolean {
     pathname === '/gate/' ||
     pathname.startsWith('/api/turnstile-verify') ||
     pathname === '/favicon.ico' ||
-    pathname === '/robots.txt'
+    pathname === '/robots.txt' ||
+    pathname === '/__deploy_probe.txt'
   );
 }

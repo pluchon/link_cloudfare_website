@@ -1,20 +1,13 @@
-import {
-  COOKIE_MAX_AGE,
-  COOKIE_NAME,
-  buildSetCookie,
-  isBypassedPath,
-  readCookie,
-  signGateValue,
-  verifyGateCookie,
-} from '../shared/gate';
+import { COOKIE_MAX_AGE, buildSetCookie, signGateValue } from '../_lib/gate';
 
-export interface Env {
-  ASSETS: Fetcher;
+interface Env {
   TURNSTILE_SECRET_KEY?: string;
   GATE_COOKIE_SECRET?: string;
 }
 
-async function handleTurnstileVerify(request: Request, env: Env): Promise<Response> {
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const { request, env } = context;
+
   if (!env.TURNSTILE_SECRET_KEY || !env.GATE_COOKIE_SECRET) {
     return Response.json({ ok: false, error: 'gate_not_configured' }, { status: 503 });
   }
@@ -59,35 +52,4 @@ async function handleTurnstileVerify(request: Request, env: Env): Promise<Respon
       'set-cookie': buildSetCookie(signed, COOKIE_MAX_AGE),
     },
   });
-}
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (url.pathname === '/api/turnstile-verify' || url.pathname === '/api/turnstile-verify/') {
-      if (request.method !== 'POST') {
-        return new Response('Method Not Allowed', { status: 405 });
-      }
-      return handleTurnstileVerify(request, env);
-    }
-
-    // 密钥未配齐时不拦截，避免锁死站点
-    if (!env.TURNSTILE_SECRET_KEY || !env.GATE_COOKIE_SECRET) {
-      return env.ASSETS.fetch(request);
-    }
-
-    if (isBypassedPath(url.pathname)) {
-      return env.ASSETS.fetch(request);
-    }
-
-    const raw = readCookie(request.headers.get('Cookie'), COOKIE_NAME);
-    if (await verifyGateCookie(env.GATE_COOKIE_SECRET, raw)) {
-      return env.ASSETS.fetch(request);
-    }
-
-    const gate = new URL('/gate/', url);
-    gate.searchParams.set('next', `${url.pathname}${url.search}`);
-    return Response.redirect(gate.toString(), 302);
-  },
 };

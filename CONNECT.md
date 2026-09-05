@@ -152,53 +152,43 @@ Resolve-DnsName www.nuonuoya.cn -Type CNAME
 
 ### 为何曾经「配了密钥却不触发」
 
-实测线上任意路径（含 `/gate/`、`/api/...`）都返回同一份首页 HTML，说明当时项目按 **Workers 静态资源 + SPA 回退** 在跑：
+实测当时线上任意路径都返回同一份首页，且 `/api/turnstile-verify` 未挂上，说明 **Pages Functions 没有生效**（只发了静态资源）。  
+现已保证闸门代码放在 `functions/` 内（Pages 打包器要求），并用 `__deploy_probe.txt` 方便核对静态文件是否上传完整。
 
-- `/functions`（Pages Functions）**不会执行**
-- 不存在的路径（甚至本该存在的 `/gate/`）被 **SPA 回退成首页**
-- 所以中间件拦截与验证 API 都不会生效
+### Cloudflare 构建设置（经典 Pages 界面）
 
-现已改为仓库根目录 `wrangler.toml` + `workers/gate.ts`，并关闭 SPA 回退（`not_found_handling = "404-page"`，`run_worker_first = true`）。
+你现在的控制台是 **Workers & Pages → 项目 → Settings → Builds**，特征是有 **Build output: dist**，**没有**单独的 Deploy command（那是另一种 Workers 向导才有的）。
 
-### Cloudflare 构建设置（务必改成这样）
-
-项目 Settings → Builds：
+点 **Build configuration** 右侧铅笔，确认：
 
 | 项 | 值 |
 |----|-----|
 | Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
-| Root directory | `/`（空即可） |
-| 环境变量 `NODE_VERSION` | `22` |
+| Build output directory | `dist` |
+| Root directory | 空 |
+| Production branch | `main` |
 
-若仍残留「Build output directory = dist」且**没有** Deploy command，容易继续走旧的 SPA 静态发布。以 `wrangler.toml` + `npx wrangler deploy` 为准。
+### 环境变量在哪
 
-### 1）创建 Turnstile 组件
-
-1. Cloudflare Dashboard → **Turnstile** → **Add widget**
-2. Hostname 至少加：`www.nuonuoya.cn`、`link-cloudfare-website.pages.dev`
-3. 记下 **Site Key** 与 **Secret Key**
-
-### 2）环境变量（Production）
+同一页往下找，或左侧 Settings 里的 **Variables and Secrets** / **Environment variables**：
 
 | 变量名 | 类型 | 说明 |
 |--------|------|------|
-| `PUBLIC_TURNSTILE_SITE_KEY` | 明文 | Site Key；**构建时**打进 `/gate/` |
-| `TURNSTILE_SECRET_KEY` | Encrypt | Secret Key；Worker 校验用 |
-| `GATE_COOKIE_SECRET` | Encrypt | 随机长串；Cookie 签名 |
+| `PUBLIC_TURNSTILE_SITE_KEY` | Plaintext | Site Key；构建进 `/gate/` |
+| `TURNSTILE_SECRET_KEY` | Secret | Turnstile Secret |
+| `GATE_COOKIE_SECRET` | Secret | Cookie 签名随机串 |
 
-```powershell
--join ((48..57 + 65..90 + 97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
-```
+三个都选 **Production**。改完后到 **Deployments** 点最新一次的 **Retry deployment**。
 
-三个都勾 **Production**。改完后必须 **重新部署**（Retry / 再 push），`PUBLIC_` 才能进前端。
+### 验收探针
 
-### 3）验收
+部署成功后应能直接打开：
 
-1. `https://www.nuonuoya.cn/gate/` 应看到「访问验证」（不是首页文案）
-2. 无痕打开 `https://www.nuonuoya.cn/` → 302 到 `/gate/`
-3. 验证通过后进首页；乱路径应 404，而不是再回首页
-4. 本地 `npm run dev` 不会跑 Worker，属正常
+- `https://www.nuonuoya.cn/__deploy_probe.txt` → 内容为 `deploy-ok`（证明静态子文件有上传）
+- `https://www.nuonuoya.cn/gate/` → 「访问验证」页（不是首页）
+- 无痕打开首页 → 跳到 `/gate/`（证明 Functions 中间件在跑）
+
+若探针是 `deploy-ok` 但首页仍不跳转：多半是两个 Secret 没配上或没勾 Production。
 
 ---
 
