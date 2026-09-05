@@ -12,100 +12,51 @@ const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
     <title>访问验证 · {site.name}</title>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <style>
-      :root {
-        color-scheme: light dark;
-        --bg: #fcfcfa;
-        --fg: #1a1b1e;
-        --muted: #5c5e66;
-        --accent: #c6462f;
-        --line: #e6e4df;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #101114;
-          --fg: #e8e8e6;
-          --muted: #a0a2a8;
-          --line: #2a2b30;
-        }
-      }
-      * { box-sizing: border-box; }
-      body {
+      html, body {
         margin: 0;
+        min-height: 100%;
+      }
+      body {
         min-height: 100vh;
-        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-        background:
-          radial-gradient(ellipse 80% 50% at 50% -20%, color-mix(in srgb, var(--accent) 12%, transparent), transparent),
-          var(--bg);
-        color: var(--fg);
         display: grid;
         place-items: center;
-        padding: 2rem;
+        background: #fff;
+        color: #333;
+        font: 14px/1.5 system-ui, sans-serif;
       }
-      main {
-        width: min(28rem, 100%);
-        border: 1px solid var(--line);
-        border-radius: 1rem;
-        padding: 2rem 1.5rem;
-        text-align: center;
-      }
-      h1 {
-        margin: 0 0 0.5rem;
-        font-family: "Noto Serif SC", "Songti SC", serif;
-        font-size: 1.35rem;
-        font-weight: 600;
-      }
-      p {
-        margin: 0 0 1.25rem;
-        color: var(--muted);
-        font-size: 0.95rem;
-        line-height: 1.6;
-      }
-      #widget {
-        display: flex;
-        justify-content: center;
-        min-height: 65px;
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #111;
+          color: #ddd;
+        }
       }
       #status {
-        margin-top: 1rem;
-        font-size: 0.9rem;
-        color: var(--muted);
-        min-height: 1.4em;
+        margin: 0.75rem 0 0;
+        text-align: center;
+        min-height: 1.25em;
       }
-      #status[data-state="error"] { color: var(--accent); }
-      .missing {
-        border-left: 3px solid var(--accent);
-        text-align: left;
-        padding: 0.75rem 1rem;
-        background: color-mix(in srgb, var(--accent) 8%, transparent);
-        font-size: 0.9rem;
-        line-height: 1.55;
+      #status[data-state="error"] {
+        color: #c6462f;
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1>访问验证</h1>
-      <p>完成验证后即可进入 {site.name}。</p>
-      {
-        siteKey ? (
-          <>
-            <div
-              id="widget"
-              class="cf-turnstile"
-              data-sitekey={siteKey}
-              data-callback="onTurnstileSuccess"
-              data-error-callback="onTurnstileError"
-              data-theme="auto"
-            />
-            <p id="status" aria-live="polite"></p>
-          </>
-        ) : (
-          <p class="missing">
-            尚未配置 <code>PUBLIC_TURNSTILE_SITE_KEY</code>。请在 Cloudflare Turnstile 创建组件，并把 Site Key 配进 Pages 构建环境变量。详见 <code>CONNECT.md</code>。
-          </p>
-        )
-      }
-    </main>
+    {
+      siteKey ? (
+        <div>
+          <div
+            class="cf-turnstile"
+            data-sitekey={siteKey}
+            data-callback="onTurnstileSuccess"
+            data-error-callback="onTurnstileError"
+            data-theme="auto"
+          />
+          <p id="status" aria-live="polite"></p>
+        </div>
+      ) : (
+        <p>未配置 PUBLIC_TURNSTILE_SITE_KEY</p>
+      )
+    }
     <script is:inline>
       function safeNext(raw) {
         if (!raw || typeof raw !== 'string') return '/';
@@ -130,17 +81,14 @@ const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
           if (!res.ok || !data.ok) {
             throw new Error(data.error || 'verify_failed');
           }
-          if (status) status.textContent = '通过，正在进入…';
           var params = new URLSearchParams(window.location.search);
           window.location.replace(safeNext(params.get('next')));
         } catch (e) {
           if (status) {
             status.dataset.state = 'error';
-            status.textContent = '验证失败，请刷新重试。';
+            status.textContent = '验证失败，请刷新重试';
           }
-          if (window.turnstile) {
-            window.turnstile.reset();
-          }
+          if (window.turnstile) window.turnstile.reset();
         }
       };
 
@@ -148,7 +96,7 @@ const siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
         var status = document.getElementById('status');
         if (status) {
           status.dataset.state = 'error';
-          status.textContent = '验证组件加载失败，请刷新页面。';
+          status.textContent = '加载失败，请刷新';
         }
       };
     </script>
