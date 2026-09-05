@@ -1,0 +1,223 @@
+/* ============================================================
+   正文排版：Markdown 渲染结果的样式
+   栏宽 46rem，宋体标题 + 黑体正文 + 等宽代码
+   ============================================================ */
+
+.prose {
+  max-width: var(--prose-max);
+  font-size: 1.0625rem;
+  line-height: 1.9;
+  color: var(--fg);
+}
+
+.prose > * + * { margin-top: 1.35em; }
+
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  scroll-margin-top: 6rem;
+}
+
+.prose h2 {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: var(--hair) solid var(--line);
+  font-size: 1.5rem;
+}
+
+.prose h3 { margin-top: 2.25rem; font-size: 1.1875rem; }
+.prose h4 { margin-top: 1.75rem; font-size: 1.0625rem; }
+
+/* 标题锚点：hover 时才出现的朱红 § */
+.prose :is(h2, h3, h4) > a.anchor {
+  margin-left: 0.4rem;
+  color: var(--accent);
+  opacity: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75em;
+  transition: opacity 0.15s ease;
+}
+
+.prose :is(h2, h3, h4):hover > a.anchor { opacity: 1; }
+
+.prose p { margin-block: 0; }
+
+.prose a:not(.anchor) {
+  color: var(--fg);
+  border-bottom: var(--hair) solid var(--accent);
+  transition: background 0.15s ease;
+}
+
+.prose a:not(.anchor):hover { background: var(--accent-wash); color: var(--accent); }
+
+.prose strong { font-weight: 600; }
+
+.prose :is(ul, ol) { padding-left: 1.35em; }
+.prose li + li { margin-top: 0.4em; }
+.prose li::marker { color: var(--fg-faint); }
+
+/* 引用：左侧一根朱红细线，不加背景块 */
+.prose blockquote {
+  margin-inline: 0;
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--accent);
+  color: var(--fg-muted);
+  font-style: normal;
+}
+
+.prose blockquote p { margin: 0; }
+.prose blockquote > * + * { margin-top: 0.75em; }
+
+.prose hr {
+  border: 0;
+  border-top: var(--hair) solid var(--line);
+  margin-block: 2.5rem;
+}
+
+/* 图片：外链 OSS，细线包边 + 图注 */
+.prose img {
+  margin-inline: auto;
+  border: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+}
+
+.prose figure { margin: 2rem 0; }
+
+.prose figcaption {
+  margin-top: 0.65rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--fg-faint);
+}
+
+/* 行内代码 */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  border: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--accent);
+  word-break: break-word;
+}
+
+/* 代码块 */
+.prose pre {
+  margin-block: 1.75rem;
+  padding: 1.15rem 1.25rem;
+  border: var(--hair) solid var(--line);
+  background: var(--bg-sunken) !important;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.prose pre code {
+  font-family: var(--font-mono);
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+/* Shiki css-variables 主题映射到本站色板 */
+:root {
+  --astro-code-foreground: #2a2b30;
+  --astro-code-background: transparent;
+  --astro-code-token-comment: #9a9ca3;
+  --astro-code-token-keyword: #c6462f;
+  --astro-code-token-string: #3f6f4a;
+  --astro-code-token-string-expression: #3f6f4a;
+  --astro-code-token-function: #3f5c8c;
+  --astro-code-token-constant: #8a5a2b;
+  --astro-code-token-parameter: #6b6d75;
+  --astro-code-token-punctuation: #8d8f96;
+  --astro-code-token-link: #3f5c8c;
+}
+
+:root[data-theme="dark"] {
+  --astro-code-foreground: #d6d5d1;
+  --astro-code-token-comment: #6e7078;
+  --astro-code-token-keyword: #e0674f;
+  --astro-code-token-string: #8fbf9c;
+  --astro-code-token-string-expression: #8fbf9c;
+  --astro-code-token-function: #8ab0e0;
+  --astro-code-token-constant: #d9a86c;
+  --astro-code-token-parameter: #9b9da4;
+  --astro-code-token-punctuation: #8a8c93;
+  --astro-code-token-link: #8ab0e0;
+}
+
+/* 代码块容器 + 复制按钮 */
+.code-block { position: relative; }
+
+.code-block__copy {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  padding: 0.2rem 0.55rem;
+  border: var(--hair) solid var(--line);
+  background: var(--bg);
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.code-block:hover .code-block__copy,
+.code-block__copy:focus-visible { opacity: 1; }
+
+.code-block__copy:hover { color: var(--accent); border-color: var(--accent); }
+.code-block__copy[data-copied="1"] { color: var(--accent); border-color: var(--accent); }
+
+.code-block__lang {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.code-block:hover .code-block__lang { opacity: 0; }
+
+/* 表格：只留横线 */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.prose :is(th, td) {
+  padding: 0.65rem 0.9rem;
+  border-bottom: var(--hair) solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  font-weight: 500;
+  border-bottom-color: var(--line-strong);
+  white-space: nowrap;
+}
+
+.prose tbody tr:hover { background: var(--accent-wash); }

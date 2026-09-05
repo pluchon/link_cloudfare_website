@@ -1,0 +1,49 @@
+---
+import type { ContentKind, AnyEntry } from '../lib/content';
+import { entryHref, formatDate, readingMinutes } from '../lib/content';
+
+interface Props {
+  kind: ContentKind;
+  entry: AnyEntry;
+  showKind?: boolean;
+}
+
+const { kind, entry, showKind = false } = Astro.props;
+const { data } = entry;
+const href = entryHref(kind, data.slug);
+const minutes = readingMinutes(entry.body ?? '');
+---
+
+<article class="entry">
+  <time class="entry__date" datetime={data.publishedAt.toISOString()}>
+    {formatDate(data.publishedAt)}
+  </time>
+
+  <div>
+    <h3 class="entry__title">
+      <a href={href}>{data.title}</a>
+    </h3>
+    <p class="entry__summary">{data.summary}</p>
+  </div>
+
+  <div class="entry__meta">
+    {showKind && <span>{kind === 'blog' ? '文章' : '资料'}</span>}
+    <span>{data.category}</span>
+    <span aria-hidden="true">·</span>
+    <span>{minutes} min</span>
+  </div>
+
+  <a class="entry__hit" href={href} aria-label={data.title}></a>
+</article>
+
+<style>
+  /* 整行可点：覆盖一层透明链接，标题链接仍保留语义 */
+  .entry__hit {
+    position: absolute;
+    inset: 0;
+  }
+  .entry__title a {
+    position: relative;
+    z-index: 1;
+  }
+</style>

@@ -1,0 +1,13 @@
+---
+import { site } from '../config/site';
+
+const year = new Date().getFullYear();
+const range = year > site.since ? `${site.since}–${year}` : `${site.since}`;
+---
+
+<footer class="site-footer">
+  <div class="wrap site-footer__inner">
+    <span>© {range} {site.name}</span>
+    <span class="label">Built with Astro · Cloudflare Pages</span>
+  </div>
+</footer>

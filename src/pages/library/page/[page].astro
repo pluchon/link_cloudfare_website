@@ -1,0 +1,32 @@
+---
+import type { GetStaticPaths } from 'astro';
+import ListLayout from '../../../layouts/ListLayout.astro';
+import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const entries = await getPublished('library');
+  const pages = paginateEntries(entries);
+  // 第 1 页由 /library/ 承担，这里只生成第 2 页起
+  return pages.slice(1).map((slice, index) => ({
+    params: { page: String(index + 2) },
+    props: { entries: slice, page: index + 2, totalPages: pages.length },
+  }));
+};
+
+const { entries, page, totalPages } = Astro.props as {
+  entries: AnyEntry[];
+  page: number;
+  totalPages: number;
+};
+---
+
+<ListLayout
+  kind="library"
+  label="Library"
+  title="学习资料"
+  description="整理过的教程、清单与外链附件，按主题归档。"
+  entries={entries}
+  page={page}
+  totalPages={totalPages}
+  basePath="/library/"
+/>

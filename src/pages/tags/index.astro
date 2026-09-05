@@ -1,0 +1,97 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getAllPublished, tagCounts } from '../../lib/content';
+
+const all = await getAllPublished();
+const tags = tagCounts(all.map((item) => item.entry));
+---
+
+<BaseLayout title="标签" description="按话题浏览全部文章与资料。">
+  <section class="wrap head">
+    <p class="label">Topics</p>
+    <h1 class="head__title">标签</h1>
+    <p class="head__desc">共 {tags.length} 个话题，{all.length} 篇内容。</p>
+  </section>
+
+  <section class="wrap body">
+    {
+      tags.length > 0 ? (
+        <ul class="tag-index">
+          {tags.map(({ tag, count }) => (
+            <li class="tag-index__item">
+              <a href={`/tags/${encodeURIComponent(tag)}/`}>
+                <span class="tag-index__name">{tag}</span>
+                <span class="tag-index__count">{String(count).padStart(2, '0')}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="empty">还没有任何标签。</p>
+      )
+    }
+  </section>
+</BaseLayout>
+
+<style>
+  .head {
+    padding-block: clamp(2.75rem, 7vw, 4.5rem) 2rem;
+  }
+
+  .head__title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-weight: 600;
+    margin: 0.9rem 0 0;
+    letter-spacing: 0.02em;
+  }
+
+  .head__desc {
+    margin: 1rem 0 0;
+    color: var(--fg-muted);
+  }
+
+  .body {
+    padding-bottom: 4rem;
+  }
+
+  .tag-index {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    border-top: var(--hair) solid var(--line);
+    border-left: var(--hair) solid var(--line);
+  }
+
+  .tag-index__item {
+    border-right: var(--hair) solid var(--line);
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .tag-index__item a {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+
+  .tag-index__item a:hover {
+    background: var(--accent-wash);
+    color: var(--accent);
+  }
+
+  .tag-index__name {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+  }
+
+  .tag-index__count {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--fg-faint);
+  }
+</style>

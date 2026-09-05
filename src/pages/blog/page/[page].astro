@@ -1,0 +1,32 @@
+---
+import type { GetStaticPaths } from 'astro';
+import ListLayout from '../../../layouts/ListLayout.astro';
+import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const entries = await getPublished('blog');
+  const pages = paginateEntries(entries);
+  // 第 1 页由 /blog/ 承担，这里只生成第 2 页起
+  return pages.slice(1).map((slice, index) => ({
+    params: { page: String(index + 2) },
+    props: { entries: slice, page: index + 2, totalPages: pages.length },
+  }));
+};
+
+const { entries, page, totalPages } = Astro.props as {
+  entries: AnyEntry[];
+  page: number;
+  totalPages: number;
+};
+---
+
+<ListLayout
+  kind="blog"
+  label="Writing"
+  title="文章"
+  description="AI Coding 实践、后端工程与踩坑记录。"
+  entries={entries}
+  page={page}
+  totalPages={totalPages}
+  basePath="/blog/"
+/>

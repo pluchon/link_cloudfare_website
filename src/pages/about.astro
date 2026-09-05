@@ -1,0 +1,54 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import '../styles/prose.css';
+import { site } from '../config/site';
+---
+
+<BaseLayout title="关于" description={`关于 ${site.name}`}>
+  <section class="wrap head">
+    <p class="label">About</p>
+    <h1 class="head__title">关于这个站</h1>
+  </section>
+
+  <section class="wrap body">
+    <div class="prose">
+      <p>
+        这里是{site.name}。主要写 AI Coding 的实践、后端工程里的坑，以及日常学习攒下的笔记。
+      </p>
+
+      <h2>写什么</h2>
+      <p>
+        <strong>文章</strong>是我自己写的东西：做过的项目、调过的 bug、读过觉得值得复述的内容。
+        <strong>资料</strong>是整理过的教程和清单，附件都放外链，方便自己回头翻。
+      </p>
+
+      <h2>这个站怎么搭的</h2>
+      <p>
+        Astro 静态生成，Markdown 直接渲染，推到 GitHub 后由 Cloudflare Pages 自动构建上线。
+        没有数据库，没有后端，全站零外部字体请求。
+      </p>
+
+      <h2>联系</h2>
+      <p>这一段等你补：邮箱、GitHub、或者别的什么。</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .head {
+    padding-block: clamp(2.75rem, 7vw, 4.5rem) 2rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .head__title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-weight: 600;
+    margin: 0.9rem 0 0;
+    letter-spacing: 0.02em;
+  }
+
+  .body {
+    padding-block: 2.75rem 4.5rem;
+  }
+</style>

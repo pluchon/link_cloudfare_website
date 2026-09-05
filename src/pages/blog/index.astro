@@ -1,0 +1,19 @@
+---
+import ListLayout from '../../layouts/ListLayout.astro';
+import { getPublished, paginateEntries } from '../../lib/content';
+
+const entries = await getPublished('blog');
+const pages = paginateEntries(entries);
+---
+
+<ListLayout
+  kind="blog"
+  label="Writing"
+  title="文章"
+  description="AI Coding 实践、后端工程与踩坑记录。"
+  entries={pages[0]}
+  page={1}
+  totalPages={pages.length}
+  basePath="/blog/"
+  emptyText="还没有文章，往 src/content/blog/ 里放第一篇 Markdown 吧。"
+/>

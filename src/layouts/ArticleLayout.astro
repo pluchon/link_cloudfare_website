@@ -1,0 +1,414 @@
+---
+import '../styles/prose.css';
+import BaseLayout from './BaseLayout.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import type { MarkdownHeading } from 'astro';
+import type { AnyEntry, ContentKind } from '../lib/content';
+import { entryHref, formatDate, countWords, readingMinutes } from '../lib/content';
+
+interface Props {
+  kind: ContentKind;
+  entry: AnyEntry;
+  headings: MarkdownHeading[];
+  prev?: AnyEntry;
+  next?: AnyEntry;
+  related?: AnyEntry[];
+}
+
+const { kind, entry, headings, prev, next, related = [] } = Astro.props;
+const { data } = entry;
+const body = entry.body ?? '';
+const words = countWords(body);
+const minutes = readingMinutes(body);
+const kindLabel = kind === 'blog' ? '文章' : '资料';
+const listHref = `/${kind}/`;
+const rawHref = `/${kind}/${data.slug}.md`;
+const attachments = 'attachments' in data ? data.attachments : [];
+const sourceUrl = 'sourceUrl' in data ? data.sourceUrl : undefined;
+---
+
+<BaseLayout title={data.title} description={data.summary} ogImage={data.cover}>
+  <div class="progress" id="reading-progress" aria-hidden="true"></div>
+
+  <article class="wrap article">
+    <header class="article__head">
+      <p class="article__crumb">
+        <a class="label" href={listHref}>{kindLabel}</a>
+        <span class="label" aria-hidden="true">/</span>
+        <span class="label">{data.category}</span>
+      </p>
+
+      <h1 class="article__title">{data.title}</h1>
+      <p class="article__summary">{data.summary}</p>
+
+      <div class="article__meta">
+        <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
+        {data.updatedAt && <span>更新于 {formatDate(data.updatedAt)}</span>}
+        <span>{words} 字</span>
+        <span>约 {minutes} 分钟</span>
+        <a class="article__raw" href={rawHref} download>Markdown 原文</a>
+      </div>
+
+      {
+        data.tags.length > 0 && (
+          <div class="tag-row article__tags">
+            {data.tags.map((tag) => (
+              <a class="tag" href={`/tags/${encodeURIComponent(tag)}/`}>
+                {tag}
+              </a>
+            ))}
+          </div>
+        )
+      }
+    </header>
+
+    <div class="article__body">
+      <div class="prose">
+        {data.cover && <img src={data.cover} alt="" loading="lazy" decoding="async" />}
+        <slot />
+      </div>
+
+      <aside class="article__aside">
+        <TableOfContents headings={headings} />
+      </aside>
+    </div>
+
+    {
+      (attachments.length > 0 || sourceUrl) && (
+        <section class="attachments">
+          <p class="label">附件与出处</p>
+          <ul class="attachments__list">
+            {attachments.map((file) => (
+              <li>
+                <a href={file.url} target="_blank" rel="noopener noreferrer">
+                  {file.name}
+                </a>
+                <span class="related__date">外链</span>
+              </li>
+            ))}
+            {sourceUrl && (
+              <li>
+                <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+                  原始出处
+                </a>
+                <span class="related__date">外链</span>
+              </li>
+            )}
+          </ul>
+        </section>
+      )
+    }
+
+    {
+      (prev || next) && (
+        <nav class="pager" aria-label="上下篇">
+          <div class="pager__cell">
+            {prev && (
+              <a href={entryHref(kind, prev.data.slug)}>
+                <span class="label">上一篇</span>
+                <span class="pager__title">{prev.data.title}</span>
+              </a>
+            )}
+          </div>
+          <div class="pager__cell pager__cell--right">
+            {next && (
+              <a href={entryHref(kind, next.data.slug)}>
+                <span class="label">下一篇</span>
+                <span class="pager__title">{next.data.title}</span>
+              </a>
+            )}
+          </div>
+        </nav>
+      )
+    }
+
+    {
+      related.length > 0 && (
+        <section class="related">
+          <p class="label">相关阅读</p>
+          <ul class="related__list">
+            {related.map((item) => (
+              <li>
+                <a href={entryHref(kind, item.data.slug)}>{item.data.title}</a>
+                <span class="related__date">{formatDate(item.data.publishedAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
+  </article>
+</BaseLayout>
+
+<style>
+  .progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 60;
+    height: 2px;
+    width: 0;
+    background: var(--accent);
+  }
+
+  .article {
+    padding-block: clamp(2.5rem, 6vw, 4.5rem) 4rem;
+  }
+
+  .article__head {
+    padding-bottom: 2rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .article__crumb {
+    display: flex;
+    gap: 0.6rem;
+    margin: 0 0 1.1rem;
+  }
+
+  .article__crumb a:hover {
+    color: var(--accent);
+  }
+
+  .article__title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 4.5vw, 2.5rem);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    margin: 0;
+    max-width: 22em;
+  }
+
+  .article__summary {
+    margin: 1rem 0 0;
+    max-width: var(--prose-max);
+    color: var(--fg-muted);
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+
+  .article__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.25rem;
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: var(--fg-faint);
+  }
+
+  .article__raw {
+    border-bottom: var(--hair) solid var(--line-strong);
+    padding-bottom: 0.1rem;
+    transition: color 0.18s ease, border-color 0.18s ease;
+  }
+
+  .article__raw:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .article__tags {
+    margin-top: 1.25rem;
+  }
+
+  .article__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    gap: 0 clamp(2rem, 5vw, 4rem);
+    padding-top: 2.75rem;
+    align-items: start;
+  }
+
+  .attachments,
+  .related {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: var(--hair) solid var(--line);
+    max-width: var(--prose-max);
+  }
+
+  .attachments__list,
+  .related__list {
+    list-style: none;
+    margin: 0.9rem 0 0;
+    padding: 0;
+  }
+
+  .attachments__list li,
+  .related__list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: baseline;
+    padding: 0.7rem 0;
+    border-bottom: var(--hair) solid var(--line);
+    font-size: 0.9375rem;
+  }
+
+  .attachments__list a:hover,
+  .related__list a:hover {
+    color: var(--accent);
+  }
+
+  .related__date {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 3rem;
+    border-top: var(--hair) solid var(--line);
+  }
+
+  .pager__cell {
+    padding: 1.5rem 1.25rem;
+    min-height: 5.5rem;
+  }
+
+  .pager__cell + .pager__cell {
+    border-left: var(--hair) solid var(--line);
+  }
+
+  .pager__cell--right {
+    text-align: right;
+  }
+
+  .pager__cell a {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .pager__title {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+
+  .pager__cell a:hover .pager__title {
+    color: var(--accent);
+  }
+
+  @media (max-width: 60rem) {
+    .article__body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .article__aside {
+      display: none;
+    }
+  }
+
+  @media (max-width: 40rem) {
+    .pager {
+      grid-template-columns: 1fr;
+    }
+
+    .pager__cell + .pager__cell {
+      border-left: 0;
+      border-top: var(--hair) solid var(--line);
+    }
+
+    .pager__cell--right {
+      text-align: left;
+    }
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    // 阅读进度
+    var bar = document.getElementById('reading-progress');
+    var article = document.querySelector('.article__body');
+    if (bar && article) {
+      var onScroll = function () {
+        var rect = article.getBoundingClientRect();
+        var total = rect.height - window.innerHeight;
+        var passed = -rect.top;
+        var ratio = total > 0 ? Math.min(1, Math.max(0, passed / total)) : 0;
+        bar.style.width = ratio * 100 + '%';
+      };
+      document.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      onScroll();
+    }
+
+    // 代码块：语言标签 + 复制按钮
+    document.querySelectorAll('.prose pre').forEach(function (pre) {
+      var wrapper = document.createElement('div');
+      wrapper.className = 'code-block';
+      pre.parentNode.insertBefore(wrapper, pre);
+      wrapper.appendChild(pre);
+
+      var code = pre.querySelector('code');
+      var lang = code && code.getAttribute('data-language');
+      if (lang && lang !== 'plaintext') {
+        var tag = document.createElement('span');
+        tag.className = 'code-block__lang';
+        tag.textContent = lang;
+        wrapper.appendChild(tag);
+      }
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'code-block__copy';
+      btn.textContent = 'COPY';
+      btn.addEventListener('click', function () {
+        navigator.clipboard.writeText(pre.innerText).then(
+          function () {
+            btn.textContent = 'COPIED';
+            btn.dataset.copied = '1';
+            setTimeout(function () {
+              btn.textContent = 'COPY';
+              btn.dataset.copied = '';
+            }, 1600);
+          },
+          function () {
+            btn.textContent = 'FAILED';
+            setTimeout(function () {
+              btn.textContent = 'COPY';
+            }, 1600);
+          },
+        );
+      });
+      wrapper.appendChild(btn);
+    });
+
+    // 目录高亮
+    var links = document.querySelectorAll('[data-toc-link]');
+    if (links.length) {
+      var map = {};
+      links.forEach(function (link) {
+        map[link.getAttribute('data-toc-link')] = link;
+      });
+      var targets = Object.keys(map)
+        .map(function (id) {
+          return document.getElementById(id);
+        })
+        .filter(Boolean);
+
+      var observer = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (item) {
+            if (!item.isIntersecting) return;
+            links.forEach(function (link) {
+              link.dataset.active = '';
+            });
+            var active = map[item.target.id];
+            if (active) active.dataset.active = '1';
+          });
+        },
+        { rootMargin: '-90px 0px -70% 0px', threshold: 0 },
+      );
+      targets.forEach(function (el) {
+        observer.observe(el);
+      });
+    }
+  })();
+</script>
