@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+.astro/
+
+# env & local
+.env
+.env.*
+!.env.example
+
+# ide / os
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# local certs (do not commit)
+ssl/
+
+# temp
+test-output/
