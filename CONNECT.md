@@ -53,21 +53,35 @@ npm run dev
 
 ## 二、Cloudflare Pages 接 GitHub（你来点几下）
 
-1. 打开 [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**。
-2. 授权 GitHub，选仓库 **`pluchon/link_cloudfare_website`**。
-3. 构建设置填：
+> **2026 控制台注意：** 「Create an app」默认常会进 **Workers** 向导（出现 **Deploy command = `npx wrangler deploy`**）。  
+> 我们是 **纯静态 Astro**，应走 **Pages**，不要用这个 Deploy command。
+
+### 正确入口（Pages）
+
+1. 打开 [Workers & Pages](https://dash.cloudflare.com/?to=/:account/workers-and-pages)。
+2. **Create** / **Create application** 之后，点顶部的 **Pages** 标签（不要停在 Workers）。
+3. 选 **Import an existing Git repository** / **Connect to Git**。
+4. 授权并选择仓库 **`pluchon/link_cloudfare_website`**。
+5. 构建设置只填这些（官方 Astro + Pages 文档一致）：
 
 | 项 | 值 |
 |----|-----|
+| Project name | 随意，例如 `link-cloudfare-website`（会变成 `*.pages.dev`） |
 | Production branch | `main` |
-| Framework preset | Astro |
 | Build command | `npm run build` |
-| Build output directory | `dist` |
-| Environment variable | `NODE_VERSION` = `22` |
+| **Build directory / Output directory** | **`dist`** |
+| 环境变量（Advanced / Variables） | `NODE_VERSION` = `22` |
 
-4. **Save and Deploy**，等构建变绿。
-5. 打开系统给的地址：`https://<项目名>.pages.dev`  
-   **这一步通了再改域名 DNS**，否则分不清是构建挂了还是解析挂了。
+6. **不应出现**、或应忽略：**Deploy command / `npx wrangler deploy`**。静态 Pages 构建完直接发布 `dist`，不需要 wrangler。
+7. API token 那一项若提示 “A new token will be created automatically”，**不用自己新建**，跳过即可。
+8. **Save and Deploy**，等绿。打开 `https://<项目名>.pages.dev`。
+
+**在 `*.pages.dev` 通之前，不要改域名 DNS。**
+
+### 若你已经卡在「有 Deploy command」的那一页
+
+点 **Back**，回到 Create 入口，改选 **Pages** 标签再 Import Git。  
+不要在当前页点 Deploy——没有 `wrangler.toml` 时，`npx wrangler deploy` 会失败或部署错形态。
 
 ---
 
