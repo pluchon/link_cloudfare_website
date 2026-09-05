@@ -135,12 +135,60 @@ Resolve-DnsName www.nuonuoya.cn -Type CNAME
 | www 打不开 / 指到旧站 | 旧 A 记录还在，和 CNAME 冲突 |
 | Pages 构建失败 | 没设 `NODE_VERSION=22`，或 build/output 填错 |
 | 推了没更新 | 等构建跑完；看 Pages 部署日志是否绿 |
+| 进站不出现验证 | 未配置 `TURNSTILE_SECRET_KEY` / `GATE_COOKIE_SECRET`（未配则故意不拦截） |
+| 验证页没有小部件 | 构建时缺少 `PUBLIC_TURNSTILE_SITE_KEY`，需加变量后 **重新部署** |
+| Turnstile 报域名错误 | 组件允许的域名未包含 `www.nuonuoya.cn` 与 `*.pages.dev` |
 
 ---
 
-## 七、本仓库约定
+## 七、进站 Turnstile（保留阿里云 NS）
+
+不转 NS，也能让每位访客先过一道验证：
+
+1. 打开未验证的页面 → Pages Middleware 302 到 `/gate/`
+2. 完成 Turnstile → `POST /api/turnstile-verify` 向 Cloudflare 校验
+3. 校验通过后下发签名 Cookie（24 小时）→ 进入站点
+
+### 1）创建 Turnstile 组件
+
+1. Cloudflare Dashboard → **Turnstile** → **Add widget**
+2. Widget name：随意，例如 `nuonuoya-gate`
+3. Hostname 至少加：
+   - `www.nuonuoya.cn`
+   - `link-cloudfare-website.pages.dev`
+4. 创建后得到 **Site Key**（公开）和 **Secret Key**（保密）
+
+### 2）配置 Pages 环境变量
+
+项目 **link-cloudfare-website** → **Settings** → **Environment variables**（Production）：
+
+| 变量名 | 类型 | 说明 |
+|--------|------|------|
+| `PUBLIC_TURNSTILE_SITE_KEY` | 明文即可 | Site Key；**构建时**注入前端 |
+| `TURNSTILE_SECRET_KEY` | **Encrypt** | Secret Key；仅 Function 使用 |
+| `GATE_COOKIE_SECRET` | **Encrypt** | 随机长串，用于签名进站 Cookie |
+
+生成 `GATE_COOKIE_SECRET`（PowerShell）：
+
+```powershell
+-join ((48..57 + 65..90 + 97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+```
+
+三个变量都勾选 **Production**。改完后点 **Retry deployment** / 再 push 一次，确保带上新的 `PUBLIC_` 构建变量。
+
+### 3）验收
+
+1. 无痕窗口打开 `https://www.nuonuoya.cn/` → 应跳到 `/gate/`
+2. 完成验证 → 进入首页
+3. 同窗口再开内页 → 24 小时内不应重复验证
+4. 本地 `npm run dev` **不会**走 Pages Middleware，默认直进首页（属正常）
+
+---
+
+## 八、本仓库约定
 
 - 工作目录：`C:\JavaCode\items\personal_website`
 - 生产分支：`main`
 - 站点正式 URL：`https://www.nuonuoya.cn`
 - 页脚不展示备案号（配置里仅备查）
+- 阿里云 NS 保持不动；进站验证用 Turnstile，不依赖整站橙云

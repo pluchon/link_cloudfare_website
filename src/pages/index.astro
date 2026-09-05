@@ -82,15 +82,15 @@ import { site } from '../config/site';
       <h1>{site.name}</h1>
       <p class="tagline">{site.tagline}</p>
       <p class="status">
-        占位页已就绪。下一步：把本仓库接到 Cloudflare Pages，再把
-        <code>www.nuonuoya.cn</code> CNAME 到 Pages。详见仓库根目录
-        <code>CONNECT.md</code>。
+        占位页已就绪。连通链路：GitHub → Cloudflare Pages →
+        <code>www.nuonuoya.cn</code>。进站 Turnstile 验证见
+        <code>/gate/</code> 与 <code>CONNECT.md</code>。
       </p>
       <ol>
         <li>本地 <code>npm run dev</code> 预览</li>
-        <li>推送 <code>main</code> → GitHub</li>
-        <li>Cloudflare Pages 接仓库，先通 <code>*.pages.dev</code></li>
-        <li>阿里云 DNS：<code>www</code> → CNAME → Pages（NS 不动）</li>
+        <li>推送 <code>main</code> → GitHub → Pages 自动构建</li>
+        <li>生产环境配置 Turnstile 密钥后，访问首页会先进入验证页</li>
+        <li>阿里云 DNS 保持 NS 不动，仅 <code>www</code> CNAME</li>
       </ol>
     </main>
   </body>
