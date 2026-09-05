@@ -13,7 +13,6 @@
 | 站点名 | 儒雅的诺诺的学习基地 |
 | 副标题 | AI Coding 与日常学习的分享 |
 | 正式 URL | `https://www.nuonuoya.cn`（主站用 www） |
-| 备案号 | `湘ICP备2026019722号-1`（**页脚不展示**，仅 `src/config/site.ts` 备查） |
 | 本地路径 | `C:\JavaCode\items\personal_website` |
 | GitHub | `git@github.com:pluchon/link_cloudfare_website.git`（分支 `main`） |
 | 托管 | Cloudflare Pages 项目名 `link-cloudfare-website` |
@@ -57,13 +56,12 @@
 1. **纯静态 Astro + Markdown Content Collections**，无 Spring Boot / 无自建数据库。
 2. **阿里云 NS 保持不动**；不要引导用户把域名整站迁入 Cloudflare DNS。
 3. **图片一律 OSS 图床外链**，不建 `public/uploads`，不用 R2 存图，CMS 不配本地媒体上传。Markdown / `cover` 写完整 `https://...` URL。
-4. **页脚不挂备案号**。
-5. 经典 Pages 界面：只有 Build command + Build output=`dist`，**没有** Deploy command；闸门用 `functions/`，不要改成依赖 `npx wrangler deploy` 的 Workers SPA 形态（曾导致全路径回退首页、Functions 失效）。
-6. `wrangler.toml` 仅作 Pages 声明：`pages_build_output_dir = "dist"`。
-7. 参考站 https://jasonai.me 只借信息架构，**视觉不要复刻**暖米色 + Inter；本站方向：编辑部学刊风（宋体标题 + 黑体正文 + JetBrains Mono，强调色印章朱红 `#C6462F`）。
-8. 中文字体需子集化 + `font-display: swap`。
-9. 不提交密钥、不提交 `ssl/`、不提交 `console.log`。
-10. Windows / PowerShell 环境；commit 用 PowerShell here-string 或普通 `-m`，勿用 bash HEREDOC。
+4. 经典 Pages 界面：只有 Build command + Build output=`dist`，**没有** Deploy command；闸门用 `functions/`，不要改成依赖 `npx wrangler deploy` 的 Workers SPA 形态（曾导致全路径回退首页、Functions 失效）。
+5. `wrangler.toml` 仅作 Pages 声明：`pages_build_output_dir = "dist"`。
+6. 参考站 https://jasonai.me 只借信息架构，**视觉不要复刻**暖米色 + Inter；本站方向：编辑部学刊风（宋体标题 + 黑体正文 + JetBrains Mono，强调色印章朱红 `#C6462F`）。
+7. 中文字体需子集化 + `font-display: swap`。
+8. 不提交密钥、不提交 `ssl/`、不提交 `console.log`。
+9. Windows / PowerShell 环境；commit 用 PowerShell here-string 或普通 `-m`，勿用 bash HEREDOC。
 
 ---
 
@@ -72,7 +70,7 @@
 ```
 personal_website/
   src/
-    config/site.ts          # 站点名、URL、备案备查
+    config/site.ts          # 站点名、URL
     pages/index.astro       # 占位首页（待替换）
     pages/gate.astro        # Turnstile 闸门（保持极简）
     env.d.ts
@@ -107,7 +105,7 @@ public/admin/               # 若做 Sveltia CMS
 ### P0 — 站点本体
 
 - [ ] 视觉 token 与全局样式（浅/深色；宋体标题、黑体正文、JetBrains Mono；朱红强调 `#C6462F`；背景 `#FCFCFA` / `#101114`）
-- [ ] 站点骨架：顶栏导航、深色模式（无闪烁）、页脚（**无备案号**）、移动端适配；文案继续走 `src/config/site.ts`
+- [ ] 站点骨架：顶栏导航、深色模式（无闪烁）、页脚、移动端适配；文案继续走 `src/config/site.ts`
 - [ ] Content Collections：`blog` + `library`，zod schema；`draft: true` 构建期排除；`slug` 写在 frontmatter
 - [ ] 首页：分区总览（简介、最近更新、资料入口、标签云等），**不要**参考站那种可拖拽画布
 - [ ] `/blog`、`/library`：列表 + 构建期分页 + 标签筛选入口
@@ -126,7 +124,6 @@ public/admin/               # 若做 Sveltia CMS
 
 - [ ] 浏览量统计（外链服务选型）
 - [ ] 图片 lightbox、置顶/专栏、评论方案评估
-- [ ] 若大陆访问实测不可接受，再单独立项评估国内镜像（会重新引入服务器，勿擅自开做）
 
 ---
 
@@ -153,7 +150,7 @@ public/admin/               # 若做 Sveltia CMS
 - [ ] 深色模式状态矩阵；禁用 JS 后正文/列表仍可读
 - [ ] 长文目录高亮、阅读进度、代码复制正常
 - [ ] 移动端窄屏可用
-- [ ] 页脚无备案号；图片均为外链
+- [ ] 图片均为外链
 
 ---
 
