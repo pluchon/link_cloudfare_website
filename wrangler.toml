@@ -1,0 +1,14 @@
+# Cloudflare Workers + Static Assets
+# Git 构建：npm run build → npx wrangler deploy
+name = "link-cloudfare-website"
+main = "workers/gate.ts"
+compatibility_date = "2026-09-05"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# 先跑 Worker（做进站校验），再回源静态资源
+run_worker_first = true
+# 禁止 SPA 回退：否则 /gate/ 等路径会错误地返回首页
+not_found_handling = "404-page"
+html_handling = "auto-trailing-slash"

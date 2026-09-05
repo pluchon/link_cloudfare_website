@@ -135,7 +135,8 @@ Resolve-DnsName www.nuonuoya.cn -Type CNAME
 | www 打不开 / 指到旧站 | 旧 A 记录还在，和 CNAME 冲突 |
 | Pages 构建失败 | 没设 `NODE_VERSION=22`，或 build/output 填错 |
 | 推了没更新 | 等构建跑完；看 Pages 部署日志是否绿 |
-| 进站不出现验证 | 未配置 `TURNSTILE_SECRET_KEY` / `GATE_COOKIE_SECRET`（未配则故意不拦截） |
+| 进站不出现验证 | ① Worker 密钥未配；② 仍用旧 SPA 静态发布（见第七节构建设置）；③ `/gate/` 打开仍是首页 |
+| `/gate/` 却显示首页 | 项目开了 SPA 回退或未走 `wrangler deploy`；按第七节改 Deploy command |
 | 验证页没有小部件 | 构建时缺少 `PUBLIC_TURNSTILE_SITE_KEY`，需加变量后 **重新部署** |
 | Turnstile 报域名错误 | 组件允许的域名未包含 `www.nuonuoya.cn` 与 `*.pages.dev` |
 
@@ -145,43 +146,59 @@ Resolve-DnsName www.nuonuoya.cn -Type CNAME
 
 不转 NS，也能让每位访客先过一道验证：
 
-1. 打开未验证的页面 → Pages Middleware 302 到 `/gate/`
-2. 完成 Turnstile → `POST /api/turnstile-verify` 向 Cloudflare 校验
+1. 打开未验证的页面 → Worker 302 到 `/gate/`
+2. 完成 Turnstile → `POST /api/turnstile-verify` 校验
 3. 校验通过后下发签名 Cookie（24 小时）→ 进入站点
+
+### 为何曾经「配了密钥却不触发」
+
+实测线上任意路径（含 `/gate/`、`/api/...`）都返回同一份首页 HTML，说明当时项目按 **Workers 静态资源 + SPA 回退** 在跑：
+
+- `/functions`（Pages Functions）**不会执行**
+- 不存在的路径（甚至本该存在的 `/gate/`）被 **SPA 回退成首页**
+- 所以中间件拦截与验证 API 都不会生效
+
+现已改为仓库根目录 `wrangler.toml` + `workers/gate.ts`，并关闭 SPA 回退（`not_found_handling = "404-page"`，`run_worker_first = true`）。
+
+### Cloudflare 构建设置（务必改成这样）
+
+项目 Settings → Builds：
+
+| 项 | 值 |
+|----|-----|
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | `/`（空即可） |
+| 环境变量 `NODE_VERSION` | `22` |
+
+若仍残留「Build output directory = dist」且**没有** Deploy command，容易继续走旧的 SPA 静态发布。以 `wrangler.toml` + `npx wrangler deploy` 为准。
 
 ### 1）创建 Turnstile 组件
 
 1. Cloudflare Dashboard → **Turnstile** → **Add widget**
-2. Widget name：随意，例如 `nuonuoya-gate`
-3. Hostname 至少加：
-   - `www.nuonuoya.cn`
-   - `link-cloudfare-website.pages.dev`
-4. 创建后得到 **Site Key**（公开）和 **Secret Key**（保密）
+2. Hostname 至少加：`www.nuonuoya.cn`、`link-cloudfare-website.pages.dev`
+3. 记下 **Site Key** 与 **Secret Key**
 
-### 2）配置 Pages 环境变量
-
-项目 **link-cloudfare-website** → **Settings** → **Environment variables**（Production）：
+### 2）环境变量（Production）
 
 | 变量名 | 类型 | 说明 |
 |--------|------|------|
-| `PUBLIC_TURNSTILE_SITE_KEY` | 明文即可 | Site Key；**构建时**注入前端 |
-| `TURNSTILE_SECRET_KEY` | **Encrypt** | Secret Key；仅 Function 使用 |
-| `GATE_COOKIE_SECRET` | **Encrypt** | 随机长串，用于签名进站 Cookie |
-
-生成 `GATE_COOKIE_SECRET`（PowerShell）：
+| `PUBLIC_TURNSTILE_SITE_KEY` | 明文 | Site Key；**构建时**打进 `/gate/` |
+| `TURNSTILE_SECRET_KEY` | Encrypt | Secret Key；Worker 校验用 |
+| `GATE_COOKIE_SECRET` | Encrypt | 随机长串；Cookie 签名 |
 
 ```powershell
 -join ((48..57 + 65..90 + 97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
 ```
 
-三个变量都勾选 **Production**。改完后点 **Retry deployment** / 再 push 一次，确保带上新的 `PUBLIC_` 构建变量。
+三个都勾 **Production**。改完后必须 **重新部署**（Retry / 再 push），`PUBLIC_` 才能进前端。
 
 ### 3）验收
 
-1. 无痕窗口打开 `https://www.nuonuoya.cn/` → 应跳到 `/gate/`
-2. 完成验证 → 进入首页
-3. 同窗口再开内页 → 24 小时内不应重复验证
-4. 本地 `npm run dev` **不会**走 Pages Middleware，默认直进首页（属正常）
+1. `https://www.nuonuoya.cn/gate/` 应看到「访问验证」（不是首页文案）
+2. 无痕打开 `https://www.nuonuoya.cn/` → 302 到 `/gate/`
+3. 验证通过后进首页；乱路径应 404，而不是再回首页
+4. 本地 `npm run dev` 不会跑 Worker，属正常
 
 ---
 

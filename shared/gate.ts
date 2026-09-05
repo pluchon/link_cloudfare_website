@@ -1,4 +1,4 @@
-/** Shared gate cookie helpers for Pages Functions */
+/** Shared gate cookie helpers */
 
 export const COOKIE_NAME = 'nn_gate';
 export const COOKIE_MAX_AGE = 60 * 60 * 24; // 24h
@@ -31,7 +31,6 @@ export async function verifyGateCookie(secret: string, raw: string | undefined):
   const expectedSig = expected.split('.')[1];
   if (expectedSig.length !== sig.length) return false;
 
-  // timing-safe compare
   let diff = 0;
   for (let i = 0; i < expectedSig.length; i++) {
     diff |= expectedSig.charCodeAt(i) ^ sig.charCodeAt(i);
@@ -41,8 +40,7 @@ export async function verifyGateCookie(secret: string, raw: string | undefined):
 
 export function readCookie(header: string | null, name: string): string | undefined {
   if (!header) return undefined;
-  const parts = header.split(';');
-  for (const part of parts) {
+  for (const part of header.split(';')) {
     const [k, ...rest] = part.trim().split('=');
     if (k === name) return decodeURIComponent(rest.join('='));
   }
@@ -58,4 +56,14 @@ export function buildSetCookie(value: string, maxAge = COOKIE_MAX_AGE): string {
     'SameSite=Lax',
     `Max-Age=${maxAge}`,
   ].join('; ');
+}
+
+export function isBypassedPath(pathname: string): boolean {
+  return (
+    pathname === '/gate' ||
+    pathname === '/gate/' ||
+    pathname.startsWith('/api/turnstile-verify') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/robots.txt'
+  );
 }
