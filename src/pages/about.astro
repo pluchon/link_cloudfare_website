@@ -1,54 +1,212 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import '../styles/prose.css';
-import { site } from '../config/site';
+import { getCollection, render } from 'astro:content';
+import { site, profile } from '../config/site';
+
+// 正文与仓库同步：内容来自 src/content/profile/，改完推送即上线
+const docs = await getCollection('profile');
+const doc = docs.find((d) => d.id === 'my_introduction') ?? docs[0];
+const Intro = doc ? (await render(doc)).Content : null;
+// 技能标签来自 profile 正文里的 tags 行
+const skills = doc?.data.skills ?? [];
 ---
 
 <BaseLayout title="关于" description={`关于 ${site.name}`}>
-  <section class="wrap head">
-    <p class="label">About</p>
-    <h1 class="head__title">关于这个站</h1>
-  </section>
+  <section class="wrap card-wrap">
+    <div class="card" data-reveal>
+      {
+        profile.avatar ? (
+          <img class="card__cover" src={profile.avatar} alt="" width="215" height="232" />
+        ) : (
+          <div class="card__cover cover-ph">头像待补</div>
+        )
+      }
 
-  <section class="wrap body">
-    <div class="prose">
-      <p>
-        这里是{site.name}。主要写 AI Coding 的实践、后端工程里的坑，以及日常学习攒下的笔记。
-      </p>
+      <div class="card__body">
+        <h1 class="card__name">{profile.name}</h1>
+        <p class="card__bio">{profile.bio}</p>
 
-      <h2>写什么</h2>
-      <p>
-        <strong>文章</strong>是我自己写的东西：做过的项目、调过的 bug、读过觉得值得复述的内容。
-        <strong>资料</strong>是整理过的教程和清单，附件都放外链，方便自己回头翻。
-      </p>
+        <ul class="links">
+          {
+            profile.links.map((link) => (
+              <li>
+                <a class="link" href={link.href} target="_blank" rel="noopener noreferrer">
+                  <img class="link__icon" src={link.icon} alt="" width="18" height="18" />
+                  <span class="link__label">{link.label}</span>
+                  <span class="link__out" aria-hidden="true">
+                    ↗
+                  </span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
 
-      <h2>这个站怎么搭的</h2>
-      <p>
-        Astro 静态生成，Markdown 直接渲染，推到 GitHub 后由 Cloudflare Pages 自动构建上线。
-        没有数据库，没有后端，全站零外部字体请求。
-      </p>
-
-      <h2>联系</h2>
-      <p>这一段等你补：邮箱、GitHub、或者别的什么。</p>
+        {
+          skills.length > 0 && (
+            <div class="skills">
+              {skills.map((skill) => (
+                <span class="tag">{skill}</span>
+              ))}
+            </div>
+          )
+        }
+      </div>
     </div>
   </section>
+
+  {
+    Intro && (
+      <>
+        <div class="wrap">
+          <div class="rule-tab" aria-hidden="true" />
+        </div>
+
+        <section class="wrap body">
+          <div class="prose">
+            <Intro />
+          </div>
+        </section>
+      </>
+    )
+  }
 </BaseLayout>
 
 <style>
-  .head {
-    padding-block: clamp(2.75rem, 7vw, 4.5rem) 2rem;
-    border-bottom: var(--hair) solid var(--line);
+  .card-wrap {
+    padding-block: 2.5rem 2.25rem;
   }
 
-  .head__title {
+  /* 名片：左半头像，右半信息，和首页根节点保持同一个构图 */
+  .card {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    align-items: start;
+    border: var(--hair) solid var(--line);
+  }
+
+  /* 头像原始比例 215×232，竖版 */
+  .card__cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 215 / 232;
+    align-self: start;
+    object-fit: cover;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+  }
+
+  .card__body {
+    align-self: stretch;
+    padding: clamp(1.5rem, 3vw, 2.25rem);
+    border-left: var(--hair) solid var(--line);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .card__name {
     font-family: var(--font-serif);
-    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-size: clamp(1.5rem, 3vw, 2rem);
     font-weight: 600;
-    margin: 0.9rem 0 0;
+    margin: 0;
     letter-spacing: 0.02em;
   }
 
+  .card__bio {
+    margin: 1rem 0 1.5rem;
+    color: var(--fg-muted);
+    line-height: 1.85;
+  }
+
+  /* ---------- 社交链接 ---------- */
+
+  .links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.7rem 0.5rem 0.6rem;
+    border: var(--hair) solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    font-size: 0.875rem;
+    line-height: 1;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+
+  :root[data-theme='dark'] .link { background: var(--bg-sunken); }
+
+  .link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  /* 三个图标源文件的 viewBox 分别是 24 / 32 / 512，
+     所以必须钉死盒子尺寸再 contain，否则渲染出来大小不一 */
+  .link__icon {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    object-fit: contain;
+  }
+
+  .link__label { font-weight: 500; }
+
+  .link__out {
+    font-size: 0.75rem;
+    color: var(--fg-faint);
+  }
+
+  .link:hover .link__out { color: var(--accent); }
+
+  /* ---------- 技能标签 ---------- */
+
+  .skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: var(--hair) solid var(--line);
+  }
+
   .body {
-    padding-block: 2.75rem 4.5rem;
+    padding-block: 2.5rem 4.5rem;
+  }
+
+  /* 正文与上方名片等宽，不再收进 46rem 的阅读栏宽 */
+  .body .prose {
+    max-width: none;
+  }
+
+  @media (max-width: 44rem) {
+    .card {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .card__cover {
+      max-width: 15rem;
+      margin-inline: auto;
+      margin-top: clamp(1.5rem, 3vw, 2.25rem);
+    }
+
+    .card__body {
+      border-left: 0;
+    }
   }
 </style>

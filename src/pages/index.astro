@@ -1,217 +1,1036 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import SectionHeading from '../components/SectionHeading.astro';
-import EntryRow from '../components/EntryRow.astro';
-import { site, home } from '../config/site';
-import { getPublished, tagCounts } from '../lib/content';
+import { profile, branches, BRANCH_LEAF_LIMIT } from '../config/site';
+import {
+  getPublished,
+  formatDate,
+  entryHref,
+  entryCover,
+  type ContentKind,
+} from '../lib/content';
 
-const blog = await getPublished('blog');
-const library = await getPublished('library');
-const tags = tagCounts([...blog, ...library]).slice(0, 14);
+type Leaf = {
+  id: string;
+  title: string;
+  meta: string;
+  summary: string;
+  href: string;
+  cover?: string;
+  tags: string[];
+};
 
-const recentBlog = blog.slice(0, 5);
-const recentLibrary = library.slice(0, 4);
-const latest = blog[0] ?? library[0];
+// 每条分支挂最新的若干篇；条数由 BRANCH_LEAF_LIMIT 统一控制
+const leaves: Record<string, Leaf[]> = {};
+for (const branch of branches) {
+  const kind = branch.key as ContentKind;
+  const entries = await getPublished(kind);
+  leaves[branch.key] = entries.slice(0, BRANCH_LEAF_LIMIT).map((entry, i) => ({
+    id: `l-${branch.key}-${i}`,
+    title: entry.data.title,
+    meta: formatDate(entry.data.publishedAt),
+    summary: entry.data.summary,
+    href: entryHref(kind, entry.data.slug),
+    cover: entryCover(entry),
+    tags: [...entry.data.tags],
+  }));
+}
 ---
 
-<BaseLayout>
-  <section class="hero">
-    <div class="wrap hero__grid">
-      <div class="hero__main">
-        <p class="label">{site.tagline}</p>
-        <h1 class="hero__title">{site.name}</h1>
-        <p class="hero__intro">{home.intro}</p>
-        <div class="hero__actions">
-          <a class="text-link" href="/blog/">开始阅读</a>
-          <a class="text-link" href="/about/">关于我</a>
+<BaseLayout variant="canvas">
+  <div class="canvas" data-canvas>
+    <div class="dots" aria-hidden="true"></div>
+
+    <div class="scene" data-scene>
+      <div class="map" data-map>
+        <svg class="wires" data-wires aria-hidden="true"></svg>
+
+        <div class="node node--root" data-node="root" data-pan-item>
+          {
+            profile.avatar ? (
+              <img class="root__cover" src={profile.avatar} alt="" width="256" height="256" />
+            ) : (
+              <div class="root__cover cover-ph">头像待补</div>
+            )
+          }
+
+          <div class="node__body">
+            <h1 class="root__name">{profile.name}</h1>
+            <p class="root__bio">{profile.bio}</p>
+          </div>
+
+          <button
+            class="knob"
+            type="button"
+            data-knob="root"
+            aria-expanded="false"
+            aria-label="展开分支"
+          >
+            <span class="knob__h"></span>
+            <span class="knob__v"></span>
+          </button>
+        </div>
+
+        <div class="branches" data-group="root" hidden>
+          {
+            branches.map((branch) => (
+              <div class="row">
+                <div class="node node--branch" data-node={`b-${branch.key}`} data-pan-item data-pop>
+                  {branch.cover ? (
+                    <img class="branch__cover" src={branch.cover} alt="" loading="lazy" />
+                  ) : (
+                    <div class="branch__cover cover-ph">封面待补</div>
+                  )}
+
+                  <div class="node__body">
+                    <div class="branch__head">
+                      <h2 class="branch__title">{branch.label}</h2>
+                      <a class="text-link" href={branch.href}>
+                        查看全部
+                      </a>
+                    </div>
+                    <p class="branch__desc">{branch.desc}</p>
+                  </div>
+
+                  {leaves[branch.key].length > 0 && (
+                    <button
+                      class="knob"
+                      type="button"
+                      data-knob={branch.key}
+                      aria-expanded="false"
+                      aria-label={`展开${branch.label}`}
+                    >
+                      <span class="knob__h" />
+                      <span class="knob__v" />
+                    </button>
+                  )}
+                </div>
+
+                <div class="leaves" data-group={branch.key} hidden>
+                  {leaves[branch.key].map((leaf) => (
+                    <div class="leaf-row">
+                      <div class="node node--leaf" data-node={leaf.id} data-pan-item data-pop>
+                        {leaf.cover ? (
+                          <img class="leaf__cover" src={leaf.cover} alt="" loading="lazy" />
+                        ) : (
+                          <div class="leaf__cover cover-ph">封面待补</div>
+                        )}
+
+                        <div class="leaf__body">
+                          <span class="leaf__meta">{leaf.meta}</span>
+                          <span class="leaf__title">{leaf.title}</span>
+                          <span class="leaf__summary">{leaf.summary}</span>
+                        </div>
+
+                        <a class="leaf__hit" href={leaf.href} aria-label={leaf.title} />
+
+                        {leaf.tags.length > 0 && (
+                          <button
+                            class="knob"
+                            type="button"
+                            data-knob={leaf.id}
+                            aria-expanded="false"
+                            aria-label="展开标签"
+                          >
+                            <span class="knob__h" />
+                            <span class="knob__v" />
+                          </button>
+                        )}
+                      </div>
+
+                      {leaf.tags.length > 0 && (
+                        <div class="tagwrap" data-group={leaf.id} hidden>
+                          <div
+                            class="node node--tags"
+                            data-node={`t-${leaf.id}`}
+                            data-pan-item
+                            data-pop
+                          >
+                            <div class="tag-row">
+                              {leaf.tags.map((tag) => (
+                                <a class="tag" href={`/tags/${encodeURIComponent(tag)}/`}>
+                                  {tag}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          }
         </div>
       </div>
-
-      <aside class="hero__side">
-        <dl class="stat">
-          <div class="stat__row">
-            <dt class="label">文章</dt>
-            <dd>{String(blog.length).padStart(2, '0')}</dd>
-          </div>
-          <div class="stat__row">
-            <dt class="label">资料</dt>
-            <dd>{String(library.length).padStart(2, '0')}</dd>
-          </div>
-          <div class="stat__row">
-            <dt class="label">话题</dt>
-            <dd>{String(tagCounts([...blog, ...library]).length).padStart(2, '0')}</dd>
-          </div>
-        </dl>
-        {
-          latest && (
-            <p class="hero__latest">
-              <span class="label">最新</span>
-              <a href={`/${blog[0] ? 'blog' : 'library'}/${latest.data.slug}/`}>
-                {latest.data.title}
-              </a>
-            </p>
-          )
-        }
-      </aside>
     </div>
-  </section>
-
-  <section class="wrap block">
-    <SectionHeading label={home.sections.blog.label} title={home.sections.blog.title} />
-    {
-      recentBlog.length > 0 ? (
-        <div class="entry-list">
-          {recentBlog.map((entry) => (
-            <EntryRow kind="blog" entry={entry} />
-          ))}
-        </div>
-      ) : (
-        <p class="empty">还没有文章，往 src/content/blog/ 里放第一篇 Markdown 吧。</p>
-      )
-    }
-    <p class="block__more"><a class="text-link" href="/blog/">{home.sections.blog.more}</a></p>
-  </section>
-
-  <section class="wrap block">
-    <SectionHeading label={home.sections.library.label} title={home.sections.library.title} />
-    {
-      recentLibrary.length > 0 ? (
-        <div class="entry-list">
-          {recentLibrary.map((entry) => (
-            <EntryRow kind="library" entry={entry} />
-          ))}
-        </div>
-      ) : (
-        <p class="empty">资料区还空着。</p>
-      )
-    }
-    <p class="block__more"><a class="text-link" href="/library/">{home.sections.library.more}</a></p>
-  </section>
-
-  {
-    tags.length > 0 && (
-      <section class="wrap block block--last">
-        <SectionHeading label={home.sections.tags.label} title={home.sections.tags.title} />
-        <div class="tag-row">
-          {tags.map(({ tag, count }) => (
-            <a class="tag" href={`/tags/${encodeURIComponent(tag)}/`}>
-              {tag}
-              <span class="tag__count">{count}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-    )
-  }
+  </div>
 </BaseLayout>
 
 <style>
-  .hero {
-    border-bottom: var(--hair) solid var(--line);
+  .canvas {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
   }
 
-  .hero__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 16rem;
-    align-items: stretch;
-    padding-block: clamp(3.5rem, 9vw, 7rem);
-    gap: 0 clamp(2rem, 5vw, 4rem);
+  /* 点阵底：只用一个 token 色，深浅两套主题都成立 */
+  .dots {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(var(--line-strong) 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: 0.55;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
   }
 
-  .hero__title {
-    font-family: var(--font-serif);
-    font-size: clamp(2rem, 6vw, 3.25rem);
-    font-weight: 600;
-    line-height: 1.25;
-    letter-spacing: 0.02em;
-    margin: 1.1rem 0 0;
-  }
+  .canvas[data-pannable='1'] { cursor: grab; touch-action: none; }
+  .canvas[data-dragging='1'] { cursor: grabbing; user-select: none; }
 
-  .hero__intro {
-    max-width: 34em;
-    margin: 1.5rem 0 0;
-    color: var(--fg-muted);
-    font-size: 1.0625rem;
-    line-height: 1.9;
-  }
-
-  .hero__actions {
+  .scene {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
     display: flex;
-    gap: 1.75rem;
-    margin-top: 2.25rem;
+    align-items: center;
+    will-change: transform;
   }
 
-  .hero__side {
+  .scene[data-eased='1'] { transition: transform 420ms var(--ease-out); }
+
+  .map {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 4.5rem);
+    width: max-content;
+    padding: 2.5rem clamp(2rem, 6vw, 5rem);
+    transform-origin: left center;
+    transition: transform 420ms var(--ease-out);
+  }
+
+  /* 连线层：路径由脚本按实际盒子位置算出来 */
+  .wires {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .wires :global(path) {
+    fill: none;
+    stroke: var(--line-strong);
+    stroke-width: 1;
+  }
+
+  /* 连线上的光点：零长度 + 圆头线帽渲染出来就是一个圆点，沿路径循环移动 */
+  .wires :global(.wire-flow) {
+    stroke: var(--accent);
+    stroke-width: 5;
+    stroke-linecap: round;
+    opacity: 0.85;
+    filter: blur(0.6px);
+  }
+
+  .branches {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    gap: 2rem;
-    padding-left: clamp(1.5rem, 4vw, 3rem);
+    gap: 1.25rem;
+  }
+
+  .row,
+  .leaf-row {
+    display: flex;
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 4.5rem);
+  }
+
+  .leaves {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  /* ---------- 节点卡片 ---------- */
+
+  .node {
+    --glow: 0;
+    --glow-angle: 0deg;
+    --g1: #c084fc;
+    --g2: #f472b6;
+    --g3: #38bdf8;
+    position: relative;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter: blur(4px);
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  /* 彩色描边：透明边框 + padding-box 不透明填充，网格渐变就只在那 1px 边上显色。
+     圆锥遮罩按指针角度开一段口子，光就跟着鼠标沿边走 */
+  .node::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: 0;
+    pointer-events: none;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--bg) 0 100%) padding-box,
+      radial-gradient(at 80% 55%, var(--g1) 0, transparent 50%) border-box,
+      radial-gradient(at 69% 34%, var(--g2) 0, transparent 50%) border-box,
+      radial-gradient(at 8% 6%, var(--g3) 0, transparent 50%) border-box,
+      radial-gradient(at 41% 38%, var(--g1) 0, transparent 50%) border-box,
+      radial-gradient(at 86% 85%, var(--g2) 0, transparent 50%) border-box,
+      radial-gradient(at 82% 18%, var(--g3) 0, transparent 50%) border-box,
+      radial-gradient(at 51% 4%, var(--g2) 0, transparent 50%) border-box,
+      linear-gradient(var(--g1) 0 100%) border-box;
+    opacity: var(--glow);
+    mask-image: conic-gradient(
+      from var(--glow-angle) at center,
+      #000 0%,
+      transparent 22%,
+      transparent 78%,
+      #000 100%
+    );
+    -webkit-mask-image: conic-gradient(
+      from var(--glow-angle) at center,
+      #000 0%,
+      transparent 22%,
+      transparent 78%,
+      #000 100%
+    );
+    transition: opacity 260ms var(--ease-out);
+  }
+
+  /* 卡片外的三色柔光 */
+  .node::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: 0;
+    pointer-events: none;
+    opacity: calc(var(--glow) * 0.9);
+    box-shadow:
+      0 0 6px color-mix(in srgb, var(--g1) 60%, transparent),
+      0 0 16px color-mix(in srgb, var(--g2) 45%, transparent),
+      0 0 34px color-mix(in srgb, var(--g3) 35%, transparent);
+    transition: opacity 260ms var(--ease-out);
+  }
+
+  /* 不能写 .node > *：Astro 作用域会给通配子选择器也加上属性，
+     特异性变成 0,3,0 压过 .knob 的 0,2,0，把按钮的绝对定位覆盖掉 */
+  .node__body,
+  .root__cover,
+  .branch__cover,
+  .leaf__cover,
+  .leaf__body,
+  .node--tags .tag-row {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ---------- 根节点：左半封面，右半内容 ---------- */
+
+  .node--root {
+    display: grid;
+    grid-template-columns: 50% minmax(0, 1fr);
+    width: 28rem;
+    /* 用 start 而不是 stretch，否则 aspect-ratio 会被拉伸吃掉 */
+    align-items: start;
+  }
+
+  /* 头像原始比例 215×232，竖版，不要按横图裁 */
+  .root__cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 215 / 232;
+    align-self: start;
+    object-fit: cover;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+  }
+
+  .node--root .node__body {
+    align-self: stretch;
+    padding: 1.5rem 1.35rem;
+    /* 分隔线放在右栏，才能跟着整行高度撑满 */
     border-left: var(--hair) solid var(--line);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
   }
 
-  .stat {
+  .root__name {
+    font-family: var(--font-serif);
+    font-size: 1.75rem;
+    font-weight: 600;
     margin: 0;
+    letter-spacing: 0.02em;
   }
 
-  .stat__row {
+  .root__bio {
+    margin: 0.9rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.8;
+    color: var(--fg-muted);
+  }
+
+  /* ---------- 分类节点 ---------- */
+
+  .node--branch { width: 17rem; }
+
+  .branch__cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-bottom: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+  }
+
+  .node--branch .node__body { padding: 0.95rem 1.1rem 1.1rem; }
+
+  .branch__head {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.6rem 0;
-    border-bottom: var(--hair) solid var(--line);
   }
 
-  .stat__row dd {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 1.125rem;
-    color: var(--fg);
+  .branch__head .text-link {
+    padding-bottom: 0;
+    line-height: 1;
   }
 
-  .hero__latest {
-    display: grid;
-    gap: 0.5rem;
-    margin: 0;
+  .branch__title {
     font-family: var(--font-serif);
-    font-size: 0.9375rem;
-    line-height: 1.6;
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0;
   }
 
-  .hero__latest a:hover {
-    color: var(--accent);
+  .branch__desc {
+    margin: 0.5rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--fg-muted);
+    line-height: 1.7;
   }
 
-  .block {
-    padding-block: clamp(2.75rem, 6vw, 4.25rem);
-    border-bottom: var(--hair) solid var(--line);
+  /* ---------- 帖子节点：左半封面，右半内容 ---------- */
+
+  .node--leaf {
+    display: grid;
+    grid-template-columns: 50% minmax(0, 1fr);
+    width: 26rem;
+    align-items: stretch;
   }
 
-  .block--last {
-    border-bottom: 0;
+  .node--leaf:hover { transform: translateX(0.35rem); }
+
+  .leaf__cover {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-height: 7.5rem;
+    object-fit: cover;
+    border-right: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
   }
 
-  .block__more {
-    margin: 1.75rem 0 0;
+  .leaf__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.9rem 1rem;
+    min-width: 0;
   }
 
-  .tag__count {
-    margin-left: 0.4rem;
+  .leaf__meta {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.06em;
     color: var(--fg-faint);
   }
 
-  @media (max-width: 52rem) {
-    .hero__grid {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 2.5rem;
+  .leaf__title {
+    margin-top: 0.3rem;
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+
+  .node--leaf:hover .leaf__title { color: var(--accent); }
+
+  .leaf__summary {
+    margin-top: 0.45rem;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--fg-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* 整卡可点：铺一层透明链接。按钮必须留在链接外面，
+     a 里套 button 是非法结构，所以用绝对定位的覆盖层 */
+  .leaf__hit {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+
+  /* ---------- 标签节点 ---------- */
+
+  /* 标签一行排完，宽度随内容走——画布可以拖，不用担心占地方 */
+  .node--tags {
+    width: max-content;
+    max-width: none;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .node--tags .tag-row {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  /* ---------- 展开按钮：两根线拼成的 + ---------- */
+
+  .knob {
+    position: absolute;
+    right: -0.8rem;
+    top: 50%;
+    width: 1.6rem;
+    height: 1.6rem;
+    margin-top: -0.8rem;
+    padding: 0;
+    border: var(--hair) solid var(--line-strong);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--fg-muted);
+    cursor: pointer;
+    z-index: 3;
+    transition: border-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+  }
+
+  .knob:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 绝对定位的子元素不受父级 place-items 影响，必须自己居中 */
+  .knob__h,
+  .knob__v {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: currentColor;
+  }
+
+  .knob__h {
+    width: 0.6rem;
+    height: 1px;
+    transform: translate(-50%, -50%);
+  }
+
+  .knob__v {
+    width: 1px;
+    height: 0.6rem;
+    transform: translate(-50%, -50%);
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  /* 展开后竖线收掉，+ 变成 − */
+  .knob[aria-expanded='true'] .knob__v { transform: translate(-50%, -50%) scaleY(0); }
+
+  /* ---------- 展开入场 ---------- */
+
+  :global(.js) [data-pop] {
+    opacity: 0;
+    transform: translateX(-12px);
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+    transition-delay: calc(var(--pop-i, 0) * var(--stagger));
+  }
+
+  :global(.js) [data-pop].is-pop {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.js) [data-pop] { transform: none; }
+  }
+
+  /* 窄屏退回竖排滚动，连线藏起来 */
+  @media (max-width: 60rem) {
+    .canvas { height: auto; overflow: visible; cursor: auto; }
+
+    .scene {
+      position: static;
+      display: block;
+      transform: none !important;
     }
 
-    .hero__side {
-      padding-left: 0;
-      border-left: 0;
-      border-top: var(--hair) solid var(--line);
-      padding-top: 1.5rem;
+    .map {
+      flex-direction: column;
+      align-items: stretch;
+      width: auto;
+      gap: 1.25rem;
+      padding-inline: var(--gut);
+      padding-bottom: 3rem;
+      transform: none !important;
     }
+
+    .wires { display: none; }
+
+    .row,
+    .leaf-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+    }
+
+    .node--root,
+    .node--branch,
+    .node--leaf,
+    .node--tags {
+      width: auto;
+    }
+
+    .knob {
+      right: 0.75rem;
+      top: 0.75rem;
+      margin-top: 0;
+    }
+
+    .leaves,
+    .tagwrap { padding-left: 1.25rem; }
   }
 </style>
+
+<script is:inline>
+  (function () {
+    var DRAG_THRESHOLD = 6;
+
+    function teardown() {
+      if (!window.__nnMap) return;
+      var m = window.__nnMap;
+      m.canvas.removeEventListener('pointerdown', m.onDown);
+      m.canvas.removeEventListener('click', m.onClick, true);
+      m.canvas.removeEventListener('dragstart', m.onDragStart);
+      m.canvas.removeEventListener('pointerleave', m.onLeave);
+      window.removeEventListener('pointermove', m.onMove);
+      window.removeEventListener('pointerup', m.onUp);
+      window.removeEventListener('resize', m.onResize);
+      window.__nnMap = null;
+    }
+
+    function init() {
+      teardown();
+
+      var canvas = document.querySelector('[data-canvas]');
+      var scene = document.querySelector('[data-scene]');
+      var map = document.querySelector('[data-map]');
+      var wires = document.querySelector('[data-wires]');
+      if (!canvas || !scene || !map || !wires) return;
+
+      var wide = window.matchMedia('(min-width: 60.0625rem)').matches;
+      var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      var tx = 0;
+      var ty = 0;
+      var minX = 0;
+      var maxX = 0;
+      var minY = 0;
+      var maxY = 0;
+      var dragging = false;
+      var moved = 0;
+      var startX = 0;
+      var startY = 0;
+      var originX = 0;
+      var originY = 0;
+      var scale = 1;
+      var litCard = null;
+
+      // 量盒子必须用未经 transform 的布局偏移。getBoundingClientRect 会把
+      // 入场动画的 translateX 一起算进去，线就会短一截接不到卡片上
+      function boxIn(el, root) {
+        var x = 0;
+        var y = 0;
+        var node = el;
+        while (node && node !== root) {
+          x += node.offsetLeft;
+          y += node.offsetTop;
+          node = node.offsetParent;
+        }
+        return { x: x, y: y, w: el.offsetWidth, h: el.offsetHeight };
+      }
+
+      /* ---------- 连线 ---------- */
+
+      // 收起时让线沿原路缩回父节点，和卡片一起退场
+      function retractWires(key) {
+        wires.querySelectorAll('[data-owner="' + key + '"]').forEach(function (p) {
+          if (p.classList.contains('wire-flow')) {
+            p.style.transition = 'opacity 180ms linear';
+            p.style.opacity = '0';
+            return;
+          }
+          var len = p.getTotalLength();
+          p.style.transition = 'none';
+          p.style.strokeDasharray = len;
+          p.style.strokeDashoffset = '0';
+          // 强制回流，否则起止值会被并成一帧，看起来就是瞬间消失
+          void p.getBoundingClientRect();
+          p.style.transition = 'stroke-dashoffset 320ms var(--ease-line)';
+          p.style.strokeDashoffset = len;
+        });
+      }
+
+      function drawWires(animate) {
+        if (!wide) return;
+        wires.setAttribute('width', map.offsetWidth);
+        wires.setAttribute('height', map.offsetHeight);
+
+        // 正在收起的分组还没变成 hidden，这里要提前排掉，否则线会滞留一拍
+        function isOpen(group) {
+          return group && !group.hidden && !group.hasAttribute('data-closing');
+        }
+
+        // 每个展开按钮连接「它所在的卡片」和「它控制的那组卡片」，层级再深也通用
+        var pairs = [];
+        map.querySelectorAll('[data-knob]').forEach(function (knob) {
+          var key = knob.getAttribute('data-knob');
+          var group = map.querySelector('[data-group="' + key + '"]');
+          if (!isOpen(group)) return;
+          var parent = knob.closest('.node');
+          if (!parent) return;
+
+          group.querySelectorAll('[data-node]').forEach(function (child) {
+            // 只连本组最外层的卡片，孙节点由它自己那条线负责
+            if (child.parentElement.closest('[data-group]') !== group) return;
+            pairs.push([parent, child, key]);
+          });
+        });
+
+        // 按「父节点>子节点」复用已有的线。整层重建会让所有光点回到起点，
+        // 展开 A 的时候 B 上的点跟着重置就是这么来的
+        var seen = {};
+
+        pairs.forEach(function (pair) {
+          var key = pair[0].getAttribute('data-node') + '>' + pair[1].getAttribute('data-node');
+          seen[key] = 1;
+
+          var a = boxIn(pair[0], map);
+          var b = boxIn(pair[1], map);
+          var x1 = a.x + a.w;
+          var y1 = a.y + a.h / 2;
+          var x2 = b.x;
+          var y2 = b.y + b.h / 2;
+          var dx = Math.max(24, (x2 - x1) * 0.5);
+          var d =
+            'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + x2 + ',' + y2;
+
+          var path = wires.querySelector('path[data-key="' + key + '"]:not(.wire-flow)');
+          var fresh = !path;
+          if (fresh) {
+            path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('data-key', key);
+            path.setAttribute('data-owner', pair[2]);
+            wires.appendChild(path);
+          }
+          path.setAttribute('d', d);
+          // 复用时把收起动画留下的内联样式清掉
+          path.style.transition = '';
+          path.style.strokeDasharray = '';
+          path.style.strokeDashoffset = '';
+
+          var len = path.getTotalLength();
+
+          if (fresh && animate && !reduced) {
+            path.style.strokeDasharray = len;
+            path.style.strokeDashoffset = len;
+            void path.getBoundingClientRect();
+            path.style.transition = 'stroke-dashoffset 520ms var(--ease-line)';
+            path.style.strokeDashoffset = '0';
+          }
+
+          if (reduced) return;
+
+          // 零长度虚线段 + 圆头线帽，渲染出来就是一个沿路径循环移动的圆点
+          var flow = wires.querySelector('path.wire-flow[data-key="' + key + '"]');
+          var flowFresh = !flow;
+          if (flowFresh) {
+            flow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            flow.setAttribute('class', 'wire-flow');
+            flow.setAttribute('data-key', key);
+            flow.setAttribute('data-owner', pair[2]);
+            wires.appendChild(flow);
+          }
+          flow.setAttribute('d', d);
+          flow.style.opacity = '';
+          flow.style.transition = '';
+          flow.style.setProperty('--wire-len', len + 'px');
+          flow.style.strokeDasharray = '0 ' + len;
+          // 动画只在新建时挂，复用的保持自己的进度不重来
+          if (flowFresh) {
+            flow.style.animation =
+              'nn-wire-flow ' + Math.max(2.4, len / 70).toFixed(2) + 's linear infinite';
+          }
+        });
+
+        // 这一轮没用上的线说明对应分组收起了，删掉
+        wires.querySelectorAll('path[data-key]').forEach(function (p) {
+          if (!seen[p.getAttribute('data-key')]) p.remove();
+        });
+      }
+
+      /* ---------- 展开 / 收起 ---------- */
+
+      function pop(group, show) {
+        var items = group.querySelectorAll('[data-pop]');
+        clearTimeout(group.__popTimer);
+
+        if (!show) {
+          group.setAttribute('data-closing', '');
+          if (!reduced) retractWires(group.getAttribute('data-group'));
+          // 收起按倒序退场，最外层先走，看起来是被收回父节点
+          items.forEach(function (el, i) {
+            el.style.setProperty('--pop-i', items.length - 1 - i);
+            el.classList.remove('is-pop');
+          });
+
+          var wait = reduced ? 0 : 260 + items.length * 45 + 40;
+          group.__popTimer = setTimeout(function () {
+            group.hidden = true;
+            group.removeAttribute('data-closing');
+            fit();
+            drawWires(false);
+            measure();
+          }, wait);
+          return;
+        }
+
+        group.removeAttribute('data-closing');
+        group.hidden = false;
+        items.forEach(function (el, i) {
+          el.style.setProperty('--pop-i', i);
+          el.classList.remove('is-pop');
+        });
+        // 强制回流，过渡才会从初始态开始跑
+        void group.getBoundingClientRect();
+        items.forEach(function (el) {
+          el.classList.add('is-pop');
+        });
+      }
+
+      // 收起某个节点时，它下面已经展开的层级要一起收，不然会留下悬空的卡片
+      function collapseBelow(group) {
+        group.querySelectorAll('[data-knob][aria-expanded="true"]').forEach(function (knob) {
+          knob.setAttribute('aria-expanded', 'false');
+          var sub = map.querySelector('[data-group="' + knob.getAttribute('data-knob') + '"]');
+          if (sub) pop(sub, false);
+        });
+      }
+
+      function toggle(knob) {
+        var key = knob.getAttribute('data-knob');
+        var group = map.querySelector('[data-group="' + key + '"]');
+        if (!group) return;
+
+        var show = knob.getAttribute('aria-expanded') !== 'true';
+        knob.setAttribute('aria-expanded', show ? 'true' : 'false');
+
+        if (!show) collapseBelow(group);
+        pop(group, show);
+
+        requestAnimationFrame(function () {
+          fit();
+          // 收起交给 pop 的定时器，等退场动画跑完再重建
+          if (show) drawWires(true);
+          measure();
+        });
+      }
+
+      /* ---------- 悬浮辉光 ---------- */
+
+      function clearGlow(card) {
+        if (card) card.style.setProperty('--glow', '0');
+      }
+
+      function glow(event) {
+        var card = event.target.closest ? event.target.closest('.node') : null;
+        if (card !== litCard) clearGlow(litCard);
+        litCard = card;
+        if (!card) return;
+
+        var r = card.getBoundingClientRect();
+        var dx = event.clientX - r.left - r.width / 2;
+        var dy = event.clientY - r.top - r.height / 2;
+        // 只要指针在卡片上就整段亮起，光落在哪一侧仍由角度决定
+        var angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        if (angle < 0) angle += 360;
+
+        card.style.setProperty('--glow', '1');
+        card.style.setProperty('--glow-angle', angle.toFixed(1) + 'deg');
+      }
+
+      /* ---------- 平移与缩放 ---------- */
+
+      function apply() {
+        scene.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0)';
+      }
+
+      // 展开的卡片多到一屏放不下时，整张图按比例缩小，最多缩到 55%
+      function fit() {
+        if (!wide) {
+          map.style.transform = '';
+          scale = 1;
+          return;
+        }
+        var s = Math.min(
+          1,
+          (canvas.clientWidth - 32) / map.offsetWidth,
+          (canvas.clientHeight - 32) / map.offsetHeight,
+        );
+        scale = Math.max(0.55, s);
+        map.style.transform = 'scale(' + scale + ')';
+      }
+
+      function measure() {
+        if (!wide) return;
+        var right = 0;
+        var bottom = 0;
+        map.querySelectorAll('[data-pan-item]').forEach(function (el) {
+          var box = boxIn(el, scene);
+          right = Math.max(right, (box.x + box.w) * scale);
+          bottom = Math.max(bottom, (box.y + box.h) * scale);
+        });
+
+        // 四周各留一屏七成的余量，随便怎么拖都够
+        var slackX = canvas.clientWidth * 0.7;
+        var slackY = canvas.clientHeight * 0.7;
+        minX = Math.min(0, canvas.clientWidth - right) - slackX;
+        minY = Math.min(0, canvas.clientHeight - bottom) - slackY;
+        maxX = slackX;
+        maxY = slackY;
+
+        tx = Math.min(maxX, Math.max(minX, tx));
+        ty = Math.min(maxY, Math.max(minY, ty));
+        apply();
+        canvas.dataset.pannable = '1';
+      }
+
+      function onDown(event) {
+        if (!wide || event.button !== 0) return;
+        if (event.target.closest('button, input, textarea, select')) return;
+        dragging = true;
+        moved = 0;
+        startX = event.clientX;
+        startY = event.clientY;
+        originX = tx;
+        originY = ty;
+        scene.dataset.eased = '';
+        canvas.dataset.dragging = '1';
+        // 这里不能 preventDefault：会连带压掉兼容鼠标事件，链接的 click 一起没掉
+      }
+
+      function onMove(event) {
+        glow(event);
+        if (!dragging) return;
+        var dx = event.clientX - startX;
+        var dy = event.clientY - startY;
+        moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+        tx = Math.min(maxX, Math.max(minX, originX + dx));
+        ty = Math.min(maxY, Math.max(minY, originY + dy));
+        apply();
+      }
+
+      function onUp() {
+        if (!dragging) return;
+        dragging = false;
+        canvas.dataset.dragging = '';
+      }
+
+      function onLeave() {
+        clearGlow(litCard);
+        litCard = null;
+      }
+
+      function onClick(event) {
+        if (moved > DRAG_THRESHOLD) {
+          event.preventDefault();
+          event.stopPropagation();
+          moved = 0;
+          return;
+        }
+        var knob = event.target.closest('[data-knob]');
+        if (knob) {
+          event.preventDefault();
+          toggle(knob);
+        }
+      }
+
+      function onDragStart(event) {
+        event.preventDefault();
+      }
+
+      function onResize() {
+        wide = window.matchMedia('(min-width: 60.0625rem)').matches;
+        if (!wide) {
+          tx = 0;
+          ty = 0;
+          scene.style.transform = '';
+          map.style.transform = '';
+          scale = 1;
+          canvas.dataset.pannable = '';
+          return;
+        }
+        fit();
+        drawWires(false);
+        measure();
+      }
+
+      canvas.addEventListener('pointerdown', onDown);
+      canvas.addEventListener('click', onClick, true);
+      canvas.addEventListener('dragstart', onDragStart);
+      canvas.addEventListener('pointerleave', onLeave);
+      window.addEventListener('pointermove', onMove, { passive: true });
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('resize', onResize);
+
+      window.__nnMap = {
+        canvas: canvas,
+        onDown: onDown,
+        onMove: onMove,
+        onUp: onUp,
+        onClick: onClick,
+        onDragStart: onDragStart,
+        onLeave: onLeave,
+        onResize: onResize,
+      };
+
+      fit();
+      measure();
+    }
+
+    document.addEventListener('astro:page-load', init);
+    document.addEventListener('astro:before-swap', teardown);
+    if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    }
+  })();
+</script>

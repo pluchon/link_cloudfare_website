@@ -8,13 +8,13 @@ export const GET: APIRoute = async () => {
 
   const urls: { loc: string; lastmod?: Date }[] = [
     { loc: '/' },
-    { loc: '/blog/' },
-    { loc: '/library/' },
+    { loc: '/article/' },
+    { loc: '/info/' },
     { loc: '/tags/' },
     { loc: '/about/' },
     ...all.map(({ kind, entry }) => ({
       loc: entryHref(kind, entry.data.slug),
-      lastmod: entry.data.updatedAt ?? entry.data.publishedAt,
+      lastmod: entry.data.publishedAt,
     })),
     ...tags.map(({ tag }) => ({ loc: `/tags/${encodeURIComponent(tag)}/` })),
   ];

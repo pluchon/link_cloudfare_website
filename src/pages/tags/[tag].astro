@@ -23,16 +23,15 @@ const { tag, items } = Astro.props as {
 
 <BaseLayout title={`标签：${tag}`} description={`标记为「${tag}」的全部文章与资料。`}>
   <section class="wrap head">
-    <p class="label">Topic</p>
-    <h1 class="head__title">{tag}</h1>
-    <p class="head__desc">
+    <h1 class="head__title" data-reveal>{tag}</h1>
+    <p class="head__desc" data-reveal style="--reveal-i: 1">
       共 {items.length} 篇 · <a class="text-link" href="/tags/">全部标签</a>
     </p>
   </section>
 
   <section class="wrap body">
     <div class="entry-list">
-      {items.map(({ kind, entry }) => <EntryRow kind={kind} entry={entry} showKind />)}
+      {items.map(({ kind, entry }) => <EntryRow kind={kind} entry={entry} />)}
     </div>
   </section>
 </BaseLayout>

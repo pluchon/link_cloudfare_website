@@ -1,0 +1,20 @@
+---
+import ListLayout from '../../layouts/ListLayout.astro';
+import { branches } from '../../config/site';
+import { getPublished, paginateEntries } from '../../lib/content';
+
+const entries = await getPublished('xiaomeng');
+const pages = paginateEntries(entries);
+---
+
+<ListLayout
+  kind="xiaomeng"
+  title="小萌"
+  cover={branches.find((b) => b.key === 'xiaomeng')?.cover}
+  description="小萌的一些资料与设计构想"
+  entries={pages[0]}
+  page={1}
+  totalPages={pages.length}
+  basePath="/xiaomeng/"
+  emptyText="这里还空着..."
+/>

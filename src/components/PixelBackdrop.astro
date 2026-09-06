@@ -1,0 +1,376 @@
+---
+// 列表页背景：抖动像素噪声（PixelBlast 的思路）
+// 原方案依赖 three + postprocessing（合计 ~700KB），但真正出效果的只是一个
+// 全屏着色器，所以用原生 WebGL2 重写，本站运行时依赖仍然只有 astro。
+// liquid 那层需要 EffectComposer 后处理，价值不大，没做
+
+interface Props {
+  variant?: 'square' | 'circle' | 'triangle' | 'diamond';
+  pixelSize?: number;
+  patternScale?: number;
+  patternDensity?: number;
+  pixelJitter?: number;
+  speed?: number;
+  edgeFade?: number;
+  opacityLight?: number;
+  opacityDark?: number;
+}
+
+const {
+  variant = 'circle',
+  pixelSize = 4,
+  patternScale = 3,
+  patternDensity = 1.1,
+  pixelJitter = 0.4,
+  speed = 0.5,
+  edgeFade = 0.3,
+  opacityLight = 0.22,
+  opacityDark = 0.26,
+} = Astro.props;
+---
+
+<div
+  class="pixels"
+  aria-hidden="true"
+  data-pixels
+  data-variant={variant}
+  data-pixel-size={pixelSize}
+  data-pattern-scale={patternScale}
+  data-pattern-density={patternDensity}
+  data-pixel-jitter={pixelJitter}
+  data-speed={speed}
+  data-edge-fade={edgeFade}
+  data-opacity-light={opacityLight}
+  data-opacity-dark={opacityDark}
+>
+</div>
+
+<style>
+  .pixels {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 600ms var(--ease-out);
+  }
+
+  /* 着色器接管后再淡入，拿不到 WebGL2 就始终是空的，页面照常 */
+  .pixels[data-ready='1'] { opacity: 1; }
+
+  .pixels :global(canvas) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    var MAX_CLICKS = 8;
+
+    var VERT = [
+      '#version 300 es',
+      'in vec2 aPos;',
+      'void main() { gl_Position = vec4(aPos, 0.0, 1.0); }',
+    ].join('\n');
+
+    var FRAG = [
+      '#version 300 es',
+      'precision highp float;',
+
+      'uniform vec3  uColor;',
+      'uniform vec2  uResolution;',
+      'uniform float uTime;',
+      'uniform float uPixelSize;',
+      'uniform float uScale;',
+      'uniform float uDensity;',
+      'uniform float uJitter;',
+      'uniform float uEdgeFade;',
+      'uniform int   uShape;',
+      'uniform vec2  uClickPos[8];',
+      'uniform float uClickTime[8];',
+      'out vec4 fragColor;',
+
+      // 8x8 Bayer 阈值矩阵的递归写法，比 64 分支查表短得多
+      'float bayer2(vec2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }',
+      '#define bayer4(a) (bayer2(0.5 * (a)) * 0.25 + bayer2(a))',
+      '#define bayer8(a) (bayer4(0.5 * (a)) * 0.25 + bayer2(a))',
+
+      'float hash11(float n) { return fract(sin(n) * 43758.5453); }',
+
+      // 三维值噪声：第三维吃时间，图案就会自己流动
+      'float vnoise(vec3 p) {',
+      '  vec3 ip = floor(p);',
+      '  vec3 fp = fract(p);',
+      '  vec3 k = vec3(1.0, 57.0, 113.0);',
+      '  float n000 = hash11(dot(ip, k));',
+      '  float n100 = hash11(dot(ip + vec3(1,0,0), k));',
+      '  float n010 = hash11(dot(ip + vec3(0,1,0), k));',
+      '  float n110 = hash11(dot(ip + vec3(1,1,0), k));',
+      '  float n001 = hash11(dot(ip + vec3(0,0,1), k));',
+      '  float n101 = hash11(dot(ip + vec3(1,0,1), k));',
+      '  float n011 = hash11(dot(ip + vec3(0,1,1), k));',
+      '  float n111 = hash11(dot(ip + vec3(1,1,1), k));',
+      '  vec3 w = fp * fp * fp * (fp * (fp * 6.0 - 15.0) + 10.0);',
+      '  float x00 = mix(n000, n100, w.x);',
+      '  float x10 = mix(n010, n110, w.x);',
+      '  float x01 = mix(n001, n101, w.x);',
+      '  float x11 = mix(n011, n111, w.x);',
+      '  return mix(mix(x00, x10, w.y), mix(x01, x11, w.y), w.z) * 2.0 - 1.0;',
+      '}',
+
+      'float fbm(vec2 uv, float t) {',
+      '  vec3 p = vec3(uv * uScale, t);',
+      '  float sum = 1.0;',
+      '  float freq = 1.0;',
+      '  for (int i = 0; i < 5; i++) {',
+      '    sum += vnoise(p * freq);',
+      '    freq *= 1.25;',
+      '  }',
+      '  return sum * 0.5 + 0.5;',
+      '}',
+
+      'float maskCircle(vec2 p, float cov) {',
+      '  float r = sqrt(cov) * 0.25;',
+      '  float d = length(p - 0.5) - r;',
+      '  float aa = 0.5 * fwidth(d);',
+      '  return cov * (1.0 - smoothstep(-aa, aa, d * 2.0));',
+      '}',
+
+      'float maskTriangle(vec2 p, vec2 id, float cov) {',
+      '  if (mod(id.x + id.y, 2.0) > 0.5) p.x = 1.0 - p.x;',
+      '  float d = p.y - sqrt(cov) * (1.0 - p.x);',
+      '  return cov * clamp(0.5 - d / fwidth(d), 0.0, 1.0);',
+      '}',
+
+      'float maskDiamond(vec2 p, float cov) {',
+      '  return step(abs(p.x - 0.49) + abs(p.y - 0.49), sqrt(cov) * 0.564);',
+      '}',
+
+      'void main() {',
+      '  vec2 frag = gl_FragCoord.xy - uResolution * 0.5;',
+      '  float aspect = uResolution.x / uResolution.y;',
+
+      '  vec2 pixelId = floor(frag / uPixelSize);',
+      '  vec2 pixelUV = fract(frag / uPixelSize);',
+
+      // 图案按 8 个像素一格取样，边界才会对齐到像素网格上
+      '  float cell = 8.0 * uPixelSize;',
+      '  vec2 uv = (floor(frag / cell) * cell) / uResolution * vec2(aspect, 1.0);',
+
+      '  float feed = fbm(uv, uTime * 0.05) * 0.5 - 0.65 + (uDensity - 0.5) * 0.3;',
+
+      // 点击涟漪：以点击点为圆心的一圈随时间外扩并衰减
+      '  for (int i = 0; i < 8; i++) {',
+      '    vec2 pos = uClickPos[i];',
+      '    if (pos.x < 0.0) continue;',
+      '    vec2 cuv = ((pos - uResolution * 0.5 - cell * 0.5) / uResolution) * vec2(aspect, 1.0);',
+      '    float t = max(uTime - uClickTime[i], 0.0);',
+      '    float r = distance(uv, cuv);',
+      '    float ring = exp(-pow((r - 0.4 * t) / 0.12, 2.0));',
+      '    feed = max(feed, ring * exp(-t) * exp(-10.0 * r) * 1.5);',
+      '  }',
+
+      '  float bw = step(0.5, feed + bayer8(frag / uPixelSize) - 0.5);',
+      '  float h = fract(sin(dot(pixelId, vec2(127.1, 311.7))) * 43758.5453);',
+      '  float cov = bw * (1.0 + (h - 0.5) * uJitter);',
+
+      '  float m;',
+      '  if (uShape == 1) m = maskCircle(pixelUV, cov);',
+      '  else if (uShape == 2) m = maskTriangle(pixelUV, pixelId, cov);',
+      '  else if (uShape == 3) m = maskDiamond(pixelUV, cov);',
+      '  else m = cov;',
+
+      '  if (uEdgeFade > 0.0) {',
+      '    vec2 n = gl_FragCoord.xy / uResolution;',
+      '    float edge = min(min(n.x, n.y), min(1.0 - n.x, 1.0 - n.y));',
+      '    m *= smoothstep(0.0, uEdgeFade, edge);',
+      '  }',
+
+      '  fragColor = vec4(uColor, clamp(m, 0.0, 1.0));',
+      '}',
+    ].join('\n');
+
+    var SHAPES = { square: 0, circle: 1, triangle: 2, diamond: 3 };
+
+    function hexToRgb(value) {
+      var hex = (value || '').trim().replace('#', '');
+      if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      var n = parseInt(hex, 16);
+      if (hex.length !== 6 || isNaN(n)) return [0.78, 0.27, 0.18];
+      return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+    }
+
+    function compile(gl, type, src) {
+      var s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        gl.deleteShader(s);
+        return null;
+      }
+      return s;
+    }
+
+    function teardown() {
+      var st = window.__nnPixels;
+      if (!st) return;
+      if (st.frame) cancelAnimationFrame(st.frame);
+      window.removeEventListener('resize', st.onResize);
+      window.removeEventListener('pointerdown', st.onDown);
+      if (st.themeWatcher) st.themeWatcher.disconnect();
+      if (st.canvas && st.canvas.parentNode) st.canvas.parentNode.removeChild(st.canvas);
+      if (st.gl) {
+        var lose = st.gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      }
+      window.__nnPixels = null;
+    }
+
+    function init() {
+      teardown();
+
+      var host = document.querySelector('[data-pixels]');
+      if (!host) return;
+
+      var canvas = document.createElement('canvas');
+      var gl = canvas.getContext('webgl2', { alpha: true, antialias: false, premultipliedAlpha: false });
+      // 拿不到 WebGL2 就什么都不画，页面照常
+      if (!gl) return;
+
+      var vs = compile(gl, gl.VERTEX_SHADER, VERT);
+      var fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
+      if (!vs || !fs) return;
+
+      var prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+      gl.useProgram(prog);
+
+      var buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      var aPos = gl.getAttribLocation(prog, 'aPos');
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+      function loc(name) {
+        return gl.getUniformLocation(prog, name);
+      }
+
+      var u = {
+        color: loc('uColor'),
+        res: loc('uResolution'),
+        time: loc('uTime'),
+        pixel: loc('uPixelSize'),
+        scale: loc('uScale'),
+        density: loc('uDensity'),
+        jitter: loc('uJitter'),
+        edge: loc('uEdgeFade'),
+        shape: loc('uShape'),
+        clickPos: loc('uClickPos'),
+        clickTime: loc('uClickTime'),
+      };
+
+      function num(name, fallback) {
+        var v = parseFloat(host.dataset[name]);
+        return isFinite(v) ? v : fallback;
+      }
+
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var basePixel = num('pixelSize', 4);
+      var speed = num('speed', 0.5);
+      var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      var clickPos = new Float32Array(MAX_CLICKS * 2).fill(-1);
+      var clickTime = new Float32Array(MAX_CLICKS);
+      var clickIx = 0;
+      var start = performance.now();
+
+      var state = { gl: gl, canvas: canvas, frame: null, onResize: null, onDown: null, themeWatcher: null };
+
+      function applyTheme() {
+        var css = getComputedStyle(document.documentElement);
+        var rgb = hexToRgb(css.getPropertyValue('--accent'));
+        var dark = document.documentElement.dataset.theme === 'dark';
+        gl.useProgram(prog);
+        gl.uniform3f(u.color, rgb[0], rgb[1], rgb[2]);
+        host.style.opacity = dark ? num('opacityDark', 0.26) : num('opacityLight', 0.22);
+      }
+
+      function resize() {
+        var w = Math.max(1, Math.floor(host.clientWidth * dpr));
+        var h = Math.max(1, Math.floor(host.clientHeight * dpr));
+        canvas.width = w;
+        canvas.height = h;
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(prog);
+        gl.uniform2f(u.res, w, h);
+        gl.uniform1f(u.pixel, basePixel * dpr);
+      }
+
+      function draw(now) {
+        // 标签页在后台时不烧 GPU
+        if (!document.hidden) {
+          var t = reduced ? 0 : ((now - start) / 1000) * speed;
+          gl.useProgram(prog);
+          gl.uniform1f(u.time, t);
+          gl.uniform2fv(u.clickPos, clickPos);
+          gl.uniform1fv(u.clickTime, clickTime);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        state.frame = requestAnimationFrame(draw);
+      }
+
+      state.onResize = resize;
+      state.onDown = function (event) {
+        var rect = host.getBoundingClientRect();
+        clickPos[clickIx * 2] = (event.clientX - rect.left) * dpr;
+        clickPos[clickIx * 2 + 1] = (rect.height - (event.clientY - rect.top)) * dpr;
+        clickTime[clickIx] = ((performance.now() - start) / 1000) * speed;
+        clickIx = (clickIx + 1) % MAX_CLICKS;
+      };
+
+      gl.uniform1i(u.shape, SHAPES[host.dataset.variant] ?? 1);
+      gl.uniform1f(u.scale, num('patternScale', 3));
+      gl.uniform1f(u.density, num('patternDensity', 1.1));
+      gl.uniform1f(u.jitter, num('pixelJitter', 0.4));
+      gl.uniform1f(u.edge, num('edgeFade', 0.3));
+      applyTheme();
+      resize();
+
+      window.addEventListener('resize', state.onResize);
+      window.addEventListener('pointerdown', state.onDown, { passive: true });
+
+      state.themeWatcher = new MutationObserver(applyTheme);
+      state.themeWatcher.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme'],
+      });
+
+      host.appendChild(canvas);
+      host.dataset.ready = '1';
+      window.__nnPixels = state;
+
+      state.frame = requestAnimationFrame(draw);
+    }
+
+    document.addEventListener('astro:page-load', init);
+    document.addEventListener('astro:before-swap', teardown);
+    if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    }
+  })();
+</script>

@@ -6,11 +6,10 @@ const all = await getAllPublished();
 const tags = tagCounts(all.map((item) => item.entry));
 ---
 
-<BaseLayout title="标签" description="按话题浏览全部文章与资料。">
+<BaseLayout title="标签" description="按话题浏览全部文章与资料">
   <section class="wrap head">
-    <p class="label">Topics</p>
-    <h1 class="head__title">标签</h1>
-    <p class="head__desc">共 {tags.length} 个话题，{all.length} 篇内容。</p>
+    <h1 class="head__title" data-reveal>标签</h1>
+    <p class="head__desc" data-reveal style="--reveal-i: 1">共 {tags.length} 个话题，{all.length} 篇内容。</p>
   </section>
 
   <section class="wrap body">
@@ -76,7 +75,7 @@ const tags = tagCounts(all.map((item) => item.entry));
     justify-content: space-between;
     gap: 1rem;
     padding: 1.1rem 1.25rem;
-    transition: background 0.18s ease, color 0.18s ease;
+    transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
   }
 
   .tag-index__item a:hover {

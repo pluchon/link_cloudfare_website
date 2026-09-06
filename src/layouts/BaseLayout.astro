@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { site } from '../config/site';
@@ -9,6 +10,13 @@ interface Props {
   description?: string;
   ogImage?: string;
   noindex?: boolean;
+  // canvas：整屏不滚动的画布式页面（首页）
+  // bare：常规滚动但藏起滚动条（详情页）
+  // page：常规滚动页面
+  variant?: 'page' | 'canvas' | 'bare';
+  // 分页页面的上下页地址，用于 rel=prev/next
+  prevUrl?: string;
+  nextUrl?: string;
 }
 
 const {
@@ -16,9 +24,13 @@ const {
   description = site.description,
   ogImage,
   noindex = false,
+  variant = 'page',
+  prevUrl,
+  nextUrl,
 } = Astro.props;
 
-const pageTitle = title ? `${title} · ${site.name}` : site.title;
+// 浏览器标签只显示页面标题；首页没有 title，用站点全称
+const pageTitle = title ?? site.title;
 const canonical = new URL(Astro.url.pathname, site.url).href;
 ---
 
@@ -28,6 +40,8 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="canonical" href={canonical} />
+    {prevUrl && <link rel="prev" href={new URL(prevUrl, site.url).href} />}
+    {nextUrl && <link rel="next" href={new URL(nextUrl, site.url).href} />}
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex" />}
@@ -40,11 +54,19 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
     {ogImage && <meta property="og:image" content={ogImage} />}
     <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
 
+    <link rel="icon" href="/icon-64.png" type="image/png" sizes="64x64" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="alternate" type="application/rss+xml" title={site.name} href="/rss.xml" />
 
-    <!-- 主题必须在首帧前定好，否则深色模式会闪一下白 -->
+    <ClientRouter />
+
+    <!-- 主题必须在首帧前定好，否则深色模式会闪一下白；
+         .js 也在这里打上，入场动画的初始隐藏状态只在有 JS 时才生效 -->
     <script is:inline>
       (function () {
+        var root = document.documentElement;
+        root.classList.add('js');
+
         var stored = null;
         try {
           stored = localStorage.getItem('nn-theme');
@@ -54,18 +76,180 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
         var dark =
           stored === 'dark' ||
           (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        root.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+
+    <!-- 放在 head：ClientRouter 换页时不会重复执行，事件不会重复绑定 -->
+    <script is:inline>
+      (function () {
+        function setTheme(next) {
+          document.documentElement.dataset.theme = next;
+          try {
+            localStorage.setItem('nn-theme', next);
+          } catch (e) {
+            /* 隐私模式下写入失败时静默降级 */
+          }
+        }
+
+        // ClientRouter 换页时会用新文档的 <html> 属性覆盖当前的，
+        // 而 data-theme 是运行时加的、新文档里没有，于是一导航就被抹掉退回浅色。
+        // 每次换完页重新贴一次
+        function restoreTheme() {
+          var root = document.documentElement;
+          root.classList.add('js');
+          var stored = null;
+          try {
+            stored = localStorage.getItem('nn-theme');
+          } catch (e) {
+            /* 隐私模式读取失败时退回系统偏好 */
+          }
+          var dark =
+            stored === 'dark' ||
+            (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          root.dataset.theme = dark ? 'dark' : 'light';
+        }
+
+        document.addEventListener('astro:after-swap', restoreTheme);
+
+        // 不走 View Transitions API：它被浏览器跳过时 ready 会 reject，
+        // 动画不执行而主题已经切了，表现就是整屏瞬间换色。
+        // 自己做：先把主题切好，再盖一层「切换前的底色」，两个方向分别把它
+        // 挖洞挖开、或者整块收回图标里。主题始终领先一步，中途不可能出现
+        // 覆盖层和页面颜色对不上的那一帧
+        var rippling = false;
+
+        function ripple(oldBg, x, y, grow) {
+          var el = document.createElement('div');
+          el.className = 'theme-ripple';
+          el.style.background = oldBg;
+          el.style.setProperty('--nn-rx', x + 'px');
+          el.style.setProperty('--nn-ry', y + 'px');
+          document.body.appendChild(el);
+
+          var r = Math.hypot(
+            Math.max(x, window.innerWidth - x),
+            Math.max(y, window.innerHeight - y),
+          );
+
+          function done() {
+            el.remove();
+            rippling = false;
+          }
+
+          var frames;
+          if (grow) {
+            el.dataset.mode = 'grow';
+            frames = { '--nn-rr': ['0px', r + 'px'] };
+          } else {
+            var full = 'circle(' + r + 'px at ' + x + 'px ' + y + 'px)';
+            var small = 'circle(0px at ' + x + 'px ' + y + 'px)';
+            el.style.clipPath = full;
+            frames = { clipPath: [full, small] };
+          }
+
+          try {
+            var anim = el.animate(frames, {
+              duration: 900,
+              easing: 'cubic-bezier(0.45, 0, 0.15, 1)',
+              fill: 'forwards',
+            });
+            anim.finished.then(done, done);
+          } catch (e) {
+            done();
+          }
+        }
+
+        // 主题切换走事件委托，顶栏被换掉也不用重新绑
+        document.addEventListener('click', function (event) {
+          var btn = event.target.closest && event.target.closest('#theme-toggle');
+          if (!btn) return;
+          if (rippling) return;
+
+          var root = document.documentElement;
+          var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+
+          btn.dataset.spin = '1';
+          setTimeout(function () {
+            btn.dataset.spin = '';
+          }, 900);
+
+          var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (reduced) {
+            setTheme(next);
+            return;
+          }
+
+          // 圆心取图标中心，半径取到最远的那个角，保证能盖满整屏
+          var rect = btn.getBoundingClientRect();
+          var x = rect.left + rect.width / 2;
+          var y = rect.top + rect.height / 2;
+          // 必须在切换前取，覆盖层画的是「切换前的样子」
+          var oldBg = getComputedStyle(root).getPropertyValue('--bg').trim();
+
+          rippling = true;
+          setTheme(next);
+          // 转深色是新颜色从图标涨开，转浅色是旧颜色收回图标
+          ripple(oldBg, x, y, next === 'dark');
+        });
+
+        // 入场动画：进入视口才播，播完就不再管
+        function reveal() {
+          var targets = document.querySelectorAll('[data-reveal]');
+          if (!targets.length) return;
+
+          function showAll() {
+            targets.forEach(function (el) {
+              el.classList.add('is-in');
+            });
+          }
+
+          if (!('IntersectionObserver' in window)) {
+            showAll();
+            return;
+          }
+
+          try {
+            var observer = new IntersectionObserver(
+              function (entries) {
+                entries.forEach(function (item) {
+                  if (!item.isIntersecting) return;
+                  item.target.classList.add('is-in');
+                  observer.unobserve(item.target);
+                });
+              },
+              { rootMargin: '0px 0px -8% 0px', threshold: 0 },
+            );
+            targets.forEach(function (el) {
+              observer.observe(el);
+            });
+          } catch (e) {
+            // 观察器建不起来就直接全部显示，绝不能把内容留在隐藏状态
+            showAll();
+          }
+        }
+
+        // 换页靠 astro:page-load；没有 ClientRouter 时退回 DOMContentLoaded，
+        // 保证内容不会永远停在隐藏状态
+        document.addEventListener('astro:page-load', reveal);
+        if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', reveal);
+          } else {
+            reveal();
+          }
+        }
       })();
     </script>
 
     <slot name="head" />
   </head>
 
-  <body>
+  <body class:list={[variant === 'canvas' && 'is-canvas', variant === 'bare' && 'is-bare']}>
     <SiteHeader />
     <main>
       <slot />
     </main>
-    <SiteFooter />
+    {variant !== 'canvas' && <SiteFooter />}
   </body>
 </html>

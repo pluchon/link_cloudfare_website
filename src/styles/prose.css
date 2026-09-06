@@ -12,6 +12,17 @@
 
 .prose > * + * { margin-top: 1.35em; }
 
+/* 关于页正文保留自己的一级标题，文章页的一级标题已被加载器剥掉 */
+.prose h1 {
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.prose h1,
 .prose h2,
 .prose h3,
 .prose h4 {
@@ -39,7 +50,7 @@
   opacity: 0;
   font-family: var(--font-mono);
   font-size: 0.75em;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-1) var(--ease-out);
 }
 
 .prose :is(h2, h3, h4):hover > a.anchor { opacity: 1; }
@@ -49,7 +60,7 @@
 .prose a:not(.anchor) {
   color: var(--fg);
   border-bottom: var(--hair) solid var(--accent);
-  transition: background 0.15s ease;
+  transition: background var(--dur-1) var(--ease-out);
 }
 
 .prose a:not(.anchor):hover { background: var(--accent-wash); color: var(--accent); }
@@ -169,7 +180,7 @@
   letter-spacing: 0.08em;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  transition: opacity var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
 }
 
 .code-block:hover .code-block__copy,
@@ -188,7 +199,7 @@
   text-transform: uppercase;
   color: var(--fg-faint);
   pointer-events: none;
-  transition: opacity 0.18s ease;
+  transition: opacity var(--dur-1) var(--ease-out);
 }
 
 .code-block:hover .code-block__lang { opacity: 0; }

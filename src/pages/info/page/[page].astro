@@ -1,12 +1,13 @@
 ---
 import type { GetStaticPaths } from 'astro';
 import ListLayout from '../../../layouts/ListLayout.astro';
+import { branches } from '../../../config/site';
 import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const entries = await getPublished('library');
+  const entries = await getPublished('info');
   const pages = paginateEntries(entries);
-  // 第 1 页由 /library/ 承担，这里只生成第 2 页起
+  // 第 1 页由 /info/ 承担，这里只生成第 2 页起
   return pages.slice(1).map((slice, index) => ({
     params: { page: String(index + 2) },
     props: { entries: slice, page: index + 2, totalPages: pages.length },
@@ -21,12 +22,12 @@ const { entries, page, totalPages } = Astro.props as {
 ---
 
 <ListLayout
-  kind="library"
-  label="Library"
+  kind="info"
   title="学习资料"
-  description="整理过的教程、清单与外链附件，按主题归档。"
+  cover={branches.find((b) => b.key === 'info')?.cover}
+  description="整理过的教程、清单与外链附件，按主题归档"
   entries={entries}
   page={page}
   totalPages={totalPages}
-  basePath="/library/"
+  basePath="/info/"
 />

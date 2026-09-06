@@ -1,0 +1,33 @@
+---
+import type { GetStaticPaths } from 'astro';
+import ListLayout from '../../../layouts/ListLayout.astro';
+import { branches } from '../../../config/site';
+import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const entries = await getPublished('xiaomeng');
+  const pages = paginateEntries(entries);
+  // 第 1 页由 /xiaomeng/ 承担，这里只生成第 2 页起
+  return pages.slice(1).map((slice, index) => ({
+    params: { page: String(index + 2) },
+    props: { entries: slice, page: index + 2, totalPages: pages.length },
+  }));
+};
+
+const { entries, page, totalPages } = Astro.props as {
+  entries: AnyEntry[];
+  page: number;
+  totalPages: number;
+};
+---
+
+<ListLayout
+  kind="xiaomeng"
+  title="小萌"
+  cover={branches.find((b) => b.key === 'xiaomeng')?.cover}
+  description="小萌的一些资料与设计构想"
+  entries={entries}
+  page={page}
+  totalPages={totalPages}
+  basePath="/xiaomeng/"
+/>

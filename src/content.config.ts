@@ -1,35 +1,40 @@
 import { defineCollection, z } from 'astro:content';
-import { glob } from 'astro/loaders';
+import { plainMarkdown, profileMarkdown } from './loaders/plain-markdown';
 
-// 两个集合共用的基础字段
-const baseSchema = z.object({
+// 三个内容集合都不写 frontmatter，元信息由加载器从文件本身推断，
+// 这里的 schema 只是给推断结果兜个底
+const schema = z.object({
   title: z.string(),
   slug: z.string(),
   summary: z.string(),
   publishedAt: z.coerce.date(),
-  updatedAt: z.coerce.date().optional(),
   category: z.string(),
   tags: z.array(z.string()).default([]),
-  // 封面必须是 OSS 外链完整 URL，不放 public/
-  cover: z.string().url().optional(),
-  draft: z.boolean().default(false),
-  featured: z.boolean().default(false),
+  cover: z.string().optional(),
 });
 
-const blog = defineCollection({
-  loader: glob({ base: './src/content/blog', pattern: '**/*.md' }),
-  schema: baseSchema,
+const article = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/article', defaultCategory: '文章' }),
+  schema,
 });
 
-const library = defineCollection({
-  loader: glob({ base: './src/content/library', pattern: '**/*.md' }),
-  schema: baseSchema.extend({
-    // 附件一律外链（OSS / 网盘），不进 Git
-    attachments: z
-      .array(z.object({ name: z.string(), url: z.string().url() }))
-      .default([]),
-    sourceUrl: z.string().url().optional(),
+const info = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/info', defaultCategory: '资料' }),
+  schema,
+});
+
+const xiaomeng = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/xiaomeng', defaultCategory: '小萌' }),
+  schema,
+});
+
+// 关于页正文：引用块里的 tags 变成技能标签，其余整篇渲染
+const profile = defineCollection({
+  loader: profileMarkdown({ dir: 'src/content/profile' }),
+  schema: z.object({
+    title: z.string(),
+    skills: z.array(z.string()).default([]),
   }),
 });
 
-export const collections = { blog, library };
+export const collections = { article, info, xiaomeng, profile };

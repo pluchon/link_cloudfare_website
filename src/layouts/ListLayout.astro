@@ -1,13 +1,15 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 import EntryRow from '../components/EntryRow.astro';
+import PixelBackdrop from '../components/PixelBackdrop.astro';
 import type { AnyEntry, ContentKind } from '../lib/content';
+import { getPublished, entryHref, formatDate, searchText, entryCover } from '../lib/content';
 
 interface Props {
   kind: ContentKind;
   title: string;
-  label: string;
   description: string;
+  cover?: string;
   entries: AnyEntry[];
   page?: number;
   totalPages?: number;
@@ -18,8 +20,8 @@ interface Props {
 const {
   kind,
   title,
-  label,
   description,
+  cover,
   entries,
   page = 1,
   totalPages = 1,
@@ -27,37 +29,93 @@ const {
   emptyText = '这里还没有内容。',
 } = Astro.props;
 
+// 检索索引覆盖该分类的全部条目，不只是当前这一页
+const all = await getPublished(kind);
+const index = all.map((entry) => ({
+  t: entry.data.title,
+  s: entry.data.summary,
+  d: formatDate(entry.data.publishedAt),
+  h: entryHref(kind, entry.data.slug),
+  c: entryCover(entry) ?? '',
+  q: searchText(entry),
+}));
+
 // 第一页回到列表根路径，其余走 /page/N/
 function pageHref(target: number): string {
   return target <= 1 ? basePath : `${basePath}page/${target}/`;
 }
 
 const pageTitle = page > 1 ? `${title} · 第 ${page} 页` : title;
+
+// 满 5 篇才出翻页器；不足 5 篇时列表也不撑高，免得底下一大片空白
+const showPager = all.length >= 5;
+// 一篇都没有时只留居中的空状态，搜索框和翻页器都没有意义
+const isEmpty = all.length === 0;
+const prevUrl = page > 1 ? pageHref(page - 1) : undefined;
+const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 ---
 
-<BaseLayout title={pageTitle} description={description}>
+<BaseLayout title={pageTitle} description={description} prevUrl={prevUrl} nextUrl={nextUrl}>
+  <PixelBackdrop />
+
   <section class="wrap list-head">
-    <p class="label">{label}</p>
-    <h1 class="list-title">{title}</h1>
-    <p class="list-desc">{description}</p>
+    {
+      cover ? (
+        <img class="list-cover" src={cover} alt="" data-reveal />
+      ) : (
+        <div class="list-cover cover-ph" data-reveal>
+          封面待补
+        </div>
+      )
+    }
+
+    <div class="list-head__text">
+      <div class="list-head__row" data-reveal style="--reveal-i: 1">
+        <h1 class="list-title">{title}</h1>
+        <p class="list-desc">{description}</p>
+      </div>
+
+      <div class="search" data-reveal style="--reveal-i: 2" hidden={isEmpty}>
+        <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M20 20l-3.5-3.5" stroke-linecap="round"></path>
+        </svg>
+        <input
+          class="search__input"
+          type="search"
+          data-search-input
+          placeholder="搜索标题或内容"
+          aria-label={`在${title}中搜索`}
+          autocomplete="off"
+        />
+        <span class="search__count" data-search-count aria-live="polite"></span>
+      </div>
+    </div>
   </section>
 
-  <section class="wrap list-body">
+  <div class="wrap">
+    <div class="rule-tab" aria-hidden="true"></div>
+  </div>
+
+  <section class="wrap list-body" data-reserve={showPager ? '1' : undefined}>
     {
       entries.length > 0 ? (
-        <div class="entry-list">
+        <div class="entry-list" data-entry-list>
           {entries.map((entry) => (
             <EntryRow kind={kind} entry={entry} />
           ))}
         </div>
       ) : (
-        <p class="empty">{emptyText}</p>
+        <p class="empty-state">{emptyText}</p>
       )
     }
 
+    <div class="entry-list" data-search-results hidden></div>
+    <p class="empty" data-search-empty hidden>没有匹配的内容。</p>
+
     {
-      totalPages > 1 && (
-        <nav class="pagination" aria-label="分页">
+      showPager && (
+        <nav class="pagination" aria-label="分页" data-pagination>
           <a
             class="pagination__step"
             href={pageHref(page - 1)}
@@ -79,11 +137,49 @@ const pageTitle = page > 1 ? `${title} · 第 ${page} 页` : title;
       )
     }
   </section>
+
+  <script type="application/json" data-search-index set:html={JSON.stringify(index)} />
 </BaseLayout>
 
 <style>
+  /* 背景是 fixed 的，内容层要抬上来 */
+  .list-head,
+  .list-body,
+  .rule-tab {
+    position: relative;
+    z-index: 1;
+  }
+
   .list-head {
-    padding-block: clamp(2.75rem, 7vw, 4.5rem) 2rem;
+    display: flex;
+    align-items: center;
+    gap: clamp(1.5rem, 4vw, 2.5rem);
+    padding-block: clamp(2.75rem, 7vw, 4.5rem) 1.75rem;
+  }
+
+  /* 分类封面：标题左侧的固定位置，没图时是同尺寸线框 */
+  .list-cover {
+    width: 12rem;
+    aspect-ratio: 4 / 3;
+    flex: none;
+    object-fit: cover;
+    border: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+  }
+
+  .list-head__text {
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* 标题与介绍同一行，介绍靠右 */
+  .list-head__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: clamp(1.5rem, 4vw, 3rem);
   }
 
   .list-title {
@@ -92,18 +188,111 @@ const pageTitle = page > 1 ? `${title} · 第 ${page} 页` : title;
     font-weight: 600;
     line-height: 1.3;
     letter-spacing: 0.02em;
-    margin: 0.9rem 0 0;
+    margin: 0;
+    white-space: nowrap;
   }
 
   .list-desc {
-    max-width: 34em;
-    margin: 1rem 0 0;
+    max-width: 28em;
+    margin: 0;
     color: var(--fg-muted);
-    line-height: 1.8;
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    text-align: right;
+  }
+
+  /* ---------- 搜索框 ---------- */
+
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 1.5rem;
+    padding: 0.55rem 0.85rem;
+    border: var(--hair) solid var(--line);
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .search:focus-within { border-color: var(--line-strong); }
+
+  .search__icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    color: var(--fg-faint);
+  }
+
+  .search__input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    outline: none;
+  }
+
+  .search__input::placeholder { color: var(--fg-faint); }
+
+  .search__input::-webkit-search-cancel-button { filter: grayscale(1) opacity(0.5); }
+
+  .search__count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  /* ---------- 标题区与列表区之间的分隔：虚线 + 左端一截实心色块 ---------- */
+
+  .rule-tab {
+    position: relative;
+    height: var(--hair);
+    background: repeating-linear-gradient(
+      to right,
+      var(--line) 0 5px,
+      transparent 5px 10px
+    );
+  }
+
+  .rule-tab::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -1px;
+    width: 4.5rem;
+    height: 3px;
+    background: var(--accent);
   }
 
   .list-body {
-    padding-bottom: 4rem;
+    padding-block: 2.25rem 4rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 空集合：内容区撑起一屏，文字水平垂直居中 */
+  .empty-state {
+    flex: 1;
+    display: grid;
+    place-content: center;
+    min-height: 45vh;
+    margin: 0;
+    color: var(--fg-faint);
+    font-size: 0.9375rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* 一条列表项 = 封面高(14rem × 10/16) + 上下内边距，撑满一页五条，
+     这样最后一页只有一两条时翻页器也停在同一个位置 */
+  .list-body[data-reserve='1'] .entry-list {
+    min-height: calc(11.8rem * 5);
+  }
+
+  .list-body[data-reserve='1'] .pagination {
+    margin-top: auto;
   }
 
   .pagination {
@@ -120,7 +309,7 @@ const pageTitle = page > 1 ? `${title} · 第 ${page} 页` : title;
   }
 
   .pagination__step {
-    transition: color 0.18s ease;
+    transition: color var(--dur-1) var(--ease-out);
   }
 
   .pagination__step:hover {
@@ -136,4 +325,149 @@ const pageTitle = page > 1 ? `${title} · 第 ${page} 页` : title;
   .pagination__count {
     color: var(--fg-faint);
   }
+
+  @media (max-width: 56rem) {
+    .list-head__row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+
+    .list-desc { text-align: left; }
+    .list-title { white-space: normal; }
+  }
+
+  @media (max-width: 44rem) {
+    .list-head {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1.5rem;
+    }
+
+    .list-cover {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+    }
+  }
 </style>
+
+<script is:inline>
+  (function () {
+    function teardown() {
+      if (!window.__nnSearch) return;
+      window.__nnSearch.input.removeEventListener('input', window.__nnSearch.onInput);
+      window.__nnSearch = null;
+    }
+
+    function init() {
+      teardown();
+
+      var input = document.querySelector('[data-search-input]');
+      var source = document.querySelector('[data-search-index]');
+      var list = document.querySelector('[data-entry-list]');
+      var results = document.querySelector('[data-search-results]');
+      var empty = document.querySelector('[data-search-empty]');
+      var count = document.querySelector('[data-search-count]');
+      var pagination = document.querySelector('[data-pagination]');
+      if (!input || !source || !results) return;
+
+      var index = [];
+      try {
+        index = JSON.parse(source.textContent || '[]');
+      } catch (e) {
+        return;
+      }
+
+      function card(item) {
+        var a = document.createElement('article');
+        a.className = 'entry';
+        a.innerHTML =
+          '<div class="entry__cover-wrap"></div>' +
+          '<div class="entry__body">' +
+          '<time class="entry__date"></time>' +
+          '<h3 class="entry__title"><a></a></h3>' +
+          '<p class="entry__summary"></p>' +
+          '</div>' +
+          '<a class="entry__hit"></a>';
+
+        var wrap = a.querySelector('.entry__cover-wrap');
+        if (item.c) {
+          var img = document.createElement('img');
+          img.className = 'entry__cover';
+          img.src = item.c;
+          img.alt = '';
+          img.loading = 'lazy';
+          wrap.appendChild(img);
+        } else {
+          var ph = document.createElement('div');
+          ph.className = 'entry__cover cover-ph';
+          ph.textContent = '封面待补';
+          wrap.appendChild(ph);
+        }
+
+        a.querySelector('.entry__date').textContent = item.d;
+        var link = a.querySelector('.entry__title a');
+        link.textContent = item.t;
+        link.href = item.h;
+        a.querySelector('.entry__summary').textContent = item.s;
+        var hit = a.querySelector('.entry__hit');
+        hit.href = item.h;
+        hit.setAttribute('aria-label', item.t);
+        return a;
+      }
+
+      function onInput() {
+        var q = input.value.trim().toLowerCase();
+
+        if (!q) {
+          results.hidden = true;
+          results.innerHTML = '';
+          if (empty) empty.hidden = true;
+          if (list) list.hidden = false;
+          if (pagination) pagination.hidden = false;
+          if (list && list.parentElement && pagination) {
+            list.parentElement.dataset.reserve = '1';
+          }
+          if (count) count.textContent = '';
+          return;
+        }
+
+        var hits = index.filter(function (item) {
+          return item.q.indexOf(q) !== -1;
+        });
+
+        // 搜索期间分页没有意义，索引本来就跨全部页
+        if (list) list.hidden = true;
+        if (pagination) pagination.hidden = true;
+        // 搜索结果不分页，预留的固定高度要撤掉
+        if (list && list.parentElement) list.parentElement.dataset.reserve = '';
+        if (count) count.textContent = hits.length + ' / ' + index.length;
+
+        results.innerHTML = '';
+        hits.forEach(function (item, i) {
+          var node = card(item);
+          node.style.setProperty('--reveal-i', Math.min(i, 7));
+          node.classList.add('is-in');
+          node.setAttribute('data-reveal', '');
+          results.appendChild(node);
+        });
+
+        results.hidden = hits.length === 0;
+        if (empty) empty.hidden = hits.length > 0;
+      }
+
+      input.addEventListener('input', onInput);
+      window.__nnSearch = { input: input, onInput: onInput };
+    }
+
+    document.addEventListener('astro:page-load', init);
+    document.addEventListener('astro:before-swap', teardown);
+    if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    }
+  })();
+</script>

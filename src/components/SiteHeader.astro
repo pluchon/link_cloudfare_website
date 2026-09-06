@@ -3,7 +3,7 @@ import { site, nav } from '../config/site';
 
 const path = Astro.url.pathname;
 
-// 顶级路径高亮：/blog/xxx/ 也算命中 /blog/
+// 顶级路径高亮：/article/xxx/ 也算命中 /article/
 function isActive(href: string): boolean {
   if (href === '/') return path === '/';
   return path === href || path.startsWith(href);
@@ -13,7 +13,8 @@ function isActive(href: string): boolean {
 <header class="site-header">
   <div class="wrap site-header__inner">
     <a class="brand" href="/">
-      <span class="brand__mark">§</span>{site.name}
+      <img class="brand__mark" src="/icon-64.png" alt="" width="24" height="24" />
+      <span>{site.name}</span>
     </a>
 
     <nav class="site-nav" aria-label="主导航">
@@ -36,20 +37,3 @@ function isActive(href: string): boolean {
     </nav>
   </div>
 </header>
-
-<script is:inline>
-  (function () {
-    var btn = document.getElementById('theme-toggle');
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      var root = document.documentElement;
-      var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
-      root.dataset.theme = next;
-      try {
-        localStorage.setItem('nn-theme', next);
-      } catch (e) {
-        /* 隐私模式下写入失败时静默降级 */
-      }
-    });
-  })();
-</script>

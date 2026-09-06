@@ -58,6 +58,10 @@ export function buildSetCookie(value: string, maxAge = COOKIE_MAX_AGE): string {
   ].join('; ');
 }
 
+// 样式、脚本、字体、图标这些不含正文，直接放行。
+// 中间件原来每个请求都跑一遍，图片和 CSS 也算，白白吃掉 Functions 配额
+const STATIC_ASSET = /\.(css|m?js|map|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf|webmanifest)$/i;
+
 export function isBypassedPath(pathname: string): boolean {
   return (
     pathname === '/gate' ||
@@ -65,6 +69,7 @@ export function isBypassedPath(pathname: string): boolean {
     pathname.startsWith('/api/turnstile-verify') ||
     pathname === '/favicon.ico' ||
     pathname === '/robots.txt' ||
-    pathname === '/__deploy_probe.txt'
+    pathname === '/__deploy_probe.txt' ||
+    STATIC_ASSET.test(pathname)
   );
 }

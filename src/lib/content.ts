@@ -1,13 +1,16 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 
-export type ContentKind = 'blog' | 'library';
-export type AnyEntry = CollectionEntry<'blog'> | CollectionEntry<'library'>;
+export type ContentKind = 'article' | 'info' | 'xiaomeng';
+export type AnyEntry =
+  | CollectionEntry<'article'>
+  | CollectionEntry<'info'>
+  | CollectionEntry<'xiaomeng'>;
 
-// 构建期排除草稿；按发布时间倒序
+// 按发布时间倒序。草稿（文件名以下划线开头）在加载器里就已排除
 export async function getPublished<K extends ContentKind>(
   kind: K,
 ): Promise<CollectionEntry<K>[]> {
-  const entries = await getCollection(kind, ({ data }) => data.draft !== true);
+  const entries = await getCollection(kind);
   return entries.sort(
     (a, b) => b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf(),
   ) as CollectionEntry<K>[];
@@ -17,13 +20,15 @@ export async function getPublished<K extends ContentKind>(
 export async function getAllPublished(): Promise<
   { kind: ContentKind; entry: AnyEntry }[]
 > {
-  const [blog, library] = await Promise.all([
-    getPublished('blog'),
-    getPublished('library'),
+  const [article, info, xiaomeng] = await Promise.all([
+    getPublished('article'),
+    getPublished('info'),
+    getPublished('xiaomeng'),
   ]);
   return [
-    ...blog.map((entry) => ({ kind: 'blog' as const, entry })),
-    ...library.map((entry) => ({ kind: 'library' as const, entry })),
+    ...article.map((entry) => ({ kind: 'article' as const, entry })),
+    ...info.map((entry) => ({ kind: 'info' as const, entry })),
+    ...xiaomeng.map((entry) => ({ kind: 'xiaomeng' as const, entry })),
   ].sort(
     (a, b) =>
       b.entry.data.publishedAt.valueOf() - a.entry.data.publishedAt.valueOf(),
@@ -91,7 +96,7 @@ export function relatedEntries<T extends { id: string; data: { tags: string[] } 
 }
 
 // 列表分页大小
-export const PAGE_SIZE = 10;
+export const PAGE_SIZE = 5;
 
 // 构建期分页：返回每一页的条目切片
 export function paginateEntries<T>(entries: T[], size = PAGE_SIZE): T[][] {
@@ -101,4 +106,37 @@ export function paginateEntries<T>(entries: T[], size = PAGE_SIZE): T[][] {
     pages.push(entries.slice(i, i + size));
   }
   return pages;
+}
+
+// 列表页检索用的纯文本：标题 + 摘要 + 分类 + 标签 + 正文前段
+// 正文截断是为了不让每页 HTML 无限膨胀；全文检索以后交给 Pagefind
+export function searchText(entry: {
+  body?: string;
+  data: { title: string; summary: string; category: string; tags: string[] };
+}): string {
+  const body = (entry.body ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!?\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/[#>*_`~\-|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .slice(0, 500);
+
+  return [entry.data.title, entry.data.summary, entry.data.category, ...entry.data.tags, body]
+    .join(' ')
+    .toLowerCase();
+}
+
+// 封面在加载器里就已经从元信息区取好了；这里保留正文兜底
+export function entryCover(entry: {
+  body?: string;
+  data: { cover?: string };
+}): string | undefined {
+  if (entry.data.cover) return entry.data.cover;
+
+  const body = entry.body ?? '';
+  const md = body.match(/!\[[^\]]*\]\(\s*(\S+?)(?:\s+["'][^)]*)?\s*\)/);
+  if (md) return md[1];
+
+  const html = body.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return html ? html[1] : undefined;
 }

@@ -1,0 +1,20 @@
+---
+import ListLayout from '../../layouts/ListLayout.astro';
+import { branches } from '../../config/site';
+import { getPublished, paginateEntries } from '../../lib/content';
+
+const entries = await getPublished('article');
+const pages = paginateEntries(entries);
+---
+
+<ListLayout
+  kind="article"
+  title="文章"
+  cover={branches.find((b) => b.key === 'article')?.cover}
+  description="AI Coding 实践、后端工程与踩坑记录"
+  entries={pages[0]}
+  page={1}
+  totalPages={pages.length}
+  basePath="/article/"
+  emptyText="这里还空着..."
+/>

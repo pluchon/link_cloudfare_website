@@ -1,0 +1,14 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# 内容安全策略：默认不开，因为一旦写错 Turnstile 会加载不出来、整站进不去。
+# 想启用就把下面这行前面的 # 去掉，然后务必先在预览域名上验证一遍验证页能过。
+#  Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https://zlhimage.oss-cn-guangzhou.aliyuncs.com; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; font-src 'self'
+
+# 构建产物带内容哈希，可以长期缓存
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable

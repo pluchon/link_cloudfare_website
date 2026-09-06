@@ -15,6 +15,14 @@
   --gut: clamp(1.25rem, 4vw, 3rem);
   --hair: 1px;
 
+  /* 动效：只用这四档，页面里不要写死毫秒数 */
+  --dur-1: 140ms; /* 悬停等即时反馈 */
+  --dur-2: 260ms; /* 元素入场 */
+  --dur-3: 520ms; /* 线条生长 */
+  --stagger: 45ms; /* 列表逐条延迟 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-line: cubic-bezier(0.22, 1, 0.36, 1);
+
   /* 浅色 */
   --bg: #fcfcfa;
   --bg-elev: #ffffff;
@@ -73,6 +81,9 @@ body {
 
 a { color: inherit; text-decoration: none; }
 
+/* 作者样式里的 display 会盖过 UA 的 [hidden]，这里补回来 */
+[hidden] { display: none !important; }
+
 img { max-width: 100%; height: auto; display: block; }
 
 ::selection { background: var(--accent); color: #fff; }
@@ -80,6 +91,80 @@ img { max-width: 100%; height: auto; display: block; }
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+/* ---------- 入场：线先长出来，内容再浮上来 ----------
+   全部收在 .js 下：没有 JS 时初始状态不生效，内容直接可读 */
+
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out);
+  transition-delay: calc(var(--reveal-i, 0) * var(--stagger));
+}
+
+.js [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* 列表逐条延迟；第 9 条之后不再累加，避免长列表末尾等太久 */
+.js .entry-list .entry:nth-child(1) { --reveal-i: 0; }
+.js .entry-list .entry:nth-child(2) { --reveal-i: 1; }
+.js .entry-list .entry:nth-child(3) { --reveal-i: 2; }
+.js .entry-list .entry:nth-child(4) { --reveal-i: 3; }
+.js .entry-list .entry:nth-child(5) { --reveal-i: 4; }
+.js .entry-list .entry:nth-child(6) { --reveal-i: 5; }
+.js .entry-list .entry:nth-child(7) { --reveal-i: 6; }
+.js .entry-list .entry:nth-child(n + 8) { --reveal-i: 7; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* 不关掉动效，只把它压到几乎察觉不到——位移全去掉，只留极短的淡入 */
+  :root {
+    --dur-1: 90ms;
+    --dur-2: 90ms;
+    --dur-3: 90ms;
+    --stagger: 0ms;
+  }
+
+  .js [data-reveal] {
+    transform: none;
+  }
+}
+
+/* 详情页隐藏滚动条，滚动本身照常 */
+body.is-bare {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body.is-bare::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ---------- 画布式页面：整屏不滚动 ---------- */
+
+body.is-canvas {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.is-canvas > main {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* 窄屏塞不下一屏，退回正常滚动 */
+@media (max-width: 60rem) {
+  body.is-canvas {
+    height: auto;
+    overflow: visible;
+  }
+
+  body.is-canvas > main {
+    min-height: auto;
+  }
 }
 
 /* ---------- 版心 ---------- */
@@ -106,20 +191,6 @@ img { max-width: 100%; height: auto; display: block; }
   font-weight: 500;
 }
 
-.label-rule {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.label-rule::after {
-  content: "";
-  flex: 1;
-  height: var(--hair);
-  background: var(--line);
-}
-
 /* ---------- 顶栏 ---------- */
 
 .site-header {
@@ -139,6 +210,9 @@ img { max-width: 100%; height: auto; display: block; }
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   font-family: var(--font-serif);
   font-size: 1.0625rem;
   font-weight: 600;
@@ -147,9 +221,13 @@ img { max-width: 100%; height: auto; display: block; }
 }
 
 .brand__mark {
-  color: var(--accent);
-  margin-right: 0.4rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  transition: transform var(--dur-2) var(--ease-out);
 }
+
+.brand:hover .brand__mark { transform: scale(1.08) rotate(-4deg); }
 
 .site-nav {
   margin-left: auto;
@@ -163,7 +241,7 @@ img { max-width: 100%; height: auto; display: block; }
   padding: 0.4rem 0.75rem;
   font-size: 0.875rem;
   color: var(--fg-muted);
-  transition: color 0.18s ease;
+  transition: color var(--dur-1) var(--ease-out);
 }
 
 .site-nav a::after {
@@ -176,7 +254,7 @@ img { max-width: 100%; height: auto; display: block; }
   background: var(--accent);
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 0.22s ease;
+  transition: transform var(--dur-1) var(--ease-out);
 }
 
 .site-nav a:hover { color: var(--fg); }
@@ -190,15 +268,26 @@ img { max-width: 100%; height: auto; display: block; }
   width: 2.25rem;
   height: 2.25rem;
   margin-left: 0.5rem;
-  border: var(--hair) solid var(--line);
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--fg-muted);
   cursor: pointer;
-  transition: border-color 0.18s ease, color 0.18s ease;
+  transition: color var(--dur-1) var(--ease-out), transform var(--dur-2) var(--ease-out);
 }
 
-.icon-btn:hover { border-color: var(--line-strong); color: var(--fg); }
-.icon-btn svg { width: 1rem; height: 1rem; }
+.icon-btn:hover { color: var(--accent); }
+
+.icon-btn svg {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  transition: transform 950ms cubic-bezier(0.45, 0, 0.15, 1);
+}
+
+.icon-btn:hover svg { transform: rotate(15deg); }
+
+/* 点击那一下图标转半圈再回来 */
+.icon-btn[data-spin='1'] svg { transform: rotate(180deg) scale(0.82); }
 :root[data-theme="dark"] .icon-sun { display: none; }
 :root:not([data-theme="dark"]) .icon-moon { display: none; }
 
@@ -213,12 +302,31 @@ img { max-width: 100%; height: auto; display: block; }
 /* ---------- 页脚 ---------- */
 
 .site-footer {
+  position: relative;
   margin-top: auto;
   border-top: var(--hair) solid var(--line);
   padding-block: 2.5rem 3rem;
   color: var(--fg-faint);
   font-size: 0.8125rem;
 }
+
+/* 页脚的细斜纹：只有一层极淡的 45° 条纹，向下逐渐化开 */
+.site-footer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--line) 0 1px,
+    transparent 1px 7px
+  );
+  opacity: 0.45;
+  mask-image: linear-gradient(to bottom, transparent, #000 55%, #000);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 55%, #000);
+}
+
+.site-footer__inner { position: relative; }
 
 .site-footer__inner {
   display: flex;
@@ -231,21 +339,115 @@ img { max-width: 100%; height: auto; display: block; }
 .site-footer a { color: var(--fg-muted); }
 .site-footer a:hover { color: var(--accent); }
 
-/* ---------- 条目列表：靠发丝线分隔 ---------- */
+.footer-note { color: var(--fg-muted); }
+
+/* ---------- 深浅切换：以图标为圆心的圆形扩散 ----------
+   页面先切到新主题，再盖一层旧底色，用径向遮罩挖一个越来越大的洞把新页面露出来。
+   半径要能做动画，就必须先把它注册成 <length> 类型的自定义属性 */
+
+/* 覆盖层的挖洞半径要能做动画，就得先注册成 <length> 类型 */
+@property --nn-rr {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.theme-ripple {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  --nn-rr: 0px;
+}
+
+/* 扩散：覆盖层上挖一个越来越大的洞，把已经切好的新主题露出来 */
+.theme-ripple[data-mode='grow'] {
+  -webkit-mask-image: radial-gradient(
+    circle at var(--nn-rx) var(--nn-ry),
+    transparent var(--nn-rr),
+    #000 calc(var(--nn-rr) + 1px)
+  );
+  mask-image: radial-gradient(
+    circle at var(--nn-rx) var(--nn-ry),
+    transparent var(--nn-rr),
+    #000 calc(var(--nn-rr) + 1px)
+  );
+}
+
+/* ---------- 连线上的流动光点 ---------- */
+
+@keyframes nn-wire-flow {
+  to { stroke-dashoffset: calc(-1 * var(--wire-len, 100px)); }
+}
+
+/* ---------- 封面占位：还没填 OSS 图时用它，不放破图 ---------- */
+
+.cover-ph {
+  display: grid;
+  place-items: center;
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 8px 8px;
+  color: var(--fg-faint);
+}
+
+/* ---------- 条目列表：左封面右内容 ---------- */
 
 .entry-list { border-top: var(--hair) solid var(--line); }
 
 .entry {
   display: grid;
-  grid-template-columns: 4.5rem 1fr auto;
-  gap: 0 1.5rem;
-  align-items: baseline;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: 0 1.75rem;
+  align-items: center;
   padding: 1.5rem 0.75rem 1.5rem 0;
   border-bottom: var(--hair) solid var(--line);
   position: relative;
-  transition: background 0.18s ease, padding-left 0.18s ease;
+  transition: background var(--dur-1) var(--ease-out);
 }
 
+/* 封面外面套一层，才能在里面做扫光而不溢出 */
+.entry__cover-wrap {
+  position: relative;
+  width: 14rem;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: var(--hair) solid var(--line);
+}
+
+.entry__cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.entry__cover.cover-ph {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+}
+
+/* 悬停时一道斜光扫过封面 */
+.entry__cover-wrap::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  left: -70%;
+  width: 45%;
+  height: 140%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    color-mix(in srgb, var(--fg) 12%, transparent),
+    transparent
+  );
+  transform: skewX(-18deg);
+  transition: left 700ms var(--ease-out);
+  pointer-events: none;
+}
+
+.entry:hover .entry__cover-wrap::after { left: 125%; }
+
+/* 悬停时左侧朱红竖线自上而下长出来 */
 .entry::before {
   content: "";
   position: absolute;
@@ -255,13 +457,22 @@ img { max-width: 100%; height: auto; display: block; }
   width: 2px;
   background: var(--accent);
   transform: scaleY(0);
-  transition: transform 0.2s ease;
+  transform-origin: top;
+  transition: transform var(--dur-2) var(--ease-line);
 }
 
-.entry:hover { background: var(--accent-wash); padding-left: 1rem; }
+.entry:hover { background: var(--accent-wash); }
 .entry:hover::before { transform: scaleY(1); }
 
+/* 内容整体右移用 transform，避免 padding 动画每帧触发重排 */
+.entry > *:not(.entry__hit) {
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.entry:hover > *:not(.entry__hit) { transform: translateX(0.75rem); }
+
 .entry__date {
+  display: block;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--fg-faint);
@@ -270,10 +481,10 @@ img { max-width: 100%; height: auto; display: block; }
 
 .entry__title {
   font-family: var(--font-serif);
-  font-size: 1.125rem;
+  font-size: 1.1875rem;
   font-weight: 600;
   line-height: 1.5;
-  margin: 0;
+  margin: 0.5rem 0 0;
 }
 
 .entry:hover .entry__title { color: var(--accent); }
@@ -289,24 +500,23 @@ img { max-width: 100%; height: auto; display: block; }
   overflow: hidden;
 }
 
-.entry__meta {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--fg-faint);
-  letter-spacing: 0.06em;
-  white-space: nowrap;
+@media (max-width: 56rem) {
+  .entry {
+    grid-template-columns: 10rem minmax(0, 1fr);
+    gap: 0 1.25rem;
+  }
+
+  .entry__cover-wrap { width: 10rem; }
 }
 
-@media (max-width: 44rem) {
+@media (max-width: 40rem) {
   .entry {
-    grid-template-columns: 1fr;
-    gap: 0.35rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
     padding-block: 1.25rem;
   }
-  .entry__meta { order: 3; }
+
+  .entry__cover-wrap { width: 100%; }
 }
 
 /* ---------- 标签 ---------- */
@@ -319,7 +529,7 @@ img { max-width: 100%; height: auto; display: block; }
   font-size: 0.6875rem;
   letter-spacing: 0.05em;
   color: var(--fg-muted);
-  transition: border-color 0.18s ease, color 0.18s ease;
+  transition: border-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
 }
 
 a.tag:hover { border-color: var(--accent); color: var(--accent); }
@@ -336,7 +546,7 @@ a.tag:hover { border-color: var(--accent); color: var(--accent); }
   color: var(--fg-muted);
   border-bottom: var(--hair) solid var(--line-strong);
   padding-bottom: 0.15rem;
-  transition: color 0.18s ease, border-color 0.18s ease;
+  transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
 }
 
 .text-link:hover { color: var(--accent); border-color: var(--accent); }
