@@ -149,9 +149,11 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           }
 
           try {
+            // 曲线必须起步就动。用先慢后快的曲线时，覆盖层会在「铺满全屏」
+            // 那一帧停留近 250ms，而页面底下已经是新主题了，看着就是闪一下
             var anim = el.animate(frames, {
-              duration: 900,
-              easing: 'cubic-bezier(0.45, 0, 0.15, 1)',
+              duration: 780,
+              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
               fill: 'forwards',
             });
             anim.finished.then(done, done);
@@ -172,7 +174,7 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           btn.dataset.spin = '1';
           setTimeout(function () {
             btn.dataset.spin = '';
-          }, 900);
+          }, 780);
 
           var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
           if (reduced) {

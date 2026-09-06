@@ -10,6 +10,7 @@ export const GET: APIRoute = async () => {
     { loc: '/' },
     { loc: '/article/' },
     { loc: '/info/' },
+    { loc: '/xiaomeng/' },
     { loc: '/tags/' },
     { loc: '/about/' },
     ...all.map(({ kind, entry }) => ({

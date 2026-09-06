@@ -281,7 +281,7 @@ body.is-canvas > main {
 .icon-btn svg {
   width: 1.0625rem;
   height: 1.0625rem;
-  transition: transform 950ms cubic-bezier(0.45, 0, 0.15, 1);
+  transition: transform 780ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .icon-btn:hover svg { transform: rotate(15deg); }
