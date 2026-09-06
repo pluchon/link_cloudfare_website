@@ -1,15 +1,20 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import DotBackdrop from '../../components/DotBackdrop.astro';
 import { getAllPublished, tagCounts } from '../../lib/content';
 
 const all = await getAllPublished();
 const tags = tagCounts(all.map((item) => item.entry));
 ---
 
-<BaseLayout title="标签" description="按话题浏览全部文章与资料">
+<BaseLayout title="标签" description="按话题浏览全部内容。">
+  <DotBackdrop />
+
   <section class="wrap head">
-    <h1 class="head__title" data-reveal>标签</h1>
-    <p class="head__desc" data-reveal style="--reveal-i: 1">共 {tags.length} 个话题，{all.length} 篇内容。</p>
+    <div class="head__row" data-reveal>
+      <h1 class="head__title">标签</h1>
+      <p class="head__meta">共 {tags.length} 个话题，{all.length} 篇内容</p>
+    </div>
   </section>
 
   <section class="wrap body">
@@ -26,32 +31,61 @@ const tags = tagCounts(all.map((item) => item.entry));
           ))}
         </ul>
       ) : (
-        <p class="empty">还没有任何标签。</p>
+        <p class="empty-state">这里还空着...</p>
       )
     }
   </section>
 </BaseLayout>
 
 <style>
+  /* 背景是 fixed 的，内容层要抬上来 */
+  .head,
+  .body {
+    position: relative;
+    z-index: 1;
+  }
+
   .head {
-    padding-block: clamp(2.75rem, 7vw, 4.5rem) 2rem;
+    padding-block: 2rem 1.5rem;
+  }
+
+  /* 标题在左，统计贴到同一行的最右侧 */
+  .head__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    padding-bottom: 1.25rem;
+    border-bottom: var(--hair) solid var(--line);
   }
 
   .head__title {
     font-family: var(--font-serif);
     font-size: clamp(1.75rem, 5vw, 2.5rem);
     font-weight: 600;
-    margin: 0.9rem 0 0;
+    margin: 0;
     letter-spacing: 0.02em;
+    white-space: nowrap;
   }
 
-  .head__desc {
-    margin: 1rem 0 0;
+  .head__meta {
+    margin: 0;
     color: var(--fg-muted);
+    font-size: 0.9375rem;
+    text-align: right;
   }
 
   .body {
     padding-bottom: 4rem;
+  }
+
+  .empty-state {
+    display: grid;
+    place-content: center;
+    min-height: 45vh;
+    margin: 0;
+    color: var(--fg-faint);
+    font-size: 0.9375rem;
   }
 
   .tag-index {
@@ -92,5 +126,16 @@ const tags = tagCounts(all.map((item) => item.entry));
     font-family: var(--font-mono);
     font-size: 0.75rem;
     color: var(--fg-faint);
+  }
+
+  @media (max-width: 44rem) {
+    .head__row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.6rem;
+    }
+
+    .head__title { white-space: normal; }
+    .head__meta { text-align: left; }
   }
 </style>

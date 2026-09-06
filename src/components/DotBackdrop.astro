@@ -1,0 +1,19 @@
+---
+// 点阵底：和首页画布同一套纹理，供标签页复用
+---
+
+<div class="dots" aria-hidden="true"></div>
+
+<style>
+  .dots {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(var(--line-strong) 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: 0.55;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
+  }
+</style>

@@ -3,6 +3,8 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
   site: 'https://www.nuonuoya.cn',
   output: 'static',
+  // 这条工具栏只在本地出现，不会进构建产物；这里顺手关掉
+  devToolbar: { enabled: false },
   trailingSlash: 'ignore',
   // 默认的 localhost 在 Windows 上只绑 IPv6 的 ::1，浏览器走 127.0.0.1 会被拒；
   // 显式绑 IPv4。只影响本地 dev / preview，不影响构建产物

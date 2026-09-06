@@ -250,6 +250,12 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
         };
         ctx.watcher.on('change', onChange);
         ctx.watcher.on('add', onChange);
+        // 删除也要跟着摘掉，否则文件没了条目还留在库里
+        ctx.watcher.on('unlink', (removed: string) => {
+          if (!removed.startsWith(base) || !removed.endsWith('.md')) return;
+          const name = path.basename(removed, '.md');
+          ctx.store.delete(name.replace(DATE_PREFIX, '').replace(/\s+/g, '-'));
+        });
       }
     },
   };
@@ -334,6 +340,10 @@ export function profileMarkdown(options: { dir: string }): Loader {
         };
         ctx.watcher.on('change', onChange);
         ctx.watcher.on('add', onChange);
+        ctx.watcher.on('unlink', (removed: string) => {
+          if (!removed.startsWith(base) || !removed.endsWith('.md')) return;
+          ctx.store.delete(path.basename(removed, '.md'));
+        });
       }
     },
   };
