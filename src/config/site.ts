@@ -1,6 +1,8 @@
 // 站点全局文案与导航配置：页面里不要写死字符串
 export const site = {
   name: '儒雅的诺诺的学习基地',
+  // 窄屏顶栏放不下全名，用这个短名代替
+  shortName: '诺诺',
   tagline: 'AI Coding 与日常学习的分享',
   title: '儒雅的诺诺的学习基地 | AI Coding 与日常学习的分享',
   description: '记录 AI Coding 实践、后端工程与日常学习的笔记与资料。',
@@ -63,3 +65,8 @@ export const branches = [
 
 // 每条分支在首页最多展示几篇
 export const BRANCH_LEAF_LIMIT = 5;
+
+// 首页导图一次能展开十几张封面，全拉原图太费流量，统一走 OSS 的缩略图样式。
+// 样式在 OSS 控制台「图片处理 / 样式」里新建，名字要和这里一致；
+// 列表页和详情页仍然用原图，不受这个影响
+export const OSS_THUMB_STYLE = 'thumb';

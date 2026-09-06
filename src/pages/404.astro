@@ -64,6 +64,9 @@ import { site } from '../config/site';
   }
 
   @media (max-width: 44rem) {
+    /* 窄屏页脚会换行变高，12rem 的预留不够，整页会溢出半屏 */
+    .notfound { min-height: calc(100dvh - 16rem); }
+
     .notfound__row {
       flex-direction: column;
       align-items: flex-start;

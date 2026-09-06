@@ -289,12 +289,26 @@ body.is-canvas > main {
 :root[data-theme="dark"] .icon-sun { display: none; }
 :root:not([data-theme="dark"]) .icon-moon { display: none; }
 
-/* 移动端导航折叠 */
-.nav-toggle { display: none; }
+/* 窄屏站名换短名。四个链接做抽屉不划算，缩站名就能全部留在一行 */
+.brand__short { display: none; }
 
 @media (max-width: 40rem) {
-  .site-nav a { padding: 0.4rem 0.5rem; font-size: 0.8125rem; }
+  .site-header__inner { gap: 0.75rem; }
   .brand { font-size: 0.9375rem; }
+  .brand__full { display: none; }
+  .brand__short { display: inline; }
+
+  .site-nav a { padding: 0.4rem 0.5rem; font-size: 0.8125rem; }
+  /* 下划线要跟着改后的内边距收，否则会伸到文字外面 */
+  .site-nav a::after { left: 0.5rem; right: 0.5rem; }
+
+  .icon-btn { margin-left: 0.15rem; }
+}
+
+/* 360px 以下再挤一档，保证四个导航项不换行 */
+@media (max-width: 22.5rem) {
+  .site-nav a { padding: 0.4rem 0.3rem; }
+  .site-nav a::after { left: 0.3rem; right: 0.3rem; }
 }
 
 /* ---------- 页脚 ---------- */

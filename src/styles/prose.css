@@ -195,7 +195,11 @@
 }
 
 /* 代码块容器 + 复制按钮 */
-.code-block { position: relative; }
+.code-block {
+  position: relative;
+  /* 展开条的高度，正文要按它留出底部空间，否则会压住最后一行代码 */
+  --more-h: 2.25rem;
+}
 
 .code-block__copy {
   position: absolute;
@@ -233,6 +237,75 @@
 }
 
 .code-block:hover .code-block__lang { opacity: 0; }
+
+/* 展开全部 / 收起：只在触屏且内容真的被截断时出现。
+   .code-block 没有内边距和边框，pre 的外边距会穿过它折叠，
+   所以绝对定位的 bottom:0 正好落在 pre 的下边框上 */
+.code-block__more {
+  display: none;
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: var(--more-h);
+  padding: 0;
+  border: 0;
+  border-top: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.code-block__more:active { color: var(--accent); }
+
+/* 触屏没有 hover，复制按钮再藏起来就等于不存在了。
+   两者都钉在右上角，所以显示按钮的同时把语言标签收掉 */
+@media (hover: none) {
+  .code-block__copy { opacity: 1; }
+  .code-block__lang { display: none; }
+
+  /* 关键：触屏下代码块不再竖向滚动。
+     有内部竖滚就会吃掉手指的上下滑动，读者想滚页面却滚了代码块。
+     竖向改成截断 + 按钮展开，横向照常滚。
+
+     竖向必须把 overscroll-behavior 放开：overflow-y: hidden 仍然算一个
+     竖向滚动端口，只是滚动范围为零，再叠上基础样式里的 contain
+     （禁止滚动链上传给页面），手指落在代码块上就哪儿也滚不动了。
+     横向的 contain 保留，免得滑到代码末尾触发浏览器的返回手势。
+     注：这里不能写 overflow-y: clip —— 旁边是 overflow-x: auto 时，
+     规范强制把 clip 计算成 hidden，写了也是白写 */
+  .prose pre {
+    max-height: 22rem;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: auto;
+  }
+
+  /* 展开条是绝对定位浮在 pre 上的，正文必须多留出一条的高度，
+     不然最后一两行代码会被它盖住 */
+  .code-block[data-expanded='1'] pre {
+    max-height: none;
+    padding-bottom: calc(1.15rem + var(--more-h));
+  }
+
+  .code-block[data-clipped='1'] .code-block__more { display: block; }
+
+  /* 截断处压一层渐隐，提示下面还有内容 */
+  .code-block[data-clipped='1']:not([data-expanded='1'])::after {
+    content: '';
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    height: 6rem;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--bg-sunken) 72%);
+  }
+}
 
 /* 表格：只留横线 */
 .prose table {

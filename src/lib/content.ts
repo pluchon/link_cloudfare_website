@@ -1,4 +1,5 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
+import { OSS_THUMB_STYLE } from '../config/site';
 
 export type ContentKind = 'article' | 'info' | 'xiaomeng';
 export type AnyEntry =
@@ -49,11 +50,6 @@ export function countWords(body: string): number {
   const cjk = text.match(/[一-龥぀-ヿ]/g)?.length ?? 0;
   const latin = text.match(/[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*/g)?.length ?? 0;
   return cjk + latin;
-}
-
-// 中文阅读速度按 400 字/分钟估算
-export function readingMinutes(body: string): number {
-  return Math.max(1, Math.round(countWords(body) / 400));
 }
 
 export function formatDate(date: Date): string {
@@ -139,4 +135,14 @@ export function entryCover(entry: {
 
   const html = body.match(/<img[^>]+src=["']([^"']+)["']/i);
   return html ? html[1] : undefined;
+}
+
+// 首页导图专用的缩略图地址。只对自家 OSS 的图生效，
+// 外链图和已经带了处理参数的地址原样返回，不去猜别人的服务支持什么
+const OSS_HOST = '.oss-cn-guangzhou.aliyuncs.com';
+
+export function thumbUrl(url?: string): string | undefined {
+  if (!url || !url.includes(OSS_HOST)) return url;
+  if (url.includes('x-oss-process=')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}x-oss-process=style/${OSS_THUMB_STYLE}`;
 }

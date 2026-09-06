@@ -6,6 +6,7 @@ import {
   formatDate,
   entryHref,
   entryCover,
+  thumbUrl,
   type ContentKind,
 } from '../lib/content';
 
@@ -20,6 +21,12 @@ type Leaf = {
 };
 
 // 每条分支挂最新的若干篇；条数由 BRANCH_LEAF_LIMIT 统一控制
+// 首页的封面全部走 OSS 缩略图样式：展开五条分支就是十几张图，拉原图太费流量
+const avatar = thumbUrl(profile.avatar);
+const branchCovers: Record<string, string | undefined> = Object.fromEntries(
+  branches.map((branch) => [branch.key, thumbUrl(branch.cover)]),
+);
+
 const leaves: Record<string, Leaf[]> = {};
 for (const branch of branches) {
   const kind = branch.key as ContentKind;
@@ -30,7 +37,7 @@ for (const branch of branches) {
     meta: formatDate(entry.data.publishedAt),
     summary: entry.data.summary,
     href: entryHref(kind, entry.data.slug),
-    cover: entryCover(entry),
+    cover: thumbUrl(entryCover(entry)),
     tags: [...entry.data.tags],
   }));
 }
@@ -46,8 +53,8 @@ for (const branch of branches) {
 
         <div class="node node--root" data-node="root" data-pan-item>
           {
-            profile.avatar ? (
-              <img class="root__cover" src={profile.avatar} alt="" width="256" height="256" />
+            avatar ? (
+              <img class="root__cover" src={avatar} alt="" width="256" height="256" />
             ) : (
               <div class="root__cover cover-ph">头像待补</div>
             )
@@ -75,8 +82,8 @@ for (const branch of branches) {
             branches.map((branch) => (
               <div class="row">
                 <div class="node node--branch" data-node={`b-${branch.key}`} data-pan-item data-pop>
-                  {branch.cover ? (
-                    <img class="branch__cover" src={branch.cover} alt="" loading="lazy" />
+                  {branchCovers[branch.key] ? (
+                    <img class="branch__cover" src={branchCovers[branch.key]} alt="" loading="lazy" />
                   ) : (
                     <div class="branch__cover cover-ph">封面待补</div>
                   )}
@@ -570,7 +577,9 @@ for (const branch of branches) {
     :global(.js) [data-pop] { transform: none; }
   }
 
-  /* 窄屏退回竖排滚动，连线藏起来 */
+  /* ---------- 窄屏：横向导图翻成竖向缩进树 ---------- */
+  /* 层级、连线、展开动画全部保留，只是生长方向从「向右」改成「向下」，
+     页面回到正常上下滚动。连线的几何在脚本里按同一个断点分支 */
   @media (max-width: 60rem) {
     .canvas { height: auto; overflow: visible; cursor: auto; }
 
@@ -581,39 +590,69 @@ for (const branch of branches) {
     }
 
     .map {
+      /* 每往下一层缩进这么多，正好留出左侧那条主干线的位置 */
+      --indent: 1.5rem;
       flex-direction: column;
       align-items: stretch;
       width: auto;
-      gap: 1.25rem;
+      gap: 0.9rem;
       padding-inline: var(--gut);
       padding-bottom: 3rem;
       transform: none !important;
     }
 
-    .wires { display: none; }
+    .branches,
+    .leaves {
+      gap: 0.9rem;
+    }
 
     .row,
     .leaf-row {
       flex-direction: column;
       align-items: stretch;
-      gap: 1rem;
+      gap: 0.9rem;
     }
+
+    .branches,
+    .leaves,
+    .tagwrap { padding-left: var(--indent); }
 
     .node--root,
     .node--branch,
     .node--leaf,
-    .node--tags {
-      width: auto;
+    .node--tags { width: auto; }
+
+    /* 根卡片：头像不再占半幅，收窄给文字让位 */
+    .node--root { grid-template-columns: 34% minmax(0, 1fr); }
+    .node--root .node__body { padding: 1.1rem 1rem; }
+    .root__name { font-size: 1.375rem; }
+    .root__bio { margin-top: 0.6rem; font-size: 0.8125rem; }
+
+    /* 文章卡片：缩进两层之后左封面只剩百来像素，右边标题摘要会挤成一团。
+       窄屏干脆去掉封面，让文字吃满整行；封面在列表页和详情页照常显示 */
+    .node--leaf { display: block; }
+    .leaf__cover { display: none; }
+    .leaf__body { padding: 0.85rem 1rem; }
+    .node--leaf:hover { transform: none; }
+
+    /* 桌面上标签一行排开靠拖画布看，窄屏没法拖，改成换行 */
+    .node--tags .tag-row {
+      flex-wrap: wrap;
+      white-space: normal;
     }
 
     .knob {
-      right: 0.75rem;
-      top: 0.75rem;
+      right: 0.7rem;
+      top: 0.7rem;
       margin-top: 0;
     }
 
-    .leaves,
-    .tagwrap { padding-left: 1.25rem; }
+    /* 触屏点击区要够 44px。视觉尺寸不动，靠一层透明覆盖把热区撑开 */
+    .knob::after {
+      content: '';
+      position: absolute;
+      inset: -0.55rem;
+    }
   }
 </style>
 
@@ -696,8 +735,10 @@ for (const branch of branches) {
         });
       }
 
+      // 竖版树的主干距父卡片左边缘的距离，和 CSS 里 --indent 的一半对齐
+      var SPINE = 12;
+
       function drawWires(animate) {
-        if (!wide) return;
         wires.setAttribute('width', map.offsetWidth);
         wires.setAttribute('height', map.offsetHeight);
 
@@ -732,13 +773,32 @@ for (const branch of branches) {
 
           var a = boxIn(pair[0], map);
           var b = boxIn(pair[1], map);
-          var x1 = a.x + a.w;
-          var y1 = a.y + a.h / 2;
+          var x1;
+          var y1;
           var x2 = b.x;
           var y2 = b.y + b.h / 2;
-          var dx = Math.max(24, (x2 - x1) * 0.5);
-          var d =
-            'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + x2 + ',' + y2;
+          var d;
+
+          // 竖版下分类卡片有两百多像素高，线接在垂直中点会扎进封面正中间，
+          // 不像树。改成靠近左上角接入，肘部就落在卡片顶边附近
+          if (!wide) y2 = b.y + Math.min(b.h / 2, 30);
+
+          if (wide) {
+            // 横版：父卡片右侧中点 → 子卡片左侧中点
+            x1 = a.x + a.w;
+            y1 = a.y + a.h / 2;
+            var dx = Math.max(24, (x2 - x1) * 0.5);
+            d =
+              'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + x2 + ',' + y2;
+          } else {
+            // 竖版：从父卡片底部偏左垂下一条主干，到子卡片高度上再向右拐进去。
+            // 同一组的几个子节点共用这条主干，叠在一起就是一条完整的竖线
+            x1 = a.x + SPINE;
+            y1 = a.y + a.h;
+            var dy = Math.max(16, (y2 - y1) * 0.5);
+            d =
+              'M' + x1 + ',' + y1 + ' C' + x1 + ',' + (y1 + dy) + ' ' + x1 + ',' + y2 + ' ' + x2 + ',' + y2;
+          }
 
           var path = wires.querySelector('path[data-key="' + key + '"]:not(.wire-flow)');
           var fresh = !path;
@@ -993,6 +1053,8 @@ for (const branch of branches) {
           map.style.transform = '';
           scale = 1;
           canvas.dataset.pannable = '';
+          // 竖版树的线也要跟着重新量，横竖屏切换时几何整个换了一套
+          drawWires(false);
           return;
         }
         fit();
@@ -1021,6 +1083,22 @@ for (const branch of branches) {
 
       fit();
       measure();
+
+      // 手机上一进来只有一张孤零零的根卡片，看着像站是空的。
+      // 默认把一级分支展开，文章那一层仍然收着
+      if (!wide) {
+        var rootKnob = map.querySelector('[data-knob="root"]');
+        var rootGroup = map.querySelector('[data-group="root"]');
+        if (rootKnob && rootGroup && rootGroup.hidden) {
+          rootKnob.setAttribute('aria-expanded', 'true');
+          pop(rootGroup, true);
+          requestAnimationFrame(function () {
+            drawWires(true);
+          });
+        }
+      } else {
+        drawWires(false);
+      }
     }
 
     document.addEventListener('astro:page-load', init);

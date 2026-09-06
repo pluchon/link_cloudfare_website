@@ -3,7 +3,7 @@ import '../styles/prose.css';
 import BaseLayout from './BaseLayout.astro';
 import type { MarkdownHeading } from 'astro';
 import type { AnyEntry, ContentKind } from '../lib/content';
-import { entryHref, formatDate, countWords, readingMinutes, entryCover } from '../lib/content';
+import { entryHref, formatDate, countWords, entryCover } from '../lib/content';
 
 interface Props {
   kind: ContentKind;
@@ -18,7 +18,6 @@ const { kind, entry, headings, prev, next, related = [] } = Astro.props;
 const { data } = entry;
 const body = entry.body ?? '';
 const words = countWords(body);
-const minutes = readingMinutes(body);
 const rawHref = `/${kind}/${data.slug}.md`;
 const cover = entryCover(entry);
 
@@ -65,7 +64,6 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
         <div class="article__meta">
           <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
           <span>{words} 字</span>
-          <span>约 {minutes} 分钟</span>
           <a class="article__raw" href={rawHref} download>Markdown 原文</a>
         </div>
 
@@ -481,6 +479,31 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           );
         });
         wrapper.appendChild(btn);
+
+        // 触屏下代码块被截断时给一个展开按钮。
+        // 竖滚已经在 CSS 里关掉了，不然手指想滚页面会先滚到代码块里去
+        if (pre.scrollHeight > pre.clientHeight + 4) {
+          wrapper.dataset.clipped = '1';
+
+          var more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'code-block__more';
+          more.textContent = '展开全部';
+          more.addEventListener('click', function () {
+            var open = wrapper.dataset.expanded === '1';
+            if (open) {
+              // 收起前先把视口拉回代码块顶部，否则会停在页面很下面
+              var top = wrapper.getBoundingClientRect().top + window.pageYOffset - 90;
+              wrapper.dataset.expanded = '';
+              more.textContent = '展开全部';
+              window.scrollTo({ top: top, behavior: 'instant' });
+            } else {
+              wrapper.dataset.expanded = '1';
+              more.textContent = '收起';
+            }
+          });
+          wrapper.appendChild(more);
+        }
       });
 
       // 目录高亮
