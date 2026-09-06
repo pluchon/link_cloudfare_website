@@ -10,10 +10,8 @@ interface Props {
   description?: string;
   ogImage?: string;
   noindex?: boolean;
-  // canvas：整屏不滚动的画布式页面（首页）
-  // bare：常规滚动但藏起滚动条（详情页）
-  // page：常规滚动页面
-  variant?: 'page' | 'canvas' | 'bare';
+  // canvas：整屏不滚动的画布式页面（首页）；page：常规滚动页面
+  variant?: 'page' | 'canvas';
   // 分页页面的上下页地址，用于 rel=prev/next
   prevUrl?: string;
   nextUrl?: string;
@@ -247,7 +245,7 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
     <slot name="head" />
   </head>
 
-  <body class:list={[variant === 'canvas' && 'is-canvas', variant === 'bare' && 'is-bare']}>
+  <body class:list={[variant === 'canvas' && 'is-canvas']}>
     <SiteHeader />
     <main>
       <slot />

@@ -122,10 +122,40 @@
   padding: 1.15rem 1.25rem;
   border: var(--hair) solid var(--line);
   background: var(--bg-sunken) !important;
-  overflow-x: auto;
+  /* 长代码块不撑高整篇文章，超过约 25 行就在块内滚动 */
+  max-height: 36rem;
+  overflow: auto;
+  overscroll-behavior: contain;
   font-size: 0.8125rem;
   line-height: 1.75;
   tab-size: 2;
+  /* 页面滚动条是全站隐藏的，但代码块内部这条要留着——
+     不然读者不知道下面还有内容 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.prose pre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.prose pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prose pre::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid var(--bg-sunken);
+  border-radius: 4px;
+}
+
+.prose pre::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-faint);
+}
+
+.prose pre::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .prose pre code {

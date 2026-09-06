@@ -26,7 +26,7 @@ const cover = entryCover(entry);
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
 
-<BaseLayout title={data.title} description={data.summary} ogImage={cover} variant="bare">
+<BaseLayout title={data.title} description={data.summary} ogImage={cover}>
   <div class="progress" id="reading-progress" aria-hidden="true"></div>
 
   {

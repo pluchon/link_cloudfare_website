@@ -59,7 +59,13 @@ html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
   scroll-padding-top: 6rem;
+  /* 全站隐藏视口滚动条，滚动本身照常。
+     视口滚动条由 <html> 生成，写在 body 上没有任何效果 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+
+html::-webkit-scrollbar { width: 0; height: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -133,14 +139,6 @@ img { max-width: 100%; height: auto; display: block; }
     transform: none;
   }
 }
-
-/* 详情页隐藏滚动条，滚动本身照常 */
-body.is-bare {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-body.is-bare::-webkit-scrollbar { width: 0; height: 0; }
 
 /* ---------- 画布式页面：整屏不滚动 ---------- */
 
