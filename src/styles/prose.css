@@ -166,6 +166,57 @@
   color: inherit;
 }
 
+/* ---------- Mermaid 图 ----------
+   渲染前是一段源码，渲染后 pre 里换成 SVG。两个状态共用这个盒子，
+   所以尺寸约束写在 pre 上，图本身只负责居中 */
+
+.prose pre.mermaid {
+  /* 未渲染时按普通代码块的样子摆着，不要出现 22rem/36rem 的截断和展开条 */
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 竖向没有可滚内容，必须放开滚动链，否则基础样式里的
+     overscroll-behavior: contain 会让鼠标滚到图上时整页卡住
+     —— 和代码块踩过的是同一个坑 */
+  overscroll-behavior-y: auto;
+  /* 画完之前先占住高度，避免图一张张出现时整篇文章往下跳 */
+  min-height: 6rem;
+  color: var(--fg-faint);
+}
+
+/* 居中只在画成图之后生效。没画之前它还是一段源码，
+   居中的源码比左对齐的更难读，也更像出了错 */
+.prose pre.mermaid[data-ready='1'] {
+  padding: 1.5rem 1.25rem;
+  min-height: 0;
+  text-align: center;
+}
+
+.prose pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+/* 站点全局有个 .label 工具类（等宽体 / 全大写 / 字距拉开 / 淡色），
+   而 mermaid 给每个节点文字生成的也是 class="label" —— 直接被劫持，
+   结果是图里所有西文标签变成大写小字。在图内部还原掉 */
+.prose pre.mermaid svg .label {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+}
+
+/* 语法写错时脚本会把源码放回来，此时按普通代码块显示并标红边 */
+.prose pre.mermaid[data-ready='error'] {
+  text-align: left;
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
 /* Shiki css-variables 主题映射到本站色板 */
 :root {
   --astro-code-foreground: #2a2b30;

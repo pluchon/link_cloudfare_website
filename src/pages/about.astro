@@ -32,7 +32,13 @@ const skills = doc?.data.skills ?? [];
             profile.links.map((link) => (
               <li>
                 <a class="link" href={link.href} target="_blank" rel="noopener noreferrer">
-                  <img class="link__icon" src={link.icon} alt="" width="18" height="18" />
+                  <img
+                    class:list={['link__icon', link.mono && 'link__icon--mono']}
+                    src={link.icon}
+                    alt=""
+                    width="18"
+                    height="18"
+                  />
                   <span class="link__label">{link.label}</span>
                   <span class="link__out" aria-hidden="true">
                     ↗
@@ -156,13 +162,19 @@ const skills = doc?.data.skills ?? [];
     transform: translateY(-2px);
   }
 
-  /* 三个图标源文件的 viewBox 分别是 24 / 32 / 512，
+  /* 各图标源文件的 viewBox 从 24 到 512 都有，
      所以必须钉死盒子尺寸再 contain，否则渲染出来大小不一 */
   .link__icon {
     width: 18px;
     height: 18px;
     flex: none;
     object-fit: contain;
+  }
+
+  /* GitHub 那个图标的 path 没写 fill，默认就是纯黑，深色模式下等于隐形。
+     图标是 <img> 引进来的，CSS 够不着 SVG 内部，只能整体反色把黑翻成白 */
+  :global(:root[data-theme='dark']) .link__icon--mono {
+    filter: invert(1);
   }
 
   .link__label { font-weight: 500; }

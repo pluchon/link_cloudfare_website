@@ -499,7 +499,8 @@ for (const branch of branches) {
 
   /* ---------- 标签节点 ---------- */
 
-  /* 标签一行排完，宽度随内容走——画布可以拖，不用担心占地方 */
+  /* 标签卡宽度由脚本量出来：标签少就一行，多了折成两行，最多两行。
+     纯 CSS 给不了「不超过两行」这个保证，因为断行位置取决于每个标签的实际宽度 */
   .node--tags {
     width: max-content;
     max-width: none;
@@ -507,7 +508,11 @@ for (const branch of branches) {
   }
 
   .node--tags .tag-row {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+  }
+
+  /* 标签自身不许断行，要断只在标签之间断 */
+  .node--tags .tag {
     white-space: nowrap;
   }
 
@@ -854,6 +859,87 @@ for (const branch of branches) {
         });
       }
 
+      /* ---------- 标签卡宽度 ---------- */
+
+      // 标签一行排开会拉出很长一条（十几个标签就上千像素）。
+      // 量出所有标签铺平的总宽，标签少就保持一行，多了把卡片收窄到大约一半，
+      // 折成两行。加上最宽那一枚做余量，保证不会溢出到第三行
+      // 一行排开不超过这个宽度就保持一行。定在 760 是因为文章卡片宽 464，
+      // 标签卡到 760 还算克制；再宽（比如十几个标签那种上千像素）才值得折行
+      var TAG_ONE_LINE_MAX = 760;
+
+      // 标签实际占了几行：按 offsetTop 去重
+      function tagLines(row) {
+        var tops = {};
+        var lines = 0;
+        row.querySelectorAll('.tag').forEach(function (tag) {
+          var key = Math.round(tag.offsetTop);
+          if (!tops[key]) {
+            tops[key] = 1;
+            lines += 1;
+          }
+        });
+        return lines;
+      }
+
+      function fitTags() {
+        if (!wide) return;
+
+        map.querySelectorAll('.node--tags').forEach(function (card) {
+          var row = card.querySelector('.tag-row');
+          if (!row) return;
+
+          var tags = row.querySelectorAll('.tag');
+          if (!tags.length) return;
+
+          var gap = parseFloat(getComputedStyle(row).gap) || 0;
+          var widths = [];
+          var total = 0;
+          // 用 rect 而不是 offsetWidth：后者取整，十几个标签累积起来
+          // 足以把最后一枚挤到第三行。但 rect 是算过 map 那层 scale() 的，
+          // 而 style.width 设的是未缩放的布局宽度，必须先除回去
+          var s = scale || 1;
+          tags.forEach(function (tag) {
+            var w = tag.getBoundingClientRect().width / s;
+            widths.push(w);
+            total += w;
+          });
+          // 隐藏时量不到宽度，跳过这一轮，等展开后再量
+          if (!total) return;
+          total += gap * (widths.length - 1);
+
+          var content = total;
+
+          if (total > TAG_ONE_LINE_MAX && widths.length > 1) {
+            // 枚举断点，取「两行里较宽那行」最窄的那个分法。
+            // flex 是贪心换行：宽度给到这个值，第一行至少装得下前 k 个，
+            // 剩下的只会更少，所以一定落在两行之内
+            var best = Infinity;
+            for (var k = 1; k < widths.length; k++) {
+              var a = -gap;
+              var b = -gap;
+              for (var i = 0; i < widths.length; i++) {
+                if (i < k) a += widths[i] + gap;
+                else b += widths[i] + gap;
+              }
+              best = Math.min(best, Math.max(a, b));
+            }
+            content = best;
+          }
+
+          var pad = card.offsetWidth - row.offsetWidth;
+          // 留 2px 余量：宽度算得刚好等于标签总宽时，亚像素误差会让最后一枚换行
+          card.style.width = Math.ceil(content + pad + 2) + 'px';
+
+          // 算出来的宽度是理论最优，实际断行还受字距、缩放的影响。
+          // 实测一下，超过两行就放宽重试，宁可宽一点也不能出第三行
+          for (var attempt = 0; attempt < 6 && tagLines(row) > 2; attempt++) {
+            content = content * 1.06 + 4;
+            card.style.width = Math.ceil(content + pad + 2) + 'px';
+          }
+        });
+      }
+
       /* ---------- 展开 / 收起 ---------- */
 
       function pop(group, show) {
@@ -914,6 +1000,8 @@ for (const branch of branches) {
         pop(group, show);
 
         requestAnimationFrame(function () {
+          // 先定标签卡的宽度，线要按最终位置画
+          fitTags();
           fit();
           // 收起交给 pop 的定时器，等退场动画跑完再重建
           if (show) drawWires(true);
@@ -1053,10 +1141,16 @@ for (const branch of branches) {
           map.style.transform = '';
           scale = 1;
           canvas.dataset.pannable = '';
+          // 宽屏量出来的标签卡宽度是内联样式，会压过窄屏的 width: auto，
+          // 从宽屏拖窄时必须清掉
+          map.querySelectorAll('.node--tags').forEach(function (card) {
+            card.style.width = '';
+          });
           // 竖版树的线也要跟着重新量，横竖屏切换时几何整个换了一套
           drawWires(false);
           return;
         }
+        fitTags();
         fit();
         drawWires(false);
         measure();

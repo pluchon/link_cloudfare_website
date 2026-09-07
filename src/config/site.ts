@@ -28,12 +28,14 @@ export const profile = {
   avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/profile_avatar.webp',
   name: '诺诺',
   bio: '在写代码，也在记笔记。把踩过的坑和读过的东西留在这里',
-  // 第三方链接：href 换成自己的即可。三个图标源文件 viewBox 各不相同
-  // （24 / 32 / 512），所以渲染时统一用固定盒子 + object-fit 保证一样大
+  // 第三方链接：href 换成自己的即可。图标源文件 viewBox 各不相同
+  // （24 / 512 / 32 / 128），所以渲染时统一用固定盒子 + object-fit 保证一样大。
+  // mono 标记纯单色深色图标：它们在深色模式下会隐形，渲染时整体反色
   links: [
-    { label: 'GitHub', href: 'https://github.com/pluchon', icon: '/icons/github.svg' },
-    { label: 'X', href: 'https://x.com/pluchon200010', icon: '/icons/x.svg' },
-    { label: 'Gmail', href: 'mailto:zlh8232@gmail.com', icon: '/icons/gmail.svg' },
+    { label: 'GitHub', href: 'https://github.com/pluchon', icon: '/icons/github.svg', mono: true },
+    { label: 'X', href: 'https://x.com/pluchon200010', icon: '/icons/x.svg', mono: false },
+    { label: 'Gmail', href: 'mailto:zlh8232@gmail.com', icon: '/icons/gmail.svg', mono: false },
+    { label: 'Outlook', href: 'mailto:zlh8232@outlook.com', icon: '/icons/outlook.svg', mono: false },
   ],
 } as const;
 

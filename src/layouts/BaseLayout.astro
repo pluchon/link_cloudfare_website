@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import { ClientRouter } from 'astro:transitions';
 import SiteHeader from '../components/SiteHeader.astro';
+import MermaidRenderer from '../components/MermaidRenderer.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import { site } from '../config/site';
 
@@ -241,6 +242,8 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
         }
       })();
     </script>
+
+    <MermaidRenderer />
 
     <slot name="head" />
   </head>

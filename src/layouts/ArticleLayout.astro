@@ -437,8 +437,9 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
         onScroll();
       }
 
-      // 代码块：语言标签 + 复制按钮
-      document.querySelectorAll('.prose pre').forEach(function (pre) {
+      // 代码块：语言标签 + 复制按钮。mermaid 块要排掉，
+      // 它渲染出来是一张图，不该有复制按钮和展开条
+      document.querySelectorAll('.prose pre:not(.mermaid)').forEach(function (pre) {
         if (pre.dataset.enhanced === '1') return;
         pre.dataset.enhanced = '1';
 

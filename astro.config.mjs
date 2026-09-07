@@ -1,4 +1,5 @@
 import { defineConfig } from 'astro/config';
+import { remarkMermaid } from './src/plugins/remark-mermaid.mjs';
 
 export default defineConfig({
   site: 'https://www.nuonuoya.cn',
@@ -13,6 +14,8 @@ export default defineConfig({
     port: 4321,
   },
   markdown: {
+    // mermaid 代码块要在 Shiki 之前被换掉，否则源码会被拆成着色 span
+    remarkPlugins: [remarkMermaid],
     shikiConfig: {
       // css-variables 主题让代码高亮跟着站点色板走，深浅色自动切换
       theme: 'css-variables',
