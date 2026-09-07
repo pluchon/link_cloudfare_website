@@ -11,6 +11,7 @@ export const GET: APIRoute = async () => {
     { loc: '/article/' },
     { loc: '/info/' },
     { loc: '/xiaomeng/' },
+    { loc: '/daily/' },
     { loc: '/tags/' },
     { loc: '/about/' },
     ...all.map(({ kind, entry }) => ({

@@ -1,7 +1,7 @@
 import { defineCollection, z } from 'astro:content';
 import { plainMarkdown, profileMarkdown } from './loaders/plain-markdown';
 
-// 三个内容集合都不写 frontmatter，元信息由加载器从文件本身推断，
+// 四个内容集合都不写 frontmatter，元信息由加载器从文件本身推断，
 // 这里的 schema 只是给推断结果兜个底
 const schema = z.object({
   title: z.string(),
@@ -28,6 +28,11 @@ const xiaomeng = defineCollection({
   schema,
 });
 
+const daily = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/daily', defaultCategory: '日常' }),
+  schema,
+});
+
 // 关于页正文：引用块里的 tags 变成技能标签，其余整篇渲染
 const profile = defineCollection({
   loader: profileMarkdown({ dir: 'src/content/profile' }),
@@ -37,4 +42,4 @@ const profile = defineCollection({
   }),
 });
 
-export const collections = { article, info, xiaomeng, profile };
+export const collections = { article, info, xiaomeng, daily, profile };

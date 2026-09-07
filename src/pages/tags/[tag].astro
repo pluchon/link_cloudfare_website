@@ -74,12 +74,20 @@ const { tag, items } = Astro.props as {
 
   .head__meta {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.75rem;
     margin: 0;
     color: var(--fg-muted);
     font-size: 0.9375rem;
     white-space: nowrap;
+  }
+
+  /* 基线对齐在这里反而看着歪：链接比篇数小 3 个字号，
+     又多带 2.4px 内边距和 1px 下划线，整个盒子往下坠。
+     去掉内边距让两个盒子等高，再按中心对齐。首页的分类标题行同理 */
+  .head__meta .text-link {
+    padding-bottom: 0;
+    line-height: 1;
   }
 
   .body {

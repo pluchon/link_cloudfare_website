@@ -1,0 +1,42 @@
+---
+import type { GetStaticPaths } from 'astro';
+import { render, type CollectionEntry } from 'astro:content';
+import ArticleLayout from '../../layouts/ArticleLayout.astro';
+import { getPublished, relatedEntries } from '../../lib/content';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const entries = await getPublished('daily');
+  return entries.map((entry, index) => ({
+    params: { slug: entry.data.slug },
+    props: {
+      entry,
+      // 列表按时间倒序，所以「上一篇」是更新的那条
+      prev: entries[index + 1],
+      next: entries[index - 1],
+      related: relatedEntries(entry, entries),
+    },
+  }));
+};
+
+type Entry = CollectionEntry<'daily'>;
+
+const { entry, prev, next, related } = Astro.props as {
+  entry: Entry;
+  prev?: Entry;
+  next?: Entry;
+  related: Entry[];
+};
+
+const { Content, headings } = await render(entry);
+---
+
+<ArticleLayout
+  kind="daily"
+  entry={entry}
+  headings={headings}
+  prev={prev}
+  next={next}
+  related={related}
+>
+  <Content />
+</ArticleLayout>

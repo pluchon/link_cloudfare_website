@@ -1,0 +1,20 @@
+---
+import ListLayout from '../../layouts/ListLayout.astro';
+import { branches } from '../../config/site';
+import { getPublished, paginateEntries } from '../../lib/content';
+
+const entries = await getPublished('daily');
+const pages = paginateEntries(entries);
+---
+
+<ListLayout
+  kind="daily"
+  title="日常"
+  cover={branches.find((b) => b.key === 'daily')?.cover}
+  description="生活里的碎片记录"
+  entries={pages[0]}
+  page={1}
+  totalPages={pages.length}
+  basePath="/daily/"
+  emptyText="这里还空着..."
+/>

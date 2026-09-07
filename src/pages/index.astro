@@ -47,6 +47,25 @@ for (const branch of branches) {
   <div class="canvas" data-canvas>
     <div class="dots" aria-hidden="true"></div>
 
+    <div class="zoombar" data-zoombar hidden>
+      <button class="zoombar__btn" type="button" data-zoom="out" aria-label="缩小">
+        <span class="zoombar__minus"></span>
+      </button>
+      <button
+        class="zoombar__level"
+        type="button"
+        data-zoom="reset"
+        aria-label="恢复到适应屏幕"
+        title="恢复到适应屏幕"
+      >
+        100%
+      </button>
+      <button class="zoombar__btn" type="button" data-zoom="in" aria-label="放大">
+        <span class="zoombar__minus"></span>
+        <span class="zoombar__bar"></span>
+      </button>
+    </div>
+
     <div class="scene" data-scene>
       <div class="map" data-map>
         <svg class="wires" data-wires aria-hidden="true"></svg>
@@ -193,6 +212,77 @@ for (const branch of branches) {
     mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
   }
 
+  /* ---------- 右下角缩放条 ---------- */
+
+  .zoombar {
+    position: absolute;
+    right: clamp(1rem, 3vw, 2rem);
+    bottom: clamp(1rem, 3vw, 2rem);
+    z-index: 4;
+    display: flex;
+    align-items: stretch;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  .zoombar__btn,
+  .zoombar__level {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    transition: color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+  }
+
+  .zoombar__btn {
+    position: relative;
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  /* 加号减号用两根线拼，和展开按钮同一套语言 */
+  .zoombar__minus,
+  .zoombar__bar {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: currentColor;
+  }
+
+  .zoombar__minus {
+    width: 0.6rem;
+    height: 1px;
+    transform: translate(-50%, -50%);
+  }
+
+  .zoombar__bar {
+    width: 1px;
+    height: 0.6rem;
+    transform: translate(-50%, -50%);
+  }
+
+  .zoombar__level {
+    min-width: 3.5rem;
+    padding-inline: 0.25rem;
+    border-inline: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .zoombar__btn:hover,
+  .zoombar__level:hover { color: var(--accent); background: var(--accent-wash); }
+
+  .zoombar__btn:disabled { color: var(--line-strong); cursor: default; background: none; }
+
+  /* 手动缩放过之后标出来，提示这里可以点回自动适应 */
+  .zoombar[data-manual='1'] .zoombar__level { color: var(--accent); }
+
   .canvas[data-pannable='1'] { cursor: grab; touch-action: none; }
   .canvas[data-dragging='1'] { cursor: grabbing; user-select: none; }
 
@@ -206,6 +296,10 @@ for (const branch of branches) {
   }
 
   .scene[data-eased='1'] { transition: transform 420ms var(--ease-out); }
+
+  /* 滚轮连续缩放时必须去掉过渡：每一格都跑 420ms 会糊成一片橡皮筋。
+     只有点「重置」回到自动适应时才让它动画过去 */
+  .map[data-instant='1'] { transition: none; }
 
   .map {
     position: relative;
@@ -588,6 +682,9 @@ for (const branch of branches) {
   @media (max-width: 60rem) {
     .canvas { height: auto; overflow: visible; cursor: auto; }
 
+    /* 竖版树是正常滚动的页面，不需要缩放 */
+    .zoombar { display: none; }
+
     .scene {
       position: static;
       display: block;
@@ -672,6 +769,8 @@ for (const branch of branches) {
       m.canvas.removeEventListener('click', m.onClick, true);
       m.canvas.removeEventListener('dragstart', m.onDragStart);
       m.canvas.removeEventListener('pointerleave', m.onLeave);
+      m.canvas.removeEventListener('wheel', m.onWheel);
+      window.removeEventListener('keydown', m.onKey);
       window.removeEventListener('pointermove', m.onMove);
       window.removeEventListener('pointerup', m.onUp);
       window.removeEventListener('resize', m.onResize);
@@ -704,6 +803,12 @@ for (const branch of branches) {
       var originY = 0;
       var scale = 1;
       var litCard = null;
+
+      // null = 跟着自动适应走；一旦用户手动缩放就锁成具体倍率
+      var userZoom = null;
+      var ZOOM_MIN = 0.3;
+      var ZOOM_MAX = 2;
+      var zoombar = document.querySelector('[data-zoombar]');
 
       // 量盒子必须用未经 transform 的布局偏移。getBoundingClientRect 会把
       // 入场动画的 translateX 一起算进去，线就会短一截接不到卡片上
@@ -1039,19 +1144,87 @@ for (const branch of branches) {
       }
 
       // 展开的卡片多到一屏放不下时，整张图按比例缩小，最多缩到 55%
-      function fit() {
-        if (!wide) {
-          map.style.transform = '';
-          scale = 1;
-          return;
-        }
+      function autoScale() {
         var s = Math.min(
           1,
           (canvas.clientWidth - 32) / map.offsetWidth,
           (canvas.clientHeight - 32) / map.offsetHeight,
         );
-        scale = Math.max(0.55, s);
+        return Math.max(0.55, s);
+      }
+
+      function updateZoomUI() {
+        if (!zoombar) return;
+        zoombar.hidden = !wide;
+        if (!wide) return;
+        zoombar.dataset.manual = userZoom === null ? '' : '1';
+        var level = zoombar.querySelector('[data-zoom="reset"]');
+        if (level) level.textContent = Math.round(scale * 100) + '%';
+        var out = zoombar.querySelector('[data-zoom="out"]');
+        var zin = zoombar.querySelector('[data-zoom="in"]');
+        if (out) out.disabled = scale <= ZOOM_MIN + 0.001;
+        if (zin) zin.disabled = scale >= ZOOM_MAX - 0.001;
+      }
+
+      function fit() {
+        if (!wide) {
+          map.style.transform = '';
+          scale = 1;
+          updateZoomUI();
+          return;
+        }
+        scale = userZoom === null ? autoScale() : userZoom;
         map.style.transform = 'scale(' + scale + ')';
+        updateZoomUI();
+      }
+
+      // 缩放时把光标底下那个点钉住，视觉上才是「以鼠标为中心放大」。
+      // 先换倍率再量新的位置，差多少就补多少到平移量上，
+      // 这样不用关心 transform-origin 到底是哪一点
+      function zoomTo(next, clientX, clientY) {
+        if (!wide) return;
+        next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+        if (Math.abs(next - scale) < 0.0005) return;
+
+        var anchorX = clientX;
+        var anchorY = clientY;
+        if (anchorX === undefined) {
+          var box = canvas.getBoundingClientRect();
+          anchorX = box.left + box.width / 2;
+          anchorY = box.top + box.height / 2;
+        }
+
+        // 先把进行中的过渡掐掉。点「重置」会给 map 和 scene 各挂一段 420ms 动画，
+        // 这时候量 getBoundingClientRect 拿到的是动画中间态，而 scale / tx / ty
+        // 已经是终值——两者对不上，锚点就算歪了。
+        // 去掉 transition 会让属性立刻落到终值，读一次布局把它逼出来
+        map.dataset.instant = '1';
+        scene.dataset.eased = '';
+        void map.getBoundingClientRect();
+
+        var before = map.getBoundingClientRect();
+        var px = (anchorX - before.left) / scale;
+        var py = (anchorY - before.top) / scale;
+
+        userZoom = next;
+        fit();
+
+        var after = map.getBoundingClientRect();
+        tx += anchorX - (after.left + px * scale);
+        ty += anchorY - (after.top + py * scale);
+
+        measure();
+      }
+
+      function resetZoom() {
+        userZoom = null;
+        tx = 0;
+        ty = 0;
+        map.dataset.instant = '';
+        scene.dataset.eased = '1';
+        fit();
+        drawWires(false);
+        measure();
       }
 
       function measure() {
@@ -1132,6 +1305,76 @@ for (const branch of branches) {
         event.preventDefault();
       }
 
+      // deltaX/deltaY 的单位看 deltaMode：0 是像素，1 是行，2 是页。
+      // Firefox 常报「行」，不归一化的话一格才滚 3，几乎动不了
+      function wheelPx(value, mode) {
+        if (mode === 1) return value * 16;
+        if (mode === 2) return value * 100;
+        return value;
+      }
+
+      // Ctrl/⌘ + 滚轮缩放，不按就是平移画布。
+      // 必须 passive:false 才能 preventDefault，否则浏览器会把 ctrl+滚轮
+      // 当成整页缩放
+      function onWheel(event) {
+        // 窄屏是正常滚动的页面，一律不拦
+        if (!wide) return;
+
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          // 触控板的 deltaY 很碎，用指数缩放手感才线性；
+          // 一格滚轮约 1.2 倍，和按钮的步长对齐
+          zoomTo(
+            scale * Math.exp(-wheelPx(event.deltaY, event.deltaMode) * 0.002),
+            event.clientX,
+            event.clientY,
+          );
+          return;
+        }
+
+        var dx = wheelPx(event.deltaX, event.deltaMode);
+        var dy = wheelPx(event.deltaY, event.deltaMode);
+
+        // 按住 shift 横向平移。浏览器通常自己会把 shift+滚轮转成 deltaX，
+        // 但不是所有浏览器都转，所以这里兜一手
+        if (event.shiftKey && !dx) {
+          dx = dy;
+          dy = 0;
+        }
+
+        if (!dx && !dy) return;
+        event.preventDefault();
+
+        // 平移要跟手，把重置留下的缓动去掉
+        scene.dataset.eased = '';
+        tx = Math.min(maxX, Math.max(minX, tx - dx));
+        ty = Math.min(maxY, Math.max(minY, ty - dy));
+        apply();
+      }
+
+      function onZoomClick(event) {
+        var btn = event.target.closest ? event.target.closest('[data-zoom]') : null;
+        if (!btn) return;
+        event.preventDefault();
+        var act = btn.getAttribute('data-zoom');
+        if (act === 'reset') resetZoom();
+        else zoomTo(scale * (act === 'in' ? 1.2 : 1 / 1.2));
+      }
+
+      function onKey(event) {
+        if (!wide || !(event.ctrlKey || event.metaKey)) return;
+        if (event.key === '=' || event.key === '+') {
+          event.preventDefault();
+          zoomTo(scale * 1.2);
+        } else if (event.key === '-' || event.key === '_') {
+          event.preventDefault();
+          zoomTo(scale / 1.2);
+        } else if (event.key === '0') {
+          event.preventDefault();
+          resetZoom();
+        }
+      }
+
       function onResize() {
         wide = window.matchMedia('(min-width: 60.0625rem)').matches;
         if (!wide) {
@@ -1141,6 +1384,8 @@ for (const branch of branches) {
           map.style.transform = '';
           scale = 1;
           canvas.dataset.pannable = '';
+          userZoom = null;
+          updateZoomUI();
           // 宽屏量出来的标签卡宽度是内联样式，会压过窄屏的 width: auto，
           // 从宽屏拖窄时必须清掉
           map.querySelectorAll('.node--tags').forEach(function (card) {
@@ -1158,6 +1403,9 @@ for (const branch of branches) {
 
       canvas.addEventListener('pointerdown', onDown);
       canvas.addEventListener('click', onClick, true);
+      canvas.addEventListener('wheel', onWheel, { passive: false });
+      if (zoombar) zoombar.addEventListener('click', onZoomClick);
+      window.addEventListener('keydown', onKey);
       canvas.addEventListener('dragstart', onDragStart);
       canvas.addEventListener('pointerleave', onLeave);
       window.addEventListener('pointermove', onMove, { passive: true });
@@ -1173,6 +1421,8 @@ for (const branch of branches) {
         onDragStart: onDragStart,
         onLeave: onLeave,
         onResize: onResize,
+        onWheel: onWheel,
+        onKey: onKey,
       };
 
       fit();

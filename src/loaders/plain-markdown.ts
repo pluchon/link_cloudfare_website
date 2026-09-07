@@ -134,19 +134,49 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   };
 }
 
-// git 提交时间比文件修改时间可靠：克隆仓库会把 mtime 全部重置成克隆那一刻
-function gitDate(file: string): Date | null {
+// git 提交时间比文件修改时间可靠：克隆仓库会把 mtime 全部重置成克隆那一刻。
+//
+// 一旦问出来就记住。这里必须缓存，否则会有这样一条坑：
+// 仓库设了 core.autocrlf=true，`git commit` 会顺手把工作区文件的换行规范化，
+// 于是被碰过的文件 mtime 全部变成「现在」；与此同时 .git/index.lock 还占着，
+// dev server 的 watcher 这时重新解析文件，git 查询失败 → 退回 mtime
+// → 所有老文章的日期一起跳到今天。构建时不会碰上（没有并发的 git 写入），
+// 所以只有长时间开着的 dev server 才会看到，排查起来很费劲。
+const gitDateCache = new Map<string, number>();
+
+function runGit(args: string[]): string | null {
   try {
-    const out = execFileSync('git', ['log', '-1', '--format=%aI', '--', file], {
+    return execFileSync('git', args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
-    if (!out) return null;
-    const d = new Date(out);
-    return Number.isNaN(d.valueOf()) ? null : d;
   } catch {
     return null;
   }
+}
+
+function gitDate(file: string): Date | null {
+  const query = () => runGit(['log', '-1', '--format=%aI', '--', file]);
+
+  // 失败重试一次：commit 期间 index.lock 占着会让第一次必然失败
+  let out = query();
+  if (out === null) out = query();
+
+  if (out === null) {
+    // git 真的用不了。有缓存就用缓存，绝不退回 mtime——
+    // 那正是「加一篇新文章，老文章日期全被改写」的成因
+    const cached = gitDateCache.get(file);
+    return cached === undefined ? null : new Date(cached);
+  }
+
+  // git 能用但没有记录：这个文件还没进版本库，此时 mtime 才是对的
+  if (!out) return null;
+
+  const d = new Date(out);
+  if (Number.isNaN(d.valueOf())) return null;
+
+  gitDateCache.set(file, d.valueOf());
+  return d;
 }
 
 async function listMarkdown(dir: string): Promise<string[]> {

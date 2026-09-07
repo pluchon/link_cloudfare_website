@@ -19,6 +19,7 @@ export const nav = [
   { label: '文章', href: '/article/' },
   { label: '资料', href: '/info/' },
   { label: '小萌', href: '/xiaomeng/' },
+  { label: '日常', href: '/daily/' },
   { label: '关于', href: '/about/' },
 ] as const;
 
@@ -62,6 +63,13 @@ export const branches = [
     href: '/xiaomeng/',
     desc: '小萌的一些资料与设计构想',
     cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/xiaomeng.webp',
+  },
+  {
+    key: 'daily',
+    label: '日常',
+    href: '/daily/',
+    desc: '生活里的碎片记录',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/daily.webp',
   },
 ] as const;
 
