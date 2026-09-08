@@ -2,7 +2,7 @@
 
 Astro 静态站 → Cloudflare Pages → `https://www.nuonuoya.cn`
 
-**进度、约束、未完成任务：见 [AGENTS.md](./AGENTS.md)**（给后续开发 / AI 的唯一说明文件）。
+**架构、硬约束、踩过的坑：见 [AGENTS.md](./AGENTS.md)**（给后续开发 / AI 的唯一说明文件）。
 
 ```powershell
 npm install
