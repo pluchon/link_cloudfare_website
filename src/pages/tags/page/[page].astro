@@ -1,0 +1,32 @@
+---
+import type { GetStaticPaths } from 'astro';
+import TagListLayout from '../../../layouts/TagListLayout.astro';
+import { getAllPublished, tagCounts, paginateEntries, TAGS_PAGE_SIZE } from '../../../lib/content';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const all = await getAllPublished();
+  const tags = tagCounts(all.map((item) => item.entry));
+  const pages = paginateEntries(tags, TAGS_PAGE_SIZE);
+  // 第 1 页由 /tags/ 承担，这里只生成第 2 页起
+  return pages.slice(1).map((slice, index) => ({
+    params: { page: String(index + 2) },
+    props: {
+      tags: slice,
+      totalTags: tags.length,
+      totalEntries: all.length,
+      page: index + 2,
+      totalPages: pages.length,
+    },
+  }));
+};
+
+const { tags, totalTags, totalEntries, page, totalPages } = Astro.props;
+---
+
+<TagListLayout
+  tags={tags}
+  totalTags={totalTags}
+  totalEntries={totalEntries}
+  page={page}
+  totalPages={totalPages}
+/>

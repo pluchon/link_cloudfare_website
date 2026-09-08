@@ -236,6 +236,8 @@ body.is-canvas > main {
 
 .site-nav a {
   position: relative;
+  /* 导航项自身绝不折行：宁可整条挤，也不要「文/章」劈成两行 */
+  white-space: nowrap;
   padding: 0.4rem 0.75rem;
   font-size: 0.875rem;
   color: var(--fg-muted);
@@ -298,17 +300,19 @@ body.is-canvas > main {
   .brand__full { display: none; }
   .brand__short { display: inline; }
 
-  .site-nav a { padding: 0.4rem 0.5rem; font-size: 0.8125rem; }
+  .site-nav { gap: 0; }
+  .site-nav a { padding: 0.4rem 0.35rem; font-size: 0.8125rem; }
   /* 下划线要跟着改后的内边距收，否则会伸到文字外面 */
-  .site-nav a::after { left: 0.5rem; right: 0.5rem; }
+  .site-nav a::after { left: 0.35rem; right: 0.35rem; }
 
   .icon-btn { margin-left: 0.15rem; }
 }
 
-/* 360px 以下再挤一档，保证四个导航项不换行 */
+/* 360px 以下再挤一档，保证五个导航项不换行 */
 @media (max-width: 22.5rem) {
-  .site-nav a { padding: 0.4rem 0.3rem; }
-  .site-nav a::after { left: 0.3rem; right: 0.3rem; }
+  .site-nav a { padding: 0.4rem 0.2rem; font-size: 0.78125rem; }
+  .site-nav a::after { left: 0.2rem; right: 0.2rem; }
+  .icon-btn { width: 2rem; margin-left: 0; }
 }
 
 /* ---------- 页脚 ---------- */

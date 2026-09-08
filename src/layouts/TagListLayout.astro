@@ -1,0 +1,216 @@
+---
+// 标签总览。一页 48 个，超出翻页；标签名过长时截断，不让格子被撑变形
+import BaseLayout from './BaseLayout.astro';
+import DotBackdrop from '../components/DotBackdrop.astro';
+
+interface Props {
+  tags: { tag: string; count: number }[];
+  totalTags: number;
+  totalEntries: number;
+  page?: number;
+  totalPages?: number;
+}
+
+const { tags, totalTags, totalEntries, page = 1, totalPages = 1 } = Astro.props;
+
+function pageHref(target: number): string {
+  return target <= 1 ? '/tags/' : `/tags/page/${target}/`;
+}
+
+const prevUrl = page > 1 ? pageHref(page - 1) : undefined;
+const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
+---
+
+<BaseLayout
+  title={page > 1 ? `标签 · 第 ${page} 页` : '标签'}
+  description="按话题浏览全部内容。"
+  prevUrl={prevUrl}
+  nextUrl={nextUrl}
+>
+  <DotBackdrop />
+
+  <section class="wrap head">
+    <div class="head__row" data-reveal>
+      <h1 class="head__title">标签</h1>
+      <p class="head__meta">共 {totalTags} 个话题，{totalEntries} 篇内容</p>
+    </div>
+  </section>
+
+  <section class="wrap body">
+    {
+      tags.length > 0 ? (
+        <ul class="tag-index">
+          {tags.map(({ tag, count }) => (
+            <li class="tag-index__item">
+              <a href={`/tags/${encodeURIComponent(tag)}/`} title={tag}>
+                <span class="tag-index__name">{tag}</span>
+                <span class="tag-index__count">{String(count).padStart(2, '0')}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="empty-state">这里还空着...</p>
+      )
+    }
+
+    {
+      totalPages > 1 && (
+        <nav class="pagination" aria-label="分页">
+          <a class="pagination__step" href={pageHref(page - 1)} aria-disabled={page <= 1 ? 'true' : undefined}>
+            ← 上一页
+          </a>
+          <span class="pagination__count">
+            {String(page).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
+          </span>
+          <a class="pagination__step" href={pageHref(page + 1)} aria-disabled={page >= totalPages ? 'true' : undefined}>
+            下一页 →
+          </a>
+        </nav>
+      )
+    }
+  </section>
+</BaseLayout>
+
+<style>
+  /* 背景是 fixed 的，内容层要抬上来 */
+  .head,
+  .body {
+    position: relative;
+    z-index: 1;
+  }
+
+  .head {
+    padding-block: 2rem 1.5rem;
+  }
+
+  /* 标题在左，统计贴到同一行的最右侧 */
+  .head__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    padding-bottom: 1.25rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .head__title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .head__meta {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.9375rem;
+    text-align: right;
+  }
+
+  .body {
+    padding-bottom: 4rem;
+  }
+
+  .empty-state {
+    display: grid;
+    place-content: center;
+    min-height: 45vh;
+    margin: 0;
+    color: var(--fg-faint);
+    font-size: 0.9375rem;
+  }
+
+  .tag-index {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    border-top: var(--hair) solid var(--line);
+    border-left: var(--hair) solid var(--line);
+  }
+
+  .tag-index__item {
+    border-right: var(--hair) solid var(--line);
+    border-bottom: var(--hair) solid var(--line);
+    /* 网格项默认 min-width:auto，内容撑得开就会把整列顶宽，
+       格子形状就变了。归零才能让下面的截断生效 */
+    min-width: 0;
+  }
+
+  .tag-index__item a {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+  }
+
+  .tag-index__item a:hover {
+    background: var(--accent-wash);
+    color: var(--accent);
+  }
+
+  /* 标签名过长时截断，而不是把格子撑变形。完整名字留在 title 里 */
+  .tag-index__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-serif);
+    font-size: 1rem;
+  }
+
+  .tag-index__count {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--fg-faint);
+  }
+
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--fg-muted);
+  }
+
+  .pagination__step {
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .pagination__step:hover {
+    color: var(--accent);
+  }
+
+  .pagination__step[aria-disabled='true'] {
+    color: var(--fg-faint);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .pagination__count {
+    color: var(--fg-faint);
+  }
+
+  @media (max-width: 44rem) {
+    .head__row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.6rem;
+    }
+
+    .head__title { white-space: normal; }
+    .head__meta { text-align: left; }
+  }
+</style>

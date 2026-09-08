@@ -97,6 +97,9 @@ export function relatedEntries<T extends { id: string; data: { tags: string[] } 
 // 列表分页大小
 export const PAGE_SIZE = 5;
 
+// 标签总览一页放多少个。48 是按栅格排下来正好铺满的数
+export const TAGS_PAGE_SIZE = 48;
+
 // 构建期分页：返回每一页的条目切片
 export function paginateEntries<T>(entries: T[], size = PAGE_SIZE): T[][] {
   if (entries.length === 0) return [[]];

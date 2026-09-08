@@ -28,9 +28,12 @@ const branchCovers: Record<string, string | undefined> = Object.fromEntries(
 );
 
 const leaves: Record<string, Leaf[]> = {};
+// 超出 BRANCH_LEAF_LIMIT 的部分不挂到图上，末尾用一张卡片交代还剩多少
+const overflow: Record<string, number> = {};
 for (const branch of branches) {
   const kind = branch.key as ContentKind;
   const entries = await getPublished(kind);
+  overflow[branch.key] = Math.max(0, entries.length - BRANCH_LEAF_LIMIT);
   leaves[branch.key] = entries.slice(0, BRANCH_LEAF_LIMIT).map((entry, i) => ({
     id: `l-${branch.key}-${i}`,
     title: entry.data.title,
@@ -183,6 +186,21 @@ for (const branch of branches) {
                       )}
                     </div>
                   ))}
+
+                  {overflow[branch.key] > 0 && (
+                    <div class="leaf-row">
+                      <a
+                        class="node node--more"
+                        href={branch.href}
+                        data-node={`more-${branch.key}`}
+                        data-pan-item
+                        data-pop
+                      >
+                        <span class="more__count">还有 {overflow[branch.key]} 篇</span>
+                        <span class="more__go">查看全部</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -195,6 +213,9 @@ for (const branch of branches) {
 
 <style>
   .canvas {
+    /* 画布平移 / 缩放的时长。比卡片入场略长一点，
+       让「图在挪」这件事托住「卡片在长出来」，整体才不显得一顿一顿 */
+    --dur-view: 620ms;
     position: relative;
     height: 100%;
     overflow: hidden;
@@ -283,8 +304,26 @@ for (const branch of branches) {
   /* 手动缩放过之后标出来，提示这里可以点回自动适应 */
   .zoombar[data-manual='1'] .zoombar__level { color: var(--accent); }
 
-  .canvas[data-pannable='1'] { cursor: grab; touch-action: none; }
-  .canvas[data-dragging='1'] { cursor: grabbing; user-select: none; }
+  /* 画布光标。系统自带的 grab 手在浅色底上跟着系统光标主题走，
+     用户那边是白的、几乎看不见，所以自己画一只：实心描边 + 反色光晕，
+     深浅两套主题各一份，任何底色上都读得出来 */
+  .canvas[data-pannable='1'] {
+    cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2226%22%20height%3D%2226%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M8%2013V5.6a1.4%201.4%200%201%201%202.8%200V12M10.8%2012V4.4a1.4%201.4%200%201%201%202.8%200V12M13.6%2012.4V6a1.4%201.4%200%201%201%202.8%200v6.4M16.4%2011.6a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%223.4%22%2F%3E%3Cpath%20d%3D%22M8%2013V5.6a1.4%201.4%200%201%201%202.8%200V12M10.8%2012V4.4a1.4%201.4%200%201%201%202.8%200V12M13.6%2012.4V6a1.4%201.4%200%201%201%202.8%200v6.4M16.4%2011.6a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%2316171a%22%20stroke-width%3D%221.5%22%2F%3E%3C%2Fsvg%3E") 12 10, grab;
+    touch-action: none;
+  }
+
+  .canvas[data-dragging='1'] {
+    cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2226%22%20height%3D%2226%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M7%2013v-1.6a1.4%201.4%200%201%201%202.8%200V13M9.8%2013v-2.2a1.4%201.4%200%201%201%202.8%200V13M12.6%2013v-1.8a1.4%201.4%200%201%201%202.8%200V13M15.4%2013.2v-1a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%223.4%22%2F%3E%3Cpath%20d%3D%22M7%2013v-1.6a1.4%201.4%200%201%201%202.8%200V13M9.8%2013v-2.2a1.4%201.4%200%201%201%202.8%200V13M12.6%2013v-1.8a1.4%201.4%200%201%201%202.8%200V13M15.4%2013.2v-1a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%2316171a%22%20stroke-width%3D%221.5%22%2F%3E%3C%2Fsvg%3E") 12 10, grabbing;
+    user-select: none;
+  }
+
+  :global(:root[data-theme='dark']) .canvas[data-pannable='1'] {
+    cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2226%22%20height%3D%2226%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M8%2013V5.6a1.4%201.4%200%201%201%202.8%200V12M10.8%2012V4.4a1.4%201.4%200%201%201%202.8%200V12M13.6%2012.4V6a1.4%201.4%200%201%201%202.8%200v6.4M16.4%2011.6a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%23101114%22%20stroke-width%3D%223.4%22%2F%3E%3Cpath%20d%3D%22M8%2013V5.6a1.4%201.4%200%201%201%202.8%200V12M10.8%2012V4.4a1.4%201.4%200%201%201%202.8%200V12M13.6%2012.4V6a1.4%201.4%200%201%201%202.8%200v6.4M16.4%2011.6a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%23e9e8e4%22%20stroke-width%3D%221.5%22%2F%3E%3C%2Fsvg%3E") 12 10, grab;
+  }
+
+  :global(:root[data-theme='dark']) .canvas[data-dragging='1'] {
+    cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2226%22%20height%3D%2226%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M7%2013v-1.6a1.4%201.4%200%201%201%202.8%200V13M9.8%2013v-2.2a1.4%201.4%200%201%201%202.8%200V13M12.6%2013v-1.8a1.4%201.4%200%201%201%202.8%200V13M15.4%2013.2v-1a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%23101114%22%20stroke-width%3D%223.4%22%2F%3E%3Cpath%20d%3D%22M7%2013v-1.6a1.4%201.4%200%201%201%202.8%200V13M9.8%2013v-2.2a1.4%201.4%200%201%201%202.8%200V13M12.6%2013v-1.8a1.4%201.4%200%201%201%202.8%200V13M15.4%2013.2v-1a1.4%201.4%200%200%201%202.8%200V16c0%203.3-2.4%206-5.6%206h-1.9c-1.6%200-3.1-.6-4.2-1.7l-2.4-2.5a1.4%201.4%200%200%201%202-2l1.7%201.5%22%20stroke%3D%22%23e9e8e4%22%20stroke-width%3D%221.5%22%2F%3E%3C%2Fsvg%3E") 12 10, grabbing;
+  }
 
   .scene {
     position: absolute;
@@ -295,7 +334,7 @@ for (const branch of branches) {
     will-change: transform;
   }
 
-  .scene[data-eased='1'] { transition: transform 420ms var(--ease-out); }
+  .scene[data-eased='1'] { transition: transform var(--dur-view) var(--ease-out); }
 
   /* 滚轮连续缩放时必须去掉过渡：每一格都跑 420ms 会糊成一片橡皮筋。
      只有点「重置」回到自动适应时才让它动画过去 */
@@ -309,7 +348,7 @@ for (const branch of branches) {
     width: max-content;
     padding: 2.5rem clamp(2rem, 6vw, 5rem);
     transform-origin: left center;
-    transition: transform 420ms var(--ease-out);
+    transition: transform var(--dur-view) var(--ease-out);
   }
 
   /* 连线层：路径由脚本按实际盒子位置算出来 */
@@ -333,7 +372,6 @@ for (const branch of branches) {
     stroke-width: 5;
     stroke-linecap: round;
     opacity: 0.85;
-    filter: blur(0.6px);
   }
 
   .branches {
@@ -366,13 +404,12 @@ for (const branch of branches) {
     position: relative;
     border: var(--hair) solid var(--line);
     background: color-mix(in srgb, var(--bg) 90%, transparent);
-    backdrop-filter: blur(4px);
     transition: transform var(--dur-2) var(--ease-out);
   }
 
   /* 彩色描边：透明边框 + padding-box 不透明填充，网格渐变就只在那 1px 边上显色。
      圆锥遮罩按指针角度开一段口子，光就跟着鼠标沿边走 */
-  .node::before {
+  .node.is-lit::before {
     content: '';
     position: absolute;
     inset: -1px;
@@ -408,7 +445,7 @@ for (const branch of branches) {
   }
 
   /* 卡片外的三色柔光 */
-  .node::after {
+  .node.is-lit::after {
     content: '';
     position: absolute;
     inset: -1px;
@@ -591,6 +628,43 @@ for (const branch of branches) {
     z-index: 2;
   }
 
+  /* ---------- 「还有 N 篇」 ---------- */
+
+  /* 比文章卡片矮一档、窄一截，一眼看出它不是一篇文章而是个出口 */
+  .node--more {
+    display: flex;
+    /* 两侧字号差了 4px，基线对齐会让小字看着往下坠，改按中心对齐 */
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    /* 宽度跟文章卡片对齐，不然它挂在一列的末尾会短一截 */
+    width: 29rem;
+    padding: 0.85rem 1rem;
+    border-style: dashed;
+  }
+
+  .more__count {
+    position: relative;
+    z-index: 1;
+    font-family: var(--font-serif);
+    font-size: 0.9375rem;
+    color: var(--fg-muted);
+  }
+
+  .more__go {
+    position: relative;
+    z-index: 1;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+  }
+
+  .node--more:hover { transform: translateX(0.35rem); }
+  .node--more:hover .more__count { color: var(--accent); }
+  .node--more:hover .more__go { color: var(--accent); }
+
   /* ---------- 标签节点 ---------- */
 
   /* 标签卡宽度由脚本量出来：标签少就一行，多了折成两行，最多两行。
@@ -662,8 +736,8 @@ for (const branch of branches) {
     opacity: 0;
     transform: translateX(-12px);
     transition:
-      opacity var(--dur-2) var(--ease-out),
-      transform var(--dur-2) var(--ease-out);
+      opacity var(--dur-3) var(--ease-out),
+      transform var(--dur-3) var(--ease-out);
     transition-delay: calc(var(--pop-i, 0) * var(--stagger));
   }
 
@@ -686,9 +760,19 @@ for (const branch of branches) {
     .zoombar { display: none; }
 
     .scene {
-      position: static;
+      /* 用 relative 而不是 static：点阵在窄屏是 fixed 的，
+         内容层得有定位才能稳稳压在它上面 */
+      position: relative;
+      z-index: 1;
       display: block;
       transform: none !important;
+    }
+
+    /* 卡片收起时画布只有两百来像素高，点阵跟着一起缩，下面就露出一大片纯底色。
+       窄屏改成固定铺满视口，和列表页那几个背景层的做法一致 */
+    .dots {
+      position: fixed;
+      height: auto;
     }
 
     .map {
@@ -722,7 +806,10 @@ for (const branch of branches) {
     .node--root,
     .node--branch,
     .node--leaf,
+    .node--more,
     .node--tags { width: auto; }
+
+    .node--more:hover { transform: none; }
 
     /* 根卡片：头像不再占半幅，收窄给文字让位 */
     .node--root { grid-template-columns: 34% minmax(0, 1fr); }
@@ -848,6 +935,10 @@ for (const branch of branches) {
       // 竖版树的主干距父卡片左边缘的距离，和 CSS 里 --indent 的一半对齐
       var SPINE = 12;
 
+      // 同时在跑的流光点上限。日常展开一两条分支远低于这个数，
+      // 只有把整张图铺开时才会触发降级
+      var FLOW_LIMIT = 14;
+
       function drawWires(animate) {
         wires.setAttribute('width', map.offsetWidth);
         wires.setAttribute('height', map.offsetHeight);
@@ -936,6 +1027,11 @@ for (const branch of branches) {
 
           if (reduced) return;
 
+          // 每个流光点都是一条在跑 stroke-dashoffset 动画的路径，
+          // 而 SVG 是一整层——动一个就得重绘整层。展开得多的时候
+          // 这是最贵的一笔持续开销，超过阈值就不再放点，线还照常画
+          if (pairs.length > FLOW_LIMIT) return;
+
           // 零长度虚线段 + 圆头线帽，渲染出来就是一个沿路径循环移动的圆点
           var flow = wires.querySelector('path.wire-flow[data-key="' + key + '"]');
           var flowFresh = !flow;
@@ -958,9 +1054,13 @@ for (const branch of branches) {
           }
         });
 
-        // 这一轮没用上的线说明对应分组收起了，删掉
+        // 这一轮没用上的线说明对应分组收起了，删掉。
+        // 超过阈值时连同已经存在的流光点一起清掉，不然降级不生效
+        var tooMany = pairs.length > FLOW_LIMIT;
         wires.querySelectorAll('path[data-key]').forEach(function (p) {
-          if (!seen[p.getAttribute('data-key')]) p.remove();
+          if (!seen[p.getAttribute('data-key')] || (tooMany && p.classList.contains('wire-flow'))) {
+            p.remove();
+          }
         });
       }
 
@@ -1060,15 +1160,17 @@ for (const branch of branches) {
             el.classList.remove('is-pop');
           });
 
-          var wait = reduced ? 0 : 260 + items.length * 45 + 40;
+          // 收起期间视图一动不动。以前这里在退场刚开始时就 fit() 了一次
+          // （卡片还在、图还大 → 缩小），退场结束又 fit() 一次
+          // （图变小 → 放大），看起来就是先缩后放。现在交给 toggle 统一收尾
+          // 和上面 [data-pop] 的 --dur-3 + --stagger 对应，改一处要一起改
+          var wait = reduced ? 0 : 520 + items.length * 45 + 40;
           group.__popTimer = setTimeout(function () {
             group.hidden = true;
             group.removeAttribute('data-closing');
-            fit();
             drawWires(false);
-            measure();
           }, wait);
-          return;
+          return wait;
         }
 
         group.removeAttribute('data-closing');
@@ -1089,7 +1191,11 @@ for (const branch of branches) {
         group.querySelectorAll('[data-knob][aria-expanded="true"]').forEach(function (knob) {
           knob.setAttribute('aria-expanded', 'false');
           var sub = map.querySelector('[data-group="' + knob.getAttribute('data-knob') + '"]');
-          if (sub) pop(sub, false);
+          if (!sub) return;
+          // 里层只管退场，视图由最外层那次点击统一收尾
+          sub.__view = null;
+          clearTimeout(sub.__viewTimer);
+          pop(sub, false);
         });
       }
 
@@ -1101,23 +1207,47 @@ for (const branch of branches) {
         var show = knob.getAttribute('aria-expanded') !== 'true';
         knob.setAttribute('aria-expanded', show ? 'true' : 'false');
 
-        if (!show) collapseBelow(group);
-        pop(group, show);
+        if (!show) {
+          collapseBelow(group);
+          var wait = pop(group, false) || 0;
+          // 等所有卡片退完场，再一次性回到展开前的样子
+          clearTimeout(group.__viewTimer);
+          group.__viewTimer = setTimeout(function () {
+            restoreView(group);
+          }, wait + 20);
+          return;
+        }
+
+        // 展开前先把当前视图存下来，收起时原样还原。
+        // 必须抢在下面那帧的 fit() 之前——fit() 会按新布局重算 scale，
+        // 等到 focusOn 里再存就已经是被覆盖过的值了
+        if (!group.__view) {
+          group.__view = { userZoom: userZoom, scale: scale, tx: tx, ty: ty };
+        }
+
+        pop(group, true);
 
         requestAnimationFrame(function () {
           // 先定标签卡的宽度，线要按最终位置画
           fitTags();
           fit();
-          // 收起交给 pop 的定时器，等退场动画跑完再重建
-          if (show) drawWires(true);
+          drawWires(true);
           measure();
+          focusOn(knob, group);
         });
       }
 
       /* ---------- 悬浮辉光 ---------- */
 
+      // 辉光那层是 8 个径向渐变 + 一个圆锥遮罩，24 张卡片全都挂着的话
+      // 光栅化开销很可观。改成只给当前这张生成，离开后等淡出跑完再摘掉
       function clearGlow(card) {
-        if (card) card.style.setProperty('--glow', '0');
+        if (!card) return;
+        card.style.setProperty('--glow', '0');
+        clearTimeout(card.__glowTimer);
+        card.__glowTimer = setTimeout(function () {
+          if (litCard !== card) card.classList.remove('is-lit');
+        }, 320);
       }
 
       function glow(event) {
@@ -1125,6 +1255,9 @@ for (const branch of branches) {
         if (card !== litCard) clearGlow(litCard);
         litCard = card;
         if (!card) return;
+
+        clearTimeout(card.__glowTimer);
+        card.classList.add('is-lit');
 
         var r = card.getBoundingClientRect();
         var dx = event.clientX - r.left - r.width / 2;
@@ -1213,6 +1346,104 @@ for (const branch of branches) {
         tx += anchorX - (after.left + px * scale);
         ty += anchorY - (after.top + py * scale);
 
+        measure();
+      }
+
+      // 展开某一支之后把视线带过去：算出「父卡片 + 这一组子卡片」的包围盒，
+      // 移到画布正中，顺带在自动适应的基础上放大一点，做出聚焦感。
+      //
+      // 位置用公式推而不是读 getBoundingClientRect：这一帧 map 上挂着 420ms
+      // 的缩放过渡，读到的会是动画中间态。map 的 transform-origin 是 left center，
+      // 所以 y 要绕着自身中线换算
+      function focusOn(knob, group) {
+        if (!wide) return;
+        var parent = knob.closest('.node');
+        if (!parent) return;
+
+        var left = Infinity;
+        var top = Infinity;
+        var right = -Infinity;
+        var bottom = -Infinity;
+
+        function swallow(el) {
+          var b = boxIn(el, map);
+          left = Math.min(left, b.x);
+          top = Math.min(top, b.y);
+          right = Math.max(right, b.x + b.w);
+          bottom = Math.max(bottom, b.y + b.h);
+        }
+
+        swallow(parent);
+        group.querySelectorAll('[data-node]').forEach(function (child) {
+          if (child.parentElement.closest('[data-group]') !== group) return;
+          swallow(child);
+        });
+
+        var bw = right - left;
+        var bh = bottom - top;
+        if (!(bw > 0) || !(bh > 0)) return;
+
+        // 记下展开前的视图，收起时原样还原
+        // 这一组的卡片自己还能再展开吗？能的话就别摆在正中，
+        // 靠左放、右边留出下一级的位置，免得下次展开整张图又要平移一次
+        var deeper = false;
+        group.querySelectorAll('[data-node]').forEach(function (child) {
+          if (child.parentElement.closest('[data-group]') !== group) return;
+          if (child.querySelector('[data-knob]')) deeper = true;
+        });
+
+        // 用户手动缩放过就别动倍率，只把视线挪过去
+        if (userZoom === null) {
+          var want = Math.min(
+            (canvas.clientWidth - 96) / bw,
+            (canvas.clientHeight - 96) / bh,
+          );
+          // 只往自动适应之上够，且不越过 100%——放太大反而看不到上下文
+          scale = Math.max(autoScale(), Math.min(1, want));
+          map.dataset.instant = '';
+          map.style.transform = 'scale(' + scale + ')';
+          updateZoomUI();
+        }
+
+        var h = map.offsetHeight;
+        var px = left + bw / 2;
+        var py = top + bh / 2;
+
+        scene.dataset.eased = '1';
+
+        var PAD = 72;
+        if (deeper && bw * scale + PAD * 2 <= canvas.clientWidth) {
+          // 靠左对齐，右半边空着等下一级
+          tx = PAD - map.offsetLeft - left * scale;
+        } else {
+          tx = canvas.clientWidth / 2 - map.offsetLeft - px * scale;
+        }
+        ty = canvas.clientHeight / 2 - map.offsetTop - h / 2 - (py - h / 2) * scale;
+        measure();
+      }
+
+      // 收起之后回到展开前：倍率和平移都还原。
+      // userZoom 复原后 fit() 自己会算出对的倍率——此时卡片已经退场，
+      // 自动适应算出来的正是展开前那个值
+      function restoreView(group) {
+        var v = group.__view;
+        group.__view = null;
+        map.dataset.instant = '';
+        scene.dataset.eased = '1';
+        fitTags();
+        if (v) {
+          userZoom = v.userZoom;
+          tx = v.tx;
+          ty = v.ty;
+          // 直接还原倍率，不走 fit()——fit() 会按当前布局重算自动适应，
+          // 那不一定等于展开前实际用的倍率
+          scale = v.scale;
+          map.style.transform = 'scale(' + scale + ')';
+          updateZoomUI();
+        } else {
+          fit();
+        }
+        drawWires(false);
         measure();
       }
 
