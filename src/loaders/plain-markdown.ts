@@ -156,7 +156,10 @@ function runGit(args: string[]): string | null {
 }
 
 function gitDate(file: string): Date | null {
-  const query = () => runGit(['log', '-1', '--format=%aI', '--', file]);
+  // --follow 是必须的：git 默认不追踪重命名，一旦内容目录改过名
+  // （比如 article → project），查新路径只会查到「重命名那次提交」，
+  // 于是所有文章的日期一起变成改名当天。--follow 能穿过重命名追到原始提交
+  const query = () => runGit(['log', '--follow', '-1', '--format=%aI', '--', file]);
 
   // 失败重试一次：commit 期间 index.lock 占着会让第一次必然失败
   let out = query();

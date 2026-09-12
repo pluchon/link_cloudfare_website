@@ -5,13 +5,15 @@ import { getPublished, paginateEntries } from '../../lib/content';
 
 const entries = await getPublished('daily');
 const pages = paginateEntries(entries);
+
+const branch = branches.find((b) => b.key === 'daily');
 ---
 
 <ListLayout
   kind="daily"
-  title="日常"
-  cover={branches.find((b) => b.key === 'daily')?.cover}
-  description="生活里的碎片记录"
+  title={branch?.label}
+  cover={branch?.cover}
+  description={branch?.desc}
   entries={pages[0]}
   page={1}
   totalPages={pages.length}

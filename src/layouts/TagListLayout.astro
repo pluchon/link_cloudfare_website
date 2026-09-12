@@ -2,6 +2,7 @@
 // 标签总览。一页 48 个，超出翻页；标签名过长时截断，不让格子被撑变形
 import BaseLayout from './BaseLayout.astro';
 import DotBackdrop from '../components/DotBackdrop.astro';
+import { TAGS_PAGE_SIZE } from '../lib/content';
 
 interface Props {
   tags: { tag: string; count: number }[];
@@ -16,6 +17,11 @@ const { tags, totalTags, totalEntries, page = 1, totalPages = 1 } = Astro.props;
 function pageHref(target: number): string {
   return target <= 1 ? '/tags/' : `/tags/page/${target}/`;
 }
+
+// 分页时把栅格补满一页的格数：列数随视口宽度变，行数也跟着变，
+// 光靠 CSS 的 min-height 猜不出该留多高。补空格子最直接，
+// 任何宽度下每一页的栅格几何都一样，翻页器自然停在同一个位置
+const fillers = totalPages > 1 ? Math.max(0, TAGS_PAGE_SIZE - tags.length) : 0;
 
 const prevUrl = page > 1 ? pageHref(page - 1) : undefined;
 const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
@@ -36,7 +42,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     </div>
   </section>
 
-  <section class="wrap body">
+  <section class="wrap body" data-reserve={totalPages > 1 ? '1' : undefined}>
     {
       tags.length > 0 ? (
         <ul class="tag-index">
@@ -47,6 +53,9 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
                 <span class="tag-index__count">{String(count).padStart(2, '0')}</span>
               </a>
             </li>
+          ))}
+          {Array.from({ length: fillers }).map(() => (
+            <li class="tag-index__filler" aria-hidden="true" />
           ))}
         </ul>
       ) : (
@@ -123,19 +132,29 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     font-size: 0.9375rem;
   }
 
+  /* 补位用的空格子：不画边框，只占一格 */
+  .tag-index__filler {
+    border: 0;
+  }
+
   .tag-index {
+    /* 每格都是单行（名字过长会截断），所以行高可以钉死。
+       实测一格 64px；钉死之后补进来的空格子才能稳定占位，
+       两页的行数和行高就一致了 */
+    grid-auto-rows: 4rem;
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-    border-top: var(--hair) solid var(--line);
-    border-left: var(--hair) solid var(--line);
   }
 
+  /* 四条边都画在格子自己身上，靠负外边距让相邻的两条边重叠成一条。
+     以前上/左两条画在 <ul> 上，而 <ul> 的高度含补位格，
+     左边线就会一路拖到空白区里去，看着像一条莫名的竖线 */
   .tag-index__item {
-    border-right: var(--hair) solid var(--line);
-    border-bottom: var(--hair) solid var(--line);
+    border: var(--hair) solid var(--line);
+    margin: 0 calc(-1 * var(--hair)) calc(-1 * var(--hair)) 0;
     /* 网格项默认 min-width:auto，内容撑得开就会把整列顶宽，
        格子形状就变了。归零才能让下面的截断生效 */
     min-width: 0;

@@ -5,9 +5,9 @@ import { branches } from '../../../config/site';
 import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const entries = await getPublished('info');
+  const entries = await getPublished('tool');
   const pages = paginateEntries(entries);
-  // 第 1 页由 /info/ 承担，这里只生成第 2 页起
+  // 第 1 页由 /tool/ 承担，这里只生成第 2 页起
   return pages.slice(1).map((slice, index) => ({
     params: { page: String(index + 2) },
     props: { entries: slice, page: index + 2, totalPages: pages.length },
@@ -19,15 +19,17 @@ const { entries, page, totalPages } = Astro.props as {
   page: number;
   totalPages: number;
 };
+
+const branch = branches.find((b) => b.key === 'tool');
 ---
 
 <ListLayout
-  kind="info"
-  title="学习资料"
-  cover={branches.find((b) => b.key === 'info')?.cover}
-  description="整理过的教程、清单与外链附件，按主题归档"
+  kind="tool"
+  title={branch?.label}
+  cover={branch?.cover}
+  description={branch?.desc}
   entries={entries}
   page={page}
   totalPages={totalPages}
-  basePath="/info/"
+  basePath="/tool/"
 />

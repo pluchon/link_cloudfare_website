@@ -5,9 +5,9 @@ import { branches } from '../../../config/site';
 import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const entries = await getPublished('xiaomeng');
+  const entries = await getPublished('project');
   const pages = paginateEntries(entries);
-  // 第 1 页由 /xiaomeng/ 承担，这里只生成第 2 页起
+  // 第 1 页由 /project/ 承担，这里只生成第 2 页起
   return pages.slice(1).map((slice, index) => ({
     params: { page: String(index + 2) },
     props: { entries: slice, page: index + 2, totalPages: pages.length },
@@ -20,16 +20,16 @@ const { entries, page, totalPages } = Astro.props as {
   totalPages: number;
 };
 
-const branch = branches.find((b) => b.key === 'xiaomeng');
+const branch = branches.find((b) => b.key === 'project');
 ---
 
 <ListLayout
-  kind="xiaomeng"
+  kind="project"
   title={branch?.label}
   cover={branch?.cover}
   description={branch?.desc}
   entries={entries}
   page={page}
   totalPages={totalPages}
-  basePath="/xiaomeng/"
+  basePath="/project/"
 />

@@ -5,9 +5,9 @@ import { branches } from '../../../config/site';
 import { getPublished, paginateEntries, type AnyEntry } from '../../../lib/content';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const entries = await getPublished('article');
+  const entries = await getPublished('explore');
   const pages = paginateEntries(entries);
-  // 第 1 页由 /article/ 承担，这里只生成第 2 页起
+  // 第 1 页由 /explore/ 承担，这里只生成第 2 页起
   return pages.slice(1).map((slice, index) => ({
     params: { page: String(index + 2) },
     props: { entries: slice, page: index + 2, totalPages: pages.length },
@@ -19,15 +19,17 @@ const { entries, page, totalPages } = Astro.props as {
   page: number;
   totalPages: number;
 };
+
+const branch = branches.find((b) => b.key === 'explore');
 ---
 
 <ListLayout
-  kind="article"
-  title="文章"
-  cover={branches.find((b) => b.key === 'article')?.cover}
-  description="AI Coding 实践、后端工程与踩坑记录"
+  kind="explore"
+  title={branch?.label}
+  cover={branch?.cover}
+  description={branch?.desc}
   entries={entries}
   page={page}
   totalPages={totalPages}
-  basePath="/article/"
+  basePath="/explore/"
 />

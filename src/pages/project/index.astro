@@ -3,18 +3,20 @@ import ListLayout from '../../layouts/ListLayout.astro';
 import { branches } from '../../config/site';
 import { getPublished, paginateEntries } from '../../lib/content';
 
-const entries = await getPublished('info');
+const entries = await getPublished('project');
 const pages = paginateEntries(entries);
+
+const branch = branches.find((b) => b.key === 'project');
 ---
 
 <ListLayout
-  kind="info"
-  title="学习资料"
-  cover={branches.find((b) => b.key === 'info')?.cover}
-  description="整理过的教程、清单与外链附件，按主题归档"
+  kind="project"
+  title={branch?.label}
+  cover={branch?.cover}
+  description={branch?.desc}
   entries={pages[0]}
   page={1}
   totalPages={pages.length}
-  basePath="/info/"
+  basePath="/project/"
   emptyText="这里还空着..."
 />

@@ -16,17 +16,18 @@ export const site = {
 
 // 顶栏导航（/tags/ 页面保留，只是不进导航）
 export const nav = [
-  { label: '文章', href: '/article/' },
-  { label: '资料', href: '/info/' },
-  { label: '小萌', href: '/xiaomeng/' },
+  { label: '项目', href: '/project/' },
+  { label: '工具', href: '/tool/' },
+  { label: '探究', href: '/explore/' },
   { label: '日常', href: '/daily/' },
+  { label: '小萌', href: '/xiaomeng/' },
   { label: '关于', href: '/about/' },
 ] as const;
 
 // 首页思维导图的根节点，也是关于页的名片
 // avatar 留空则渲染成占位线框；要换成照片就填 OSS 完整 URL
 export const profile = {
-  avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/profile_avatar.webp',
+  avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/profile.webp',
   name: '诺诺',
   bio: '在写代码，也在记笔记。把踩过的坑和读过的东西留在这里',
   // 第三方链接：href 换成自己的即可。图标源文件 viewBox 各不相同
@@ -44,25 +45,25 @@ export const profile = {
 // cover 填 OSS 完整 URL，留空则渲染成占位线框
 export const branches = [
   {
-    key: 'article',
-    label: '文章',
-    href: '/article/',
-    desc: '自己写的东西',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/article.webp',
+    key: 'project',
+    label: '项目',
+    href: '/project/',
+    desc: '做过的项目与笔记',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/project.webp',
   },
   {
-    key: 'info',
-    label: '资料',
-    href: '/info/',
-    desc: '整理过的教程与清单',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/info.webp',
+    key: 'tool',
+    label: '工具',
+    href: '/tool/',
+    desc: '对使用的工具进行整理，包含教程清单',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/tool.webp',
   },
   {
-    key: 'xiaomeng',
-    label: '小萌',
-    href: '/xiaomeng/',
-    desc: '小萌的一些资料与设计构想',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/xiaomeng.webp',
+    key: 'explore',
+    label: '探究',
+    href: '/explore/',
+    desc: '自己奇思妙想或时代的自我研究成果展示',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/explore.webp',
   },
   {
     key: 'daily',
@@ -70,6 +71,13 @@ export const branches = [
     href: '/daily/',
     desc: '生活里的碎片记录',
     cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/daily.webp',
+  },
+  {
+    key: 'xiaomeng',
+    label: '小萌',
+    href: '/xiaomeng/',
+    desc: '小萌的一些资料与设计构想',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/xiaomeng.webp',
   },
 ] as const;
 

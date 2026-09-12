@@ -85,13 +85,13 @@
 | 标题 | 第一个 `#` 一级标题 |
 | 简介 | 紧跟标题的第一个 `>` 引用块（正文里后续的引用块不受影响） |
 | 分类 | 所在子文件夹名 |
-| 日期 | 文件名 `YYYY-MM-DD-` 前缀 > git 最后提交时间 > 文件 mtime |
+| 日期 | 文件名 `YYYY-MM-DD-` 前缀 > git 最后提交时间（带 `--follow`）> 文件 mtime |
 | 标签 | 任意一行 `tags: [甲, 乙]`，`、` 和 `,` 都认 |
 | 封面 | 元信息区的第一张图，没有就取正文第一张 |
 | 草稿 | 文件名以 `_` 开头 |
 
 标题、简介、标签这三行会从正文里剔除，不会重复渲染。格式模板见
-`src/content/article_info_profile_format.md` 和 `src/content/profile_format.md`。
+`src/content/content_format.md` 和 `src/content/profile_format.md`。
 
 **日期那条有坑**：`gitDate()` 失败时**绝不能退回 mtime**。仓库开了 `core.autocrlf`，
 `git commit` 会规范化换行、顺带把文件 mtime 改成当下，而此时 `.git/index.lock` 还占着、
@@ -104,13 +104,21 @@ git 查询必然失败——两者一撞，加一篇新文章会把所有老文�
 
 | 目录 | 集合 | 路由 |
 |------|------|------|
-| `src/content/article/` | `article` | `/article/` |
-| `src/content/info/` | `info` | `/info/` |
-| `src/content/xiaomeng/` | `xiaomeng` | `/xiaomeng/` |
+| `src/content/project/` | `project` | `/project/` |
+| `src/content/tool/` | `tool` | `/tool/` |
+| `src/content/explore/` | `explore` | `/explore/` |
 | `src/content/daily/` | `daily` | `/daily/` |
+| `src/content/xiaomeng/` | `xiaomeng` | `/xiaomeng/` |
 | `src/content/profile/` | `profile` | `/about/`（**故意不一致**：它是关于页正文，不是内容分类） |
 
-`/tags/` 是跨集合聚合页，没有对应目录。加新分类要同步改五处：
+`/tags/` 是跨集合聚合页，没有对应目录。
+
+**2026-09-13 改过一次名**：`article → project`、`info → tool`，并新增 `explore`。
+老链接由 `functions/_middleware.ts` 里的 `RENAMED` 表 301 到新路径（放在闸门校验之前，
+重定向不涉及内容）。**再改名时两件事必须一起做**：往 `RENAMED` 加映射，
+以及确认 `gitDate()` 仍带着 `--follow`——否则所有文章日期会变成改名当天。
+
+加新分类要同步改五处：
 `content.config.ts`、`lib/content.ts` 的 `ContentKind` / `AnyEntry` / `getAllPublished`、
 `config/site.ts` 的 `nav` 与 `branches`、`pages/<kind>/` 四个路由文件、`sitemap.xml.ts`。
 
@@ -123,7 +131,7 @@ git 查询必然失败——两者一撞，加一篇新文章会把所有老文�
 **以现在的实现为准。**
 
 - 宽屏：不滚动的整屏画布，一张横向生长的思维导图
-  （根卡片 → 四个分类 → 每类最新 5 篇 → 标签），可拖拽平移、可缩放
+  （根卡片 → 五个分类 → 每类最新 5 篇 → 标签），可拖拽平移、可缩放
 - 窄屏（≤ 60rem）：同一套 DOM 翻成**竖向缩进树**，连线保留，页面回到正常滚动
 - 每类超过 5 篇时，列末补一张虚线卡片「还有 N 篇 · 查看全部」
 - 缩放：右下角控件、Ctrl/⌘ + 滚轮（以光标为锚点）、`Ctrl +/-/0`；
@@ -147,7 +155,7 @@ git 查询必然失败——两者一撞，加一篇新文章会把所有老文�
 
 ## 6. 其余页面
 
-- **列表页**（四个分类共用 `ListLayout`）：封面 + 标题行 + 客户端搜索框 + 条目列表 + 构建期分页（每页 5 条）
+- **列表页**（五个分类共用 `ListLayout`）：封面 + 标题行 + 客户端搜索框 + 条目列表 + 构建期分页（每页 5 条）
 - **详情页**（`ArticleLayout`）：左侧卷轴式目录（< 93rem 隐藏）、阅读进度、
   代码复制与语言标签、上一篇/下一篇、同标签相关阅读、Markdown 原文下载
 - **`/tags/`**：每页 48 个，标签名过长时截断（格子要 `min-width: 0`，
@@ -166,7 +174,12 @@ git 查询必然失败——两者一撞，加一篇新文章会把所有老文�
   绕开 Shiki，再由 `MermaidRenderer.astro` 从 jsDelivr 懒加载 ESM 入口（30KB，
   按图类型拉分块）。这是全站**唯一**的第三方运行时脚本，将来若启用 CSP
   要给 `script-src` 放行 `cdn.jsdelivr.net`
-- 全局 `.label` 工具类会劫持 mermaid 的节点文字（同名 class），图内已单独还原
+- mermaid 必须配 `htmlLabels: false`。默认的 `foreignObject` 里装 HTML，
+  尺寸在页面 CSS 环境下量、又在另一套 CSS 下渲染，对不上就把文字裁掉
+  （实测边标签下缘被裁 8px）。SVG `<text>` 在同一坐标系里量和画，`<br/>` 照常换行
+- **不要新增叫 `.label` 的全局工具类。** mermaid 生成的节点文字用的正是这个 class，
+  曾被劫持成大写小字；本站那个已改名 `.eyebrow`。通用单词（label / node / title /
+  marker）都容易和第三方渲染出来的 DOM 撞上
 - 画布拖动光标是自绘 SVG，深浅两套——原生 `grab` 手跟随系统光标主题，浅色底上会看不见
 
 ---

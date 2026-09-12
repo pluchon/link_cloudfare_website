@@ -198,18 +198,6 @@
   margin-inline: auto;
 }
 
-/* 站点全局有个 .label 工具类（等宽体 / 全大写 / 字距拉开 / 淡色），
-   而 mermaid 给每个节点文字生成的也是 class="label" —— 直接被劫持，
-   结果是图里所有西文标签变成大写小字。在图内部还原掉 */
-.prose pre.mermaid svg .label {
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  letter-spacing: normal;
-  text-transform: none;
-  color: inherit;
-}
-
 /* 语法写错时脚本会把源码放回来，此时按普通代码块显示并标红边 */
 .prose pre.mermaid[data-ready='error'] {
   text-align: left;

@@ -19,13 +19,15 @@ const { entries, page, totalPages } = Astro.props as {
   page: number;
   totalPages: number;
 };
+
+const branch = branches.find((b) => b.key === 'daily');
 ---
 
 <ListLayout
   kind="daily"
-  title="日常"
-  cover={branches.find((b) => b.key === 'daily')?.cover}
-  description="生活里的碎片记录"
+  title={branch?.label}
+  cover={branch?.cover}
+  description={branch?.desc}
   entries={entries}
   page={page}
   totalPages={totalPages}

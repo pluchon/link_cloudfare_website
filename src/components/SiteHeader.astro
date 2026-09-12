@@ -3,7 +3,7 @@ import { site, nav } from '../config/site';
 
 const path = Astro.url.pathname;
 
-// 顶级路径高亮：/article/xxx/ 也算命中 /article/
+// 顶级路径高亮：/project/xxx/ 也算命中 /project/
 function isActive(href: string): boolean {
   if (href === '/') return path === '/';
   return path === href || path.startsWith(href);

@@ -1,7 +1,7 @@
 import { defineCollection, z } from 'astro:content';
 import { plainMarkdown, profileMarkdown } from './loaders/plain-markdown';
 
-// 四个内容集合都不写 frontmatter，元信息由加载器从文件本身推断，
+// 五个内容集合都不写 frontmatter，元信息由加载器从文件本身推断，
 // 这里的 schema 只是给推断结果兜个底
 const schema = z.object({
   title: z.string(),
@@ -13,13 +13,18 @@ const schema = z.object({
   cover: z.string().optional(),
 });
 
-const article = defineCollection({
-  loader: plainMarkdown({ dir: 'src/content/article', defaultCategory: '文章' }),
+const project = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/project', defaultCategory: '项目' }),
   schema,
 });
 
-const info = defineCollection({
-  loader: plainMarkdown({ dir: 'src/content/info', defaultCategory: '资料' }),
+const tool = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/tool', defaultCategory: '工具' }),
+  schema,
+});
+
+const explore = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/explore', defaultCategory: '探究' }),
   schema,
 });
 
@@ -42,4 +47,4 @@ const profile = defineCollection({
   }),
 });
 
-export const collections = { article, info, xiaomeng, daily, profile };
+export const collections = { project, tool, explore, daily, xiaomeng, profile };

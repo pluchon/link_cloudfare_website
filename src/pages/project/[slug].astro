@@ -5,7 +5,7 @@ import ArticleLayout from '../../layouts/ArticleLayout.astro';
 import { getPublished, relatedEntries } from '../../lib/content';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const entries = await getPublished('article');
+  const entries = await getPublished('project');
   return entries.map((entry, index) => ({
     params: { slug: entry.data.slug },
     props: {
@@ -18,7 +18,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
   }));
 };
 
-type Entry = CollectionEntry<'article'>;
+type Entry = CollectionEntry<'project'>;
 
 const { entry, prev, next, related } = Astro.props as {
   entry: Entry;
@@ -31,7 +31,7 @@ const { Content, headings } = await render(entry);
 ---
 
 <ArticleLayout
-  kind="article"
+  kind="project"
   entry={entry}
   headings={headings}
   prev={prev}

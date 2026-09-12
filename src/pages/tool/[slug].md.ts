@@ -3,7 +3,7 @@ import { getPublished } from '../../lib/content';
 
 // 提供 Markdown 原文下载
 export const getStaticPaths: GetStaticPaths = async () => {
-  const entries = await getPublished('article');
+  const entries = await getPublished('tool');
   return entries.map((entry) => ({
     params: { slug: entry.data.slug },
     props: { body: entry.body ?? '' },

@@ -1,12 +1,13 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { OSS_THUMB_STYLE } from '../config/site';
 
-export type ContentKind = 'article' | 'info' | 'xiaomeng' | 'daily';
+export type ContentKind = 'project' | 'tool' | 'explore' | 'daily' | 'xiaomeng';
 export type AnyEntry =
-  | CollectionEntry<'article'>
-  | CollectionEntry<'info'>
-  | CollectionEntry<'xiaomeng'>
-  | CollectionEntry<'daily'>;
+  | CollectionEntry<'project'>
+  | CollectionEntry<'tool'>
+  | CollectionEntry<'explore'>
+  | CollectionEntry<'daily'>
+  | CollectionEntry<'xiaomeng'>;
 
 // 按发布时间倒序。草稿（文件名以下划线开头）在加载器里就已排除
 export async function getPublished<K extends ContentKind>(
@@ -22,17 +23,19 @@ export async function getPublished<K extends ContentKind>(
 export async function getAllPublished(): Promise<
   { kind: ContentKind; entry: AnyEntry }[]
 > {
-  const [article, info, xiaomeng, daily] = await Promise.all([
-    getPublished('article'),
-    getPublished('info'),
-    getPublished('xiaomeng'),
+  const [project, tool, explore, daily, xiaomeng] = await Promise.all([
+    getPublished('project'),
+    getPublished('tool'),
+    getPublished('explore'),
     getPublished('daily'),
+    getPublished('xiaomeng'),
   ]);
   return [
-    ...article.map((entry) => ({ kind: 'article' as const, entry })),
-    ...info.map((entry) => ({ kind: 'info' as const, entry })),
-    ...xiaomeng.map((entry) => ({ kind: 'xiaomeng' as const, entry })),
+    ...project.map((entry) => ({ kind: 'project' as const, entry })),
+    ...tool.map((entry) => ({ kind: 'tool' as const, entry })),
+    ...explore.map((entry) => ({ kind: 'explore' as const, entry })),
     ...daily.map((entry) => ({ kind: 'daily' as const, entry })),
+    ...xiaomeng.map((entry) => ({ kind: 'xiaomeng' as const, entry })),
   ].sort(
     (a, b) =>
       b.entry.data.publishedAt.valueOf() - a.entry.data.publishedAt.valueOf(),

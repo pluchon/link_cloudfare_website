@@ -3,20 +3,20 @@ import ListLayout from '../../layouts/ListLayout.astro';
 import { branches } from '../../config/site';
 import { getPublished, paginateEntries } from '../../lib/content';
 
-const entries = await getPublished('xiaomeng');
+const entries = await getPublished('explore');
 const pages = paginateEntries(entries);
 
-const branch = branches.find((b) => b.key === 'xiaomeng');
+const branch = branches.find((b) => b.key === 'explore');
 ---
 
 <ListLayout
-  kind="xiaomeng"
+  kind="explore"
   title={branch?.label}
   cover={branch?.cover}
   description={branch?.desc}
   entries={pages[0]}
   page={1}
   totalPages={pages.length}
-  basePath="/xiaomeng/"
+  basePath="/explore/"
   emptyText="这里还空着..."
 />

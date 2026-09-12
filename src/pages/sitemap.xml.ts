@@ -8,10 +8,11 @@ export const GET: APIRoute = async () => {
 
   const urls: { loc: string; lastmod?: Date }[] = [
     { loc: '/' },
-    { loc: '/article/' },
-    { loc: '/info/' },
-    { loc: '/xiaomeng/' },
+    { loc: '/project/' },
+    { loc: '/tool/' },
+    { loc: '/explore/' },
     { loc: '/daily/' },
+    { loc: '/xiaomeng/' },
     { loc: '/tags/' },
     { loc: '/about/' },
     ...all.map(({ kind, entry }) => ({

@@ -331,8 +331,13 @@ for (const branch of branches) {
     z-index: 1;
     display: flex;
     align-items: center;
-    will-change: transform;
   }
+
+  /* will-change 只在真正逐帧改 transform 的时候挂。
+     常挂着会把这一层永久提升成合成层：文字按提升那一刻的倍率栅格化一次，
+     之后画布缩放只是把那张位图拉大，于是字发虚；鼠标悬浮到卡片上会改动
+     该元素、逼它按当前倍率重新栅格化，所以「悬浮就清晰、移走又模糊」 */
+  .canvas[data-dragging='1'] .scene { will-change: transform; }
 
   .scene[data-eased='1'] { transition: transform var(--dur-view) var(--ease-out); }
 
@@ -1383,14 +1388,48 @@ for (const branch of branches) {
         var bh = bottom - top;
         if (!(bw > 0) || !(bh > 0)) return;
 
-        // 记下展开前的视图，收起时原样还原
-        // 这一组的卡片自己还能再展开吗？能的话就别摆在正中，
-        // 靠左放、右边留出下一级的位置，免得下次展开整张图又要平移一次
+        // 这一组的卡片自己还能再展开吗？
         var deeper = false;
         group.querySelectorAll('[data-node]').forEach(function (child) {
           if (child.parentElement.closest('[data-group]') !== group) return;
           if (child.querySelector('[data-knob]')) deeper = true;
         });
+
+        var PAD = 72;
+
+        // 最后一层（标签卡）不重新构图。它是从右侧弹出来的一小张卡，
+        // 为它重新居中 + 缩放，整张图会毫无必要地动一大下。
+        // 这里只做两件事：把上一帧 fit() 改掉的倍率还原，
+        // 然后只在它露到视口外时推一下，刚好让它进来；本来看得见就完全不动
+        if (!deeper) {
+          var keep = group.__view;
+          if (keep && userZoom === null && keep.scale !== scale) {
+            scale = keep.scale;
+            map.dataset.instant = '';
+            map.style.transform = 'scale(' + scale + ')';
+            updateZoomUI();
+          }
+
+          var overRight = map.offsetLeft + tx + right * scale - (canvas.clientWidth - PAD);
+          var mh = map.offsetHeight;
+          var screenBottom =
+            map.offsetTop + ty + mh / 2 + (bottom - mh / 2) * scale;
+          var screenTop = map.offsetTop + ty + mh / 2 + (top - mh / 2) * scale;
+          var overBottom = screenBottom - (canvas.clientHeight - PAD);
+
+          var dx = overRight > 0 ? -overRight : 0;
+          // 往上推之前先确认别把这张卡的顶端顶出视口
+          var dy = 0;
+          if (overBottom > 0) dy = -Math.min(overBottom, Math.max(0, screenTop - PAD));
+
+          if (dx || dy) {
+            scene.dataset.eased = '1';
+            tx += dx;
+            ty += dy;
+            measure();
+          }
+          return;
+        }
 
         // 用户手动缩放过就别动倍率，只把视线挪过去
         if (userZoom === null) {
@@ -1411,8 +1450,7 @@ for (const branch of branches) {
 
         scene.dataset.eased = '1';
 
-        var PAD = 72;
-        if (deeper && bw * scale + PAD * 2 <= canvas.clientWidth) {
+        if (bw * scale + PAD * 2 <= canvas.clientWidth) {
           // 靠左对齐，右半边空着等下一级
           tx = PAD - map.offsetLeft - left * scale;
         } else {

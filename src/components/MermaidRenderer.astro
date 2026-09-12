@@ -29,6 +29,12 @@ const MERMAID_ESM = 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.e
       return {
         startOnLoad: false,
         securityLevel: 'strict',
+        // 标签用 SVG <text> 而不是 foreignObject 里的 HTML。
+        // HTML 标签是在页面 CSS 环境下量尺寸、又在另一套 CSS 下渲染的，
+        // 两边对不上就会把文字裁掉一截（实测边标签溢出 8px）。
+        // SVG 文本在同一个坐标系里量和画，页面样式碰不到它；<br/> 照常换行
+        htmlLabels: false,
+        flowchart: { htmlLabels: false },
         fontFamily: v('--font-sans', 'sans-serif'),
         theme: 'base',
         themeVariables: {

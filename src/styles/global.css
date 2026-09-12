@@ -180,7 +180,10 @@ body.is-canvas > main {
 
 /* ---------- 小标签：等宽、字距拉开 ---------- */
 
-.label {
+/* 小标签：等宽、字距拉开。
+   不要叫 .label —— mermaid 等第三方渲染出来的 DOM 也用这个类名，
+   曾经把图里所有节点文字劫持成大写小字 */
+.eyebrow {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   letter-spacing: 0.16em;

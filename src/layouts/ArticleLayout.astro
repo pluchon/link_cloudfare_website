@@ -22,7 +22,16 @@ const rawHref = `/${kind}/${data.slug}.md`;
 const cover = entryCover(entry);
 
 // 侧栏目录只取 h2 / h3，更深的层级在导航里没有意义
-const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+// 目录只到三级。按二级分组：每个二级标题带上它后面紧跟的三级标题，
+// 三级默认收着，点二级才展开
+const toc: { slug: string; text: string; subs: { slug: string; text: string }[] }[] = [];
+for (const h of headings) {
+  if (h.depth === 2) {
+    toc.push({ slug: h.slug, text: h.text, subs: [] });
+  } else if (h.depth === 3 && toc.length > 0) {
+    toc[toc.length - 1].subs.push({ slug: h.slug, text: h.text });
+  }
+}
 ---
 
 <BaseLayout title={data.title} description={data.summary} ogImage={cover}>
@@ -34,11 +43,37 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
         <span class="rail__cap" aria-hidden="true" />
         <ol class="rail__list">
           {toc.map((item) => (
-            <li class:list={['rail__item', item.depth === 3 && 'rail__item--sub']}>
-              <a href={`#${item.slug}`} data-toc-link={item.slug}>
-                <span class="rail__dash" aria-hidden="true" />
-                <span class="rail__text">{item.text}</span>
-              </a>
+            <li class="rail__group" data-rail-group>
+              <div class="rail__row">
+                <a class="rail__item" href={`#${item.slug}`} data-toc-link={item.slug}>
+                  <span class="rail__dash" aria-hidden="true" />
+                  <span class="rail__text">{item.text}</span>
+                </a>
+                {item.subs.length > 0 && (
+                  <button
+                    class="rail__fold"
+                    type="button"
+                    data-rail-fold
+                    aria-expanded="false"
+                    aria-label={`展开「${item.text}」的小节`}
+                  >
+                    <span class="rail__chev" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+
+              {item.subs.length > 0 && (
+                <ol class="rail__subs" data-rail-subs hidden>
+                  {item.subs.map((sub) => (
+                    <li>
+                      <a class="rail__item rail__item--sub" href={`#${sub.slug}`} data-toc-link={sub.slug}>
+                        <span class="rail__dash" aria-hidden="true" />
+                        <span class="rail__text">{sub.text}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </li>
           ))}
         </ol>
@@ -93,7 +128,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           <div class="pager__cell">
             {prev && (
               <a href={entryHref(kind, prev.data.slug)}>
-                <span class="label">上一篇</span>
+                <span class="eyebrow">上一篇</span>
                 <span class="pager__title">{prev.data.title}</span>
               </a>
             )}
@@ -101,7 +136,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           <div class="pager__cell pager__cell--right">
             {next && (
               <a href={entryHref(kind, next.data.slug)}>
-                <span class="label">下一篇</span>
+                <span class="eyebrow">下一篇</span>
                 <span class="pager__title">{next.data.title}</span>
               </a>
             )}
@@ -113,7 +148,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     {
       related.length > 0 && (
         <section class="related">
-          <p class="label">相关阅读</p>
+          <p class="eyebrow">相关阅读</p>
           <ul class="related__list">
             {related.map((item) => (
               <li>
@@ -260,10 +295,56 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 
   .rail__list::-webkit-scrollbar { display: none; }
 
-  .rail__item a {
+  .rail__group { position: relative; }
+
+  /* 二级标题一行：标题 + 折叠角 */
+  .rail__row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .rail__item {
     display: flex;
     align-items: center;
     gap: 0.6rem;
+    min-width: 0;
+  }
+
+  /* 折叠角：一个 45° 的小角，沿用全站的发丝线语言，不用三角形图标 */
+  .rail__fold {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .rail__chev {
+    width: 0.32rem;
+    height: 0.32rem;
+    border-right: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line-strong);
+    transform: rotate(-45deg);
+    transition:
+      transform var(--dur-2) var(--ease-out),
+      border-color var(--dur-1) var(--ease-out);
+  }
+
+  .rail__fold:hover .rail__chev { border-color: var(--fg); }
+  .rail__fold[aria-expanded='true'] .rail__chev { transform: rotate(45deg); }
+
+  .rail__subs {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0 0 0 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
   }
 
   /* 收起时只剩一截短线，长度表示层级 */
@@ -292,16 +373,16 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     transition: color var(--dur-1) var(--ease-out);
   }
 
-  .rail__item a:hover .rail__dash { background: var(--fg); }
-  .rail__item a:hover .rail__text { color: var(--fg); }
+  .rail__item:hover .rail__dash { background: var(--fg); }
+  .rail__item:hover .rail__text { color: var(--fg); }
 
-  .rail__item a[data-active='1'] .rail__dash {
+  .rail__item[data-active='1'] .rail__dash {
     width: 1.4rem;
     background: var(--accent);
   }
 
-  .rail__item--sub a[data-active='1'] .rail__dash { width: 1rem; }
-  .rail__item a[data-active='1'] .rail__text { color: var(--accent); }
+  .rail__item--sub[data-active='1'] .rail__dash { width: 1rem; }
+  .rail__item[data-active='1'] .rail__text { color: var(--accent); }
 
   /* 目录常驻展开约需 12rem，版心 76rem 两侧腾不出这么多就整条收起 */
   @media (max-width: 93rem) {
@@ -520,6 +601,25 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
           })
           .filter(Boolean);
 
+        // 目录默认只露二级，点折叠角展开它下面的三级
+        function setFold(btn, open) {
+          var subs = btn.closest('.rail__group').querySelector('[data-rail-subs]');
+          if (!subs) return;
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          subs.hidden = !open;
+        }
+
+        var rail = document.querySelector('.rail');
+        if (rail && !rail.dataset.foldBound) {
+          rail.dataset.foldBound = '1';
+          rail.addEventListener('click', function (event) {
+            var btn = event.target.closest('[data-rail-fold]');
+            if (!btn) return;
+            event.preventDefault();
+            setFold(btn, btn.getAttribute('aria-expanded') !== 'true');
+          });
+        }
+
         var observer = new IntersectionObserver(
           function (entries) {
             entries.forEach(function (item) {
@@ -528,7 +628,17 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
                 link.dataset.active = '';
               });
               var active = map[item.target.id];
-              if (active) active.dataset.active = '1';
+              if (!active) return;
+              active.dataset.active = '1';
+
+              // 跟着滚动联动：只把当前所在的那一组展开，其余全部收起。
+              // 默认全收（标记里就带 hidden），读到哪一节哪一节自己打开
+              var group = active.closest('.rail__group');
+              if (rail) {
+                rail.querySelectorAll('[data-rail-fold]').forEach(function (btn) {
+                  setFold(btn, btn.closest('.rail__group') === group);
+                });
+              }
             });
           },
           { rootMargin: '-90px 0px -70% 0px', threshold: 0 },
