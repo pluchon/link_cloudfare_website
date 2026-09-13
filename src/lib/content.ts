@@ -58,11 +58,17 @@ export function countWords(body: string): number {
   return cjk + latin;
 }
 
+// 按台北时间（UTC+8）显示。以前用 getUTC*，凌晨 0~8 点的提交会显示成前一天
+// （01:31 +08:00 的提交显示为前一天的日期）
+const DATE_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 export function formatDate(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(date.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return DATE_FMT.format(date);
 }
 
 // 统计标签出现次数，按热度再按字母排序

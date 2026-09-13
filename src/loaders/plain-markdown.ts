@@ -155,11 +155,40 @@ function runGit(args: string[]): string | null {
   }
 }
 
+// 从 `git log --follow --numstat` 的输出里，取最近一次「真的改了内容」的提交时间。
+//
+// 不能用 `git log --follow -1`：--follow 只负责穿过重命名把更早的历史接上，
+// -1 取到的仍是最新那次提交——而目录改名那次提交本身就是「最后一次碰过这个文件」。
+// 2026-09-13 把 article → project、info → tool 之后，5 篇没动过内容的文章
+// 日期全变成了改名那天。纯改名在 numstat 里是 `0\t0\t旧路径 => 新路径`，
+// 增删行数都为 0，据此跳过；二进制文件显示 `-\t-`，按有改动算
+function lastContentDate(log: string): string {
+  let date = '';
+  let oldest = '';
+  let changed = false;
+
+  for (const line of log.split('\n')) {
+    if (line.startsWith('@@')) {
+      if (date && changed) return date;
+      date = line.slice(2).trim();
+      oldest = date;
+      changed = false;
+      continue;
+    }
+    const cols = line.split('\t');
+    if (cols.length < 3) continue;
+    const [add, del] = cols;
+    if (add === '-' || del === '-' || Number(add) + Number(del) > 0) changed = true;
+  }
+
+  if (date && changed) return date;
+  // 所有提交都没改行（比如加进来的是空文件）：退回最早那次
+  return oldest;
+}
+
 function gitDate(file: string): Date | null {
-  // --follow 是必须的：git 默认不追踪重命名，一旦内容目录改过名
-  // （比如 article → project），查新路径只会查到「重命名那次提交」，
-  // 于是所有文章的日期一起变成改名当天。--follow 能穿过重命名追到原始提交
-  const query = () => runGit(['log', '--follow', '-1', '--format=%aI', '--', file]);
+  const query = () =>
+    runGit(['log', '--follow', '--format=@@%aI', '--numstat', '--', file]);
 
   // 失败重试一次：commit 期间 index.lock 占着会让第一次必然失败
   let out = query();
@@ -175,7 +204,7 @@ function gitDate(file: string): Date | null {
   // git 能用但没有记录：这个文件还没进版本库，此时 mtime 才是对的
   if (!out) return null;
 
-  const d = new Date(out);
+  const d = new Date(lastContentDate(out));
   if (Number.isNaN(d.valueOf())) return null;
 
   gitDateCache.set(file, d.valueOf());
@@ -254,7 +283,9 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
           data,
           body: parsed.body,
           filePath,
-          digest: ctx.generateDigest(raw),
+          // 日期不在文件内容里（来自 git），也要算进摘要。只算 raw 的话，
+          // 提交/改名后内容没变，dev server 会认为条目没变，继续用旧日期
+          digest: ctx.generateDigest(raw + publishedAt.toISOString()),
           rendered: await ctx.renderMarkdown(parsed.body),
         });
 
