@@ -14,6 +14,7 @@ type Leaf = {
   id: string;
   title: string;
   meta: string;
+  at: string;
   summary: string;
   href: string;
   cover?: string;
@@ -30,14 +31,19 @@ const branchCovers: Record<string, string | undefined> = Object.fromEntries(
 const leaves: Record<string, Leaf[]> = {};
 // 超出 BRANCH_LEAF_LIMIT 的部分不挂到图上，末尾用一张卡片交代还剩多少
 const overflow: Record<string, number> = {};
+// 每个分类最新一篇的时间，给「NEW」标记用。是否在 24 小时内要在浏览器里判断：
+// 静态站只在推送时构建，构建时算好的话，两天没推送 NEW 也会一直挂着
+const latest: Record<string, string | undefined> = {};
 for (const branch of branches) {
   const kind = branch.key as ContentKind;
   const entries = await getPublished(kind);
   overflow[branch.key] = Math.max(0, entries.length - BRANCH_LEAF_LIMIT);
+  latest[branch.key] = entries[0]?.data.publishedAt.toISOString();
   leaves[branch.key] = entries.slice(0, BRANCH_LEAF_LIMIT).map((entry, i) => ({
     id: `l-${branch.key}-${i}`,
     title: entry.data.title,
     meta: formatDate(entry.data.publishedAt),
+    at: entry.data.publishedAt.toISOString(),
     summary: entry.data.summary,
     href: entryHref(kind, entry.data.slug),
     cover: thumbUrl(entryCover(entry)),
@@ -112,7 +118,14 @@ for (const branch of branches) {
 
                   <div class="node__body">
                     <div class="branch__head">
-                      <h2 class="branch__title">{branch.label}</h2>
+                      <div class="branch__name">
+                        <h2 class="branch__title">{branch.label}</h2>
+                        {latest[branch.key] && (
+                          <span class="new-badge" data-new-since={latest[branch.key]} hidden>
+                            NEW
+                          </span>
+                        )}
+                      </div>
                       <a class="text-link" href={branch.href}>
                         查看全部
                       </a>
@@ -145,7 +158,10 @@ for (const branch of branches) {
                         )}
 
                         <div class="leaf__body">
-                          <span class="leaf__meta">{leaf.meta}</span>
+                          <span class="leaf__meta">
+                            {leaf.meta}
+                            <span class="new-badge" data-new-since={leaf.at} hidden>NEW</span>
+                          </span>
                           <span class="leaf__title">{leaf.title}</span>
                           <span class="leaf__summary">{leaf.summary}</span>
                         </div>
@@ -560,6 +576,12 @@ for (const branch of branches) {
     margin: 0;
   }
 
+  .branch__name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
   .branch__desc {
     margin: 0.5rem 0 0;
     font-size: 0.8125rem;
@@ -599,6 +621,9 @@ for (const branch of branches) {
   }
 
   .leaf__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
     font-family: var(--font-mono);
     font-size: 0.625rem;
     letter-spacing: 0.06em;

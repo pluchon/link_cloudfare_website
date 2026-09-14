@@ -97,7 +97,10 @@ for (const h of headings) {
         <p class="article__summary">{data.summary}</p>
 
         <div class="article__meta">
-          <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
+          <span class="article__date">
+            <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
+            <span class="new-badge" data-new-since={data.publishedAt.toISOString()} hidden>NEW</span>
+          </span>
           <span>{words} 字</span>
           <a class="article__raw" href={rawHref} download>Markdown 原文</a>
         </div>
@@ -223,6 +226,12 @@ for (const h of headings) {
     font-size: 0.75rem;
     letter-spacing: 0.05em;
     color: var(--fg-faint);
+  }
+
+  .article__date {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
   }
 
   .article__raw {

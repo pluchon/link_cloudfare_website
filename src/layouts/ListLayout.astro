@@ -35,6 +35,7 @@ const index = all.map((entry) => ({
   t: entry.data.title,
   s: entry.data.summary,
   d: formatDate(entry.data.publishedAt),
+  p: entry.data.publishedAt.toISOString(),
   h: entryHref(kind, entry.data.slug),
   c: entryCover(entry) ?? '',
   q: searchText(entry),
@@ -384,7 +385,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
         a.innerHTML =
           '<div class="entry__cover-wrap"></div>' +
           '<div class="entry__body">' +
-          '<time class="entry__date"></time>' +
+          '<div class="entry__date"><time></time><span class="new-badge" hidden>NEW</span></div>' +
           '<h3 class="entry__title"><a></a></h3>' +
           '<p class="entry__summary"></p>' +
           '</div>' +
@@ -405,7 +406,11 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
           wrap.appendChild(ph);
         }
 
-        a.querySelector('.entry__date').textContent = item.d;
+        var date = a.querySelector('.entry__date time');
+        date.textContent = item.d;
+        date.dateTime = item.p;
+        a.querySelector('.new-badge').setAttribute('data-new-since', item.p);
+        if (window.nnMarkNew) window.nnMarkNew(a);
         var link = a.querySelector('.entry__title a');
         link.textContent = item.t;
         link.href = item.h;

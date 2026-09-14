@@ -491,7 +491,9 @@ body.is-canvas > main {
 .entry:hover > *:not(.entry__hit) { transform: translateX(0.75rem); }
 
 .entry__date {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--fg-faint);
@@ -554,6 +556,19 @@ body.is-canvas > main {
 a.tag:hover { border-color: var(--accent); color: var(--accent); }
 
 .tag-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* 24 小时内的新内容标记，是否显示由 BaseLayout 里的脚本按访问时刻决定。
+   沿用全站的发丝线，不做色块填充 */
+.new-badge {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  padding: 0.2rem 0.3rem 0.15rem;
+  color: var(--accent);
+  border: var(--hair) solid currentColor;
+}
 
 /* ---------- 通用按钮 / 文字链 ---------- */
 

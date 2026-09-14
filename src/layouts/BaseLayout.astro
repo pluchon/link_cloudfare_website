@@ -243,6 +243,38 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
       })();
     </script>
 
+    <script is:inline>
+      (function () {
+        // 24 小时内的新内容亮出 NEW（首页分类、首页帖子、列表、详情页共用）。
+        // 必须按访问时刻算：静态站只在推送时构建，构建时算好的会一直挂着过期的 NEW。
+        // 列表检索是在浏览器里临时拼卡片的，拼完调 nnMarkNew(卡片) 补一次
+        var NEW_WINDOW = 24 * 60 * 60 * 1000;
+
+        function markNew(root) {
+          var now = Date.now();
+          (root || document).querySelectorAll('[data-new-since]').forEach(function (badge) {
+            var at = Date.parse(badge.getAttribute('data-new-since'));
+            badge.hidden = !(now - at < NEW_WINDOW);
+          });
+        }
+
+        window.nnMarkNew = markNew;
+
+        document.addEventListener('astro:page-load', function () {
+          markNew();
+        });
+        if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+              markNew();
+            });
+          } else {
+            markNew();
+          }
+        }
+      })();
+    </script>
+
     <MermaidRenderer />
 
     <slot name="head" />

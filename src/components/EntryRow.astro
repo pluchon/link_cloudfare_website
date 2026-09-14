@@ -25,9 +25,10 @@ const cover = entryCover(entry);
   </div>
 
   <div class="entry__body">
-    <time class="entry__date" datetime={data.publishedAt.toISOString()}>
-      {formatDate(data.publishedAt)}
-    </time>
+    <div class="entry__date">
+      <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
+      <span class="new-badge" data-new-since={data.publishedAt.toISOString()} hidden>NEW</span>
+    </div>
     <h3 class="entry__title">
       <a href={href}>{data.title}</a>
     </h3>
