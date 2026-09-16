@@ -557,6 +557,55 @@ a.tag:hover { border-color: var(--accent); color: var(--accent); }
 
 .tag-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
+/* 点开看大图。正文里的图和 mermaid 图都限了高，缩小之后靠这层看细节 */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 2rem 2rem 3.5rem;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  cursor: zoom-out;
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+
+.lightbox[data-open='1'] { opacity: 1; }
+
+/* 尺寸只能按视口算：栅格单元的高度是内容撑出来的，
+   写 max-height: 100% 等于没限制，大图会从屏幕上下溢出去 */
+.lightbox img {
+  max-width: calc(100vw - 4rem);
+  max-height: calc(100vh - 5.5rem);
+  max-height: calc(100dvh - 5.5rem);
+  width: auto;
+  height: auto;
+  border: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+}
+
+/* mermaid 的 SVG 是矢量的，放大不会糊，所以按视口尽量放大。
+   具体尺寸由脚本按 viewBox 的比例算好写进行内样式：
+   这里写 width/height: 100% 的话，扁长的图会摊在一块竖着的大底板中间，很难看 */
+.lightbox svg {
+  padding: 1.5rem;
+  border: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+}
+
+.lightbox__hint {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--fg-faint);
+}
+
 /* 24 小时内的新内容标记，是否显示由 BaseLayout 里的脚本按访问时刻决定。
    沿用全站的发丝线，不做色块填充 */
 .new-badge {

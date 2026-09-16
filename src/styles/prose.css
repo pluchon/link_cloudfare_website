@@ -89,11 +89,40 @@
   margin-block: 2.5rem;
 }
 
-/* 图片：外链 OSS，细线包边 + 图注 */
-.prose img {
-  margin-inline: auto;
+/* 图版：正文里独占一段的图片由 remark-figure 包成 <figure class="plate">。
+   框是等宽的，图在里面居中。竖图按高度缩完只有半栏宽，两边的空白落在框内，
+   看起来是留白而不是漏排；横图照常铺满 */
+.prose .plate {
+  margin-block: 2rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   border: var(--hair) solid var(--line);
   background: var(--bg-sunken);
+}
+
+.prose .plate img {
+  display: block;
+  margin: 0;
+  border: 0;
+  background: none;
+  /* 任何一张图都不超过屏幕的七成高：长截图和竖图不再占满一屏。
+     宽图受 max-width 限制，竖图受 max-height 限制，两者都不裁切 */
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  cursor: zoom-in;
+}
+
+/* 图版之外的图片（正文里直接写的 <img>）保持原来的样子，同样限高、同样能点开 */
+.prose img {
+  margin-inline: auto;
+  max-height: 70vh;
+  width: auto;
+  border: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+  cursor: zoom-in;
 }
 
 .prose figure { margin: 2rem 0; }
@@ -125,7 +154,12 @@
   /* 长代码块不撑高整篇文章，超过约 25 行就在块内滚动 */
   max-height: 36rem;
   overflow: auto;
-  overscroll-behavior: contain;
+  /* 竖向默认放开滚动链。`overflow: auto` 让每个代码块都成了滚动容器，
+     哪怕内容根本没超出、块内没有可滚的距离，contain 也照样把滚动拦在块里——
+     鼠标停在一段短代码上，页面就滚不动了。只有真的能在块内上下滚的代码块
+     才由脚本打上 data-scrolls，那时候 contain 才有意义 */
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   font-size: 0.8125rem;
   line-height: 1.75;
   tab-size: 2;
@@ -166,6 +200,14 @@
   color: inherit;
 }
 
+/* 真能在块内上下滚的代码块，才拦住滚动链：滚到代码块底部时页面不要跟着窜。
+   触屏下竖滚是关掉的（见文件末尾的 hover: none），所以只在有鼠标的环境生效 */
+@media (hover: hover) {
+  .prose pre[data-scrolls='1'] {
+    overscroll-behavior-y: contain;
+  }
+}
+
 /* ---------- Mermaid 图 ----------
    渲染前是一段源码，渲染后 pre 里换成 SVG。两个状态共用这个盒子，
    所以尺寸约束写在 pre 上，图本身只负责居中 */
@@ -196,6 +238,13 @@
   max-width: 100%;
   height: auto;
   margin-inline: auto;
+}
+
+/* 和图片同一条规矩：再高的图也不超过屏幕的七成，缩小之后点开看大图 */
+.prose pre.mermaid[data-ready='1'] svg {
+  max-height: 70vh;
+  width: auto;
+  cursor: zoom-in;
 }
 
 /* 语法写错时脚本会把源码放回来，此时按普通代码块显示并标红边 */

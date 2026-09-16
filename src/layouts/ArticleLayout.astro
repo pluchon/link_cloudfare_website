@@ -575,6 +575,8 @@ for (const h of headings) {
         // 竖滚已经在 CSS 里关掉了，不然手指想滚页面会先滚到代码块里去
         if (pre.scrollHeight > pre.clientHeight + 4) {
           wrapper.dataset.clipped = '1';
+          // 桌面端：只有这种真的能在块内上下滚的，才拦住滚动链
+          pre.dataset.scrolls = '1';
 
           var more = document.createElement('button');
           more.type = 'button';
@@ -657,6 +659,85 @@ for (const h of headings) {
           observer.observe(el);
         });
       }
+    }
+
+    // 点开看大图。正文里的图和 mermaid 图都限到七成屏高，细节靠这层补回来。
+    // 用事件委托挂在 document 上：mermaid 是滚到附近才画的，图晚于绑定出现
+    function closeBox() {
+      var box = document.querySelector('.lightbox');
+      if (!box) return;
+      box.removeAttribute('data-open');
+      document.documentElement.style.overflow = '';
+      window.setTimeout(function () {
+        if (box.parentNode) box.parentNode.removeChild(box);
+      }, 200);
+    }
+
+    function openBox(node) {
+      closeBox();
+      var box = document.createElement('div');
+      box.className = 'lightbox';
+      box.appendChild(node);
+
+      var hint = document.createElement('p');
+      hint.className = 'lightbox__hint';
+      hint.textContent = '点击任意处关闭';
+      box.appendChild(hint);
+
+      document.body.appendChild(box);
+      // 打开期间锁住页面滚动，免得背后的正文跟着动
+      document.documentElement.style.overflow = 'hidden';
+      requestAnimationFrame(function () {
+        box.dataset.open = '1';
+      });
+    }
+
+    function onZoom(event) {
+      if (document.querySelector('.lightbox')) {
+        closeBox();
+        return;
+      }
+
+      // 图版之外的图片（正文里直接写的 <img>）也能点开
+      var img = event.target.closest('.prose img');
+      if (img) {
+        var copy = new Image();
+        copy.src = img.currentSrc || img.src;
+        copy.alt = img.alt;
+        openBox(copy);
+        return;
+      }
+
+      var svg = event.target.closest('.prose pre.mermaid[data-ready="1"] svg');
+      if (svg) {
+        var clone = svg.cloneNode(true);
+        // mermaid 会把渲染尺寸写进行内样式，留着的话放大也只有原来那么大
+        clone.removeAttribute('style');
+        clone.removeAttribute('width');
+        clone.removeAttribute('height');
+
+        // 按 viewBox 的比例算出能放多大：交给 CSS 拉满会把扁长的图
+        // 摊在一块竖着的底板中间。48 是左右各 1.5rem 的内边距
+        var box = svg.viewBox.baseVal;
+        if (box && box.width && box.height) {
+          var room = Math.min(
+            (window.innerWidth - 64 - 48) / box.width,
+            (window.innerHeight - 88 - 48) / box.height,
+          );
+          clone.style.width = Math.round(box.width * room) + 'px';
+          clone.style.height = Math.round(box.height * room) + 'px';
+        }
+
+        openBox(clone);
+      }
+    }
+
+    if (!window.__nnZoomBound) {
+      window.__nnZoomBound = true;
+      document.addEventListener('click', onZoom);
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeBox();
+      });
     }
 
     if (!window.__nnArticleBound) {
