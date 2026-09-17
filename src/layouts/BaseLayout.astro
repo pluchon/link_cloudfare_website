@@ -113,59 +113,377 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
 
         // 不走 View Transitions API：它被浏览器跳过时 ready 会 reject，
         // 动画不执行而主题已经切了，表现就是整屏瞬间换色。
-        // 自己做：先把主题切好，再盖一层「切换前的底色」，两个方向分别把它
-        // 挖洞挖开、或者整块收回图标里。主题始终领先一步，中途不可能出现
-        // 覆盖层和页面颜色对不上的那一帧
-        var rippling = false;
+        //
+        // 仿 Edge 移动端：幕布淡入 → 完全不透明后才切主题 → 幕布上画线条动画
+        // → 幕布淡出露出新主题。切主题那一刻页面被整个挡住，不会有颜色对不上的帧。
+        // 转浅色：黑底白线，顺时针画圆、光线从圆边长出来、整组慢慢转，两朵云和几只飞鸟。
+        // 转深色：白底黑线，勾出月牙、星星冒出来、流星围着月亮划过，草上有萤火虫。
+        // 图标从切换按钮飞到屏幕中央，结尾线条在中央原路收回。
+        // 时间轴见 global.css 里 .theme-scene 上方的注释，整段不超过 4 秒
+        //
+        // 幕布淡入 240ms，淡入结束（transitionend）就切主题；SWAP_AT 只是兜底
+        var SWAP_AT = 600;
+        var RETRACT_AT = 3000;
+        var LEAVE_AT = 3400;
+        var DONE_AT = 3900;
+        var switching = false;
 
-        function ripple(oldBg, x, y, grow) {
-          var el = document.createElement('div');
-          el.className = 'theme-ripple';
-          el.style.background = oldBg;
-          el.style.setProperty('--nn-rx', x + 'px');
-          el.style.setProperty('--nn-ry', y + 'px');
-          document.body.appendChild(el);
+        // 固定种子的伪随机：每次画出来的草地和流星都一样，不会忽密忽疏
+        function seeded(seed) {
+          return function () {
+            seed = (seed + 0x6d2b79f5) | 0;
+            var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
 
-          var r = Math.hypot(
-            Math.max(x, window.innerWidth - x),
-            Math.max(y, window.innerHeight - y),
+        // 一朵线条云，原点在底边左端，宽 46、高约 20
+        var CLOUD = 'M0 0a8 8 0 0 1 6-12a12 12 0 0 1 22-4a9 9 0 0 1 16 8a6 6 0 0 1 2 8Z';
+
+        function sunMarkup() {
+          var rays = '';
+          for (var i = 0; i < 8; i++) {
+            var a = (i * Math.PI) / 4 - Math.PI / 2;
+            var inner = 36;
+            var outer = i % 2 ? 44 : 48;
+            rays +=
+              '<line class="draw" pathLength="1" stroke-width="2" style="--delay:' +
+              (820 + i * 70) +
+              'ms;--dur:560ms" x1="' +
+              (100 + inner * Math.cos(a)).toFixed(1) +
+              '" y1="' +
+              (100 + inner * Math.sin(a)).toFixed(1) +
+              '" x2="' +
+              (100 + outer * Math.cos(a)).toFixed(1) +
+              '" y2="' +
+              (100 + outer * Math.sin(a)).toFixed(1) +
+              '"/>';
+          }
+
+          // 云避开光线能扫到的范围（圆心 48 以内），一朵在左上、一朵在右下
+          var clouds =
+            '<g transform="translate(-6 60)"><g class="theme-scene__cloud" style="--drift:7px">' +
+            '<path class="draw" pathLength="1" stroke-width="1.6" style="--delay:1300ms;--dur:1100ms" d="' +
+            CLOUD +
+            '"/></g></g>' +
+            '<g transform="translate(134 166) scale(0.72)"><g class="theme-scene__cloud" style="--drift:-9px">' +
+            '<path class="draw" pathLength="1" stroke-width="2.2" style="--delay:1550ms;--dur:1000ms" d="' +
+            CLOUD +
+            '"/></g></g>';
+
+          // 右上角远处的三只鸟，一前两后
+          var birds = [
+            [150, 40, 1, 1500],
+            [166, 50, 0.75, 1700],
+            [140, 54, 0.62, 1850],
+          ]
+            .map(function (b) {
+              return (
+                '<g transform="translate(' +
+                b[0] +
+                ' ' +
+                b[1] +
+                ') scale(' +
+                b[2] +
+                ')"><g class="theme-scene__bird" style="--delay:' +
+                b[3] +
+                'ms"><path d="M-6 0q3-3.5 6 0q3-3.5 6 0"/></g></g>'
+              );
+            })
+            .join('');
+
+          // 圆默认从三点钟方向开始、顺时针走，转 -90° 让它从正上方起笔
+          return (
+            clouds +
+            birds +
+            '<circle class="draw" pathLength="1" stroke-width="2.2" cx="100" cy="100" r="25"' +
+            ' transform="rotate(-90 100 100)" style="--delay:260ms;--dur:1000ms"/>' +
+            '<g class="theme-scene__rays">' +
+            rays +
+            '</g>'
+          );
+        }
+
+        function moonMarkup() {
+          // 月牙沿用常见的线性图标轮廓，放大到画布中央。
+          // 线宽跟着 scale(5) 一起放大，写 0.44，放大后和太阳的 2.2 一样粗
+          var moon =
+            '<path class="draw" pathLength="1" stroke-width="0.44"' +
+            ' transform="translate(40 40) scale(5)" style="--delay:260ms;--dur:1200ms"' +
+            ' d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+          // 位置照着 Edge 的截图摆，大小有别
+          var stars = [
+            [143, 57, 1.1],
+            [40, 81, 0.7],
+            [154, 81, 0.75],
+            [21, 121, 0.55],
+            [57, 152, 0.75],
+            [138, 161, 0.7],
+            [196, 131, 0.55],
+          ];
+          var out = '';
+          stars.forEach(function (s, i) {
+            out +=
+              '<g transform="translate(' +
+              s[0] +
+              ' ' +
+              s[1] +
+              ') scale(' +
+              s[2] +
+              ')"><path class="theme-scene__star" style="--delay:' +
+              (1100 + i * 130) +
+              'ms" d="M0 -6L0.8 -0.8L6 0L0.8 0.8L0 6L-0.8 0.8L-6 0L-0.8 -0.8Z"/></g>';
+          });
+          return moon + out;
+        }
+
+        // 流星围着月亮出现：画在月亮那张图里（坐标 0~200，月亮在正中），
+        // 从左下往右上缓缓划过。起点在月亮周围一圈较大的范围里随机撒，
+        // 但要离「穿过圆心的那条 45° 斜线」足够远——否则沿斜线走时会从月亮身上穿过去。
+        // 点到那条斜线的距离是 |dx + dy| / √2
+        function meteorMarkup() {
+          var rand = seeded(7);
+          var out =
+            '<defs><linearGradient id="nn-meteor-trail" x1="0" y1="1" x2="1" y2="0">' +
+            '<stop offset="0" stop-color="currentColor" stop-opacity="0"/>' +
+            '<stop offset="1" stop-color="currentColor" stop-opacity="0.75"/>' +
+            '</linearGradient></defs>';
+          var made = 0;
+          var tries = 0;
+          while (made < 16 && tries < 400) {
+            tries++;
+            var angle = rand() * Math.PI * 2;
+            var dist = 50 + rand() * 105;
+            var dx = Math.cos(angle) * dist;
+            var dy = Math.sin(angle) * dist;
+            if (Math.abs(dx + dy) / Math.SQRT2 < 42) continue;
+
+            var x = 100 + dx;
+            var y = 100 + dy;
+            var len = Math.round(12 + rand() * 14);
+            out +=
+              '<line class="theme-scene__meteor" x1="' +
+              x.toFixed(1) +
+              '" y1="' +
+              y.toFixed(1) +
+              '" x2="' +
+              (x + len).toFixed(1) +
+              '" y2="' +
+              (y - len).toFixed(1) +
+              '" style="--delay:' +
+              Math.round(700 + made * 130 + rand() * 160) +
+              'ms;--dur:' +
+              Math.round(1900 + rand() * 700) +
+              'ms;--run:' +
+              Math.round(34 + rand() * 22) +
+              'px"/>';
+            made++;
+          }
+          return out;
+        }
+
+        // viewBox 的宽度按屏幕比例现算，preserveAspectRatio="none" 也不会变形：
+        // 草叶在手机和电脑上一样粗、一样高，屏幕越宽草越多。
+        // 深色方向在草叶上方加萤火虫
+        function groundMarkup(groundH, night) {
+          var rand = seeded(11);
+          var width = Math.max(200, Math.round((160 * window.innerWidth) / groundH));
+          var blades = '';
+          for (var x = 3; x < width; x += 6 + rand() * 7) {
+            var h = 16 + rand() * 34 + (rand() < 0.1 ? 26 : 0);
+            var lean = (rand() - 0.5) * 22;
+            blades +=
+              '<path class="draw theme-scene__blade" pathLength="1" style="--delay:' +
+              Math.round(420 + (x / width) * 1100 + rand() * 160) +
+              'ms;--sway:' +
+              Math.round(2600 + rand() * 1600) +
+              'ms" d="M' +
+              x.toFixed(1) +
+              ' 160Q' +
+              (x + lean * 0.25).toFixed(1) +
+              ' ' +
+              (160 - h * 0.55).toFixed(1) +
+              ' ' +
+              (x + lean).toFixed(1) +
+              ' ' +
+              (160 - h).toFixed(1) +
+              '"/>';
+          }
+
+          var flies = '';
+          if (night) {
+            var glow = seeded(23);
+            // 大约每 90 个单位一只，窄屏至少 5 只
+            var count = Math.max(5, Math.round(width / 90));
+            for (var i = 0; i < count; i++) {
+              flies +=
+                '<circle class="theme-scene__firefly" r="' +
+                (1.1 + glow() * 0.8).toFixed(2) +
+                '" cx="' +
+                (((i + 0.2 + glow() * 0.6) / count) * width).toFixed(1) +
+                '" cy="' +
+                (70 + glow() * 60).toFixed(1) +
+                '" style="--delay:' +
+                Math.round(1200 + glow() * 1000) +
+                'ms;--float:' +
+                Math.round(2200 + glow() * 1400) +
+                'ms;--glow:' +
+                Math.round(900 + glow() * 900) +
+                'ms;--dx:' +
+                Math.round((glow() - 0.5) * 16) +
+                'px;--dy:' +
+                Math.round(-6 - glow() * 10) +
+                'px"/>';
+            }
+          }
+
+          return (
+            '<svg class="theme-scene__ground" viewBox="0 0 ' +
+            width +
+            ' 160" preserveAspectRatio="none" aria-hidden="true" style="--ground-h:' +
+            groundH +
+            'px">' +
+            '<path class="draw" pathLength="1" style="--delay:200ms;--dur:1400ms" d="M0 159.5H' +
+            width +
+            '"/>' +
+            blades +
+            flies +
+            '</svg>'
+          );
+        }
+
+        // 切换期间整页锁住，免得误操作。光靠幕布挡住鼠标不够：
+        // 键盘还能 Tab 到底下的链接、回车就跳走了；滚轮和手指还能滚动底下的页面；
+        // 首页画布的缩放快捷键挂在 window 上，幕布也挡不住。
+        // 所以底下的元素全部设 inert，滚动锁掉，键盘和滚轮在捕获阶段拦下
+        function lockPage(scene) {
+          var root = document.documentElement;
+          var overflow = root.style.overflow;
+          root.style.overflow = 'hidden';
+
+          var muted = [];
+          Array.prototype.forEach.call(document.body.children, function (node) {
+            if (node === scene || node.inert) return;
+            node.inert = true;
+            muted.push(node);
+          });
+
+          function swallow(event) {
+            event.stopPropagation();
+            // 带修饰键的交给浏览器（刷新、开发者工具之类），只是不让页面自己的快捷键响应
+            if (event.type === 'keydown' && (event.ctrlKey || event.metaKey || event.altKey)) return;
+            if (event.cancelable) event.preventDefault();
+          }
+
+          var opts = { capture: true, passive: false };
+          ['keydown', 'wheel', 'touchmove'].forEach(function (type) {
+            window.addEventListener(type, swallow, opts);
+          });
+
+          return function unlock() {
+            root.style.overflow = overflow;
+            muted.forEach(function (node) {
+              node.inert = false;
+            });
+            ['keydown', 'wheel', 'touchmove'].forEach(function (type) {
+              window.removeEventListener(type, swallow, opts);
+            });
+          };
+        }
+
+        function playScene(next, btn, onSwap) {
+          var night = next === 'dark';
+          // 横屏给草地多一点高度，竖屏收一点，免得挤到中间的图标
+          var landscape = window.innerWidth > window.innerHeight;
+          var groundH = Math.round(
+            Math.min(window.innerHeight * (landscape ? 0.2 : 0.13), 180),
           );
 
-          function done() {
+          var el = document.createElement('div');
+          el.className = 'theme-scene';
+          el.dataset.mode = night ? 'night' : 'day';
+          el.setAttribute('aria-hidden', 'true');
+          el.innerHTML =
+            groundMarkup(groundH, night) +
+            '<svg class="theme-scene__icon" viewBox="0 0 200 200">' +
+            (night ? meteorMarkup() + moonMarkup() : sunMarkup()) +
+            '</svg>';
+
+          // 图标从按钮飞出来：量出按钮中心相对屏幕中心的偏移，和两者的尺寸比
+          var rect = btn.getBoundingClientRect();
+          var iconSize = Math.min(window.innerWidth * 0.66, 280);
+          el.style.setProperty(
+            '--from-x',
+            Math.round(rect.left + rect.width / 2 - window.innerWidth / 2) + 'px',
+          );
+          el.style.setProperty(
+            '--from-y',
+            Math.round(rect.top + rect.height / 2 - window.innerHeight / 2) + 'px',
+          );
+          // 太阳和月牙本体大约占图标宽度的四分之一，缩到和按钮里的小图标差不多大
+          el.style.setProperty('--from-s', ((rect.width * 2.2) / iconSize).toFixed(3));
+
+          document.body.appendChild(el);
+          var unlock = lockPage(el);
+
+          var timers = [];
+          var swapped = false;
+          var finished = false;
+
+          function swap() {
+            if (swapped) return;
+            swapped = true;
+            onSwap();
+          }
+
+          // 只能收尾一次：兜底计时器晚到时，下一次切换可能已经开始了，
+          // 再跑一遍会把新一轮的滚动锁和 switching 标志一起解掉
+          function finish() {
+            if (finished) return;
+            finished = true;
+            timers.forEach(clearTimeout);
+            swap();
             el.remove();
-            rippling = false;
+            unlock();
+            switching = false;
           }
 
-          var frames;
-          if (grow) {
-            el.dataset.mode = 'grow';
-            frames = { '--nn-rr': ['0px', r + 'px'] };
-          } else {
-            var full = 'circle(' + r + 'px at ' + x + 'px ' + y + 'px)';
-            var small = 'circle(0px at ' + x + 'px ' + y + 'px)';
-            el.style.clipPath = full;
-            frames = { clipPath: [full, small] };
+          function leave() {
+            swap();
+            el.dataset.leaving = '1';
+            timers.push(setTimeout(finish, DONE_AT - LEAVE_AT));
           }
 
-          try {
-            // 曲线必须起步就动。用先慢后快的曲线时，覆盖层会在「铺满全屏」
-            // 那一帧停留近 250ms，而页面底下已经是新主题了，看着就是闪一下
-            var anim = el.animate(frames, {
-              duration: 780,
-              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-              fill: 'forwards',
-            });
-            anim.finished.then(done, done);
-          } catch (e) {
-            done();
-          }
+          // 主题等幕布真的淡入完了再切，不能只靠计时器：
+          // 页面一卡，淡入会晚开始，计时器到点时幕布可能还是透明的，
+          // 主题一切就是整屏跳色
+          el.addEventListener('transitionend', function (event) {
+            if (event.target === el && el.dataset.open === '1' && !el.dataset.leaving) swap();
+          });
+
+          // 先强制算一次样式，让透明成为过渡的起点，再改成不透明。
+          // 不用 rAF：它在后台或卡顿时会被推迟，淡入也跟着推迟
+          void el.offsetWidth;
+          el.dataset.open = '1';
+
+          // 兜底：transitionend 没来（比如过渡被跳过）也要切
+          timers.push(setTimeout(swap, SWAP_AT));
+          timers.push(
+            setTimeout(function () {
+              el.dataset.retract = '1';
+            }, RETRACT_AT),
+          );
+          timers.push(setTimeout(leave, LEAVE_AT));
+          // 兜底：别让幕布一直挂着
+          timers.push(setTimeout(finish, DONE_AT + 1500));
         }
 
         // 主题切换走事件委托，顶栏被换掉也不用重新绑
         document.addEventListener('click', function (event) {
           var btn = event.target.closest && event.target.closest('#theme-toggle');
           if (!btn) return;
-          if (rippling) return;
+          if (switching) return;
 
           var root = document.documentElement;
           var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
@@ -181,17 +499,16 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
             return;
           }
 
-          // 圆心取图标中心，半径取到最远的那个角，保证能盖满整屏
-          var rect = btn.getBoundingClientRect();
-          var x = rect.left + rect.width / 2;
-          var y = rect.top + rect.height / 2;
-          // 必须在切换前取，覆盖层画的是「切换前的样子」
-          var oldBg = getComputedStyle(root).getPropertyValue('--bg').trim();
-
-          rippling = true;
-          setTheme(next);
-          // 转深色是新颜色从图标涨开，转浅色是旧颜色收回图标
-          ripple(oldBg, x, y, next === 'dark');
+          switching = true;
+          try {
+            playScene(next, btn, function () {
+              setTheme(next);
+            });
+          } catch (e) {
+            // 动画搭不起来也要把主题切掉，不能让按钮点了没反应
+            setTheme(next);
+            switching = false;
+          }
         });
 
         // 入场动画：进入视口才播，播完就不再管

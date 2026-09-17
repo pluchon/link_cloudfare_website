@@ -360,37 +360,283 @@ body.is-canvas > main {
 
 .footer-note { color: var(--fg-muted); }
 
-/* ---------- 深浅切换：以图标为圆心的圆形扩散 ----------
-   页面先切到新主题，再盖一层旧底色，用径向遮罩挖一个越来越大的洞把新页面露出来。
-   半径要能做动画，就必须先把它注册成 <length> 类型的自定义属性 */
+/* ---------- 深浅切换：幕布上的线条动画 ----------
+   仿 Edge 移动端。幕布先淡入盖满，完全不透明之后才切主题，
+   动画在幕布上播完，幕布淡出露出新主题。切主题那一刻页面被整个挡住，
+   不存在「覆盖层和页面颜色对不上」的帧。
+   幕布的底色跟着「切换前」走：转浅色是黑底白线的太阳，转深色是白底黑线的月牙，
+   幕布淡入时和原页面几乎是同一个颜色，像是页面自己慢慢空了出来。
 
-/* 覆盖层的挖洞半径要能做动画，就得先注册成 <length> 类型 */
-@property --nn-rr {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 0px;
-}
+   时间轴（毫秒）：
+   0     幕布淡入；图标从右上角的切换按钮飞到屏幕中央，边飞边画
+   ~240  幕布淡入结束，切主题
+   ...   太阳配云和飞鸟；月牙配星星、流星和萤火虫；底部草地
+   3000  收笔：图标的线条沿原路倒着收回，图标留在屏幕中央
+   3400  幕布淡出
+   3900  移除 */
 
-.theme-ripple {
+.theme-scene {
+  --scene-bg: #000;
+  --scene-ink: #ececec;
   position: fixed;
   inset: 0;
   z-index: 2147483000;
-  pointer-events: none;
-  --nn-rr: 0px;
+  overflow: hidden;
+  background: var(--scene-bg);
+  color: var(--scene-ink);
+  opacity: 0;
+  /* 切换期间什么都不能点，也不能滑：手机上下拉不触发刷新、不回弹 */
+  cursor: default;
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 240ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-/* 扩散：覆盖层上挖一个越来越大的洞，把已经切好的新主题露出来 */
-.theme-ripple[data-mode='grow'] {
-  -webkit-mask-image: radial-gradient(
-    circle at var(--nn-rx) var(--nn-ry),
-    transparent var(--nn-rr),
-    #000 calc(var(--nn-rr) + 1px)
-  );
-  mask-image: radial-gradient(
-    circle at var(--nn-rx) var(--nn-ry),
-    transparent var(--nn-rr),
-    #000 calc(var(--nn-rr) + 1px)
-  );
+.theme-scene[data-mode='night'] {
+  --scene-bg: #fff;
+  --scene-ink: #1c1c1e;
+}
+
+.theme-scene[data-open='1'] { opacity: 1; }
+
+.theme-scene[data-leaving='1'] {
+  opacity: 0;
+  transition-duration: 460ms;
+  transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ---------- 中央图标：从按钮飞到屏幕中央，之后一直留在中央 ----------
+   --from-x / --from-y 是按钮中心相对屏幕中心的偏移，--from-s 是按钮与图标的尺寸比，
+   都由脚本在打开时量好写进来 */
+
+.theme-scene__icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(66vw, 280px);
+  height: auto;
+  overflow: visible;
+  transform: translate(-50%, -50%) scale(0.94);
+  /* 两段动画都作用在 transform 上：飞行结束时停在 0.94，
+     舒展从 0.94 接着往下走，衔接处没有跳变 */
+  animation:
+    nn-icon-arrive 720ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    nn-icon-breathe 2280ms cubic-bezier(0.33, 1, 0.68, 1) 720ms forwards;
+}
+
+@keyframes nn-icon-arrive {
+  from {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--from-x, 0px)), calc(-50% + var(--from-y, 0px)))
+      scale(var(--from-s, 0.1));
+  }
+  35% { opacity: 1; }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.94);
+  }
+}
+
+@keyframes nn-icon-breathe {
+  from { transform: translate(-50%, -50%) scale(0.94); }
+  to { transform: translate(-50%, -50%) scale(1.04); }
+}
+
+/* ---------- 画线 ----------
+   所有描边都用 pathLength="1"，画线从 1 走到 0，收笔再从 0 走回 1——
+   虚线的可见段是 [0, 1 - offset]，offset 变大时线从末端往起点缩，正好是原路收回。
+   开头顺带淡入：圆头端点在长度为 0 时会留一个小圆点，淡入把它藏掉 */
+
+.theme-scene .draw {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  animation: nn-draw var(--dur, 900ms) cubic-bezier(0.65, 0, 0.35, 1) var(--delay, 0ms) forwards;
+}
+
+@keyframes nn-draw {
+  0% { stroke-dashoffset: 1; opacity: 0; }
+  12% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+
+.theme-scene[data-retract='1'] .theme-scene__icon .draw {
+  animation: nn-undraw 480ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes nn-undraw {
+  0% { stroke-dashoffset: 0; opacity: 1; }
+  85% { opacity: 1; }
+  100% { stroke-dashoffset: 1; opacity: 0; }
+}
+
+/* ---------- 太阳 ---------- */
+
+/* 光线整组慢慢转，起步和收尾都是缓的 */
+.theme-scene__rays {
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  animation: nn-rays-turn 2800ms cubic-bezier(0.37, 0, 0.63, 1) 900ms both;
+}
+
+@keyframes nn-rays-turn {
+  from { transform: rotate(-10deg); }
+  to { transform: rotate(35deg); }
+}
+
+/* 两朵云往右慢慢飘。位置写在外层 <g> 的 transform 属性上，
+   漂移写在内层，两者不打架 */
+.theme-scene__cloud {
+  animation: nn-cloud-drift 3200ms cubic-bezier(0.37, 0, 0.63, 1) 500ms both;
+}
+
+@keyframes nn-cloud-drift {
+  from { transform: translateX(calc(-1 * var(--drift, 8px))); }
+  to { transform: translateX(var(--drift, 8px)); }
+}
+
+/* 远处的飞鸟：淡入后翅膀一上一下，同时往右上方慢慢飞走 */
+.theme-scene__bird {
+  opacity: 0;
+  animation: nn-bird-fly 2600ms cubic-bezier(0.37, 0, 0.63, 1) var(--delay, 0ms) forwards;
+}
+
+.theme-scene__bird path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nn-bird-flap 620ms ease-in-out var(--delay, 0ms) infinite alternate;
+}
+
+@keyframes nn-bird-fly {
+  0% { opacity: 0; transform: translate(0, 0); }
+  20% { opacity: 0.85; }
+  100% { opacity: 0.85; transform: translate(14px, -8px); }
+}
+
+@keyframes nn-bird-flap {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0.35); }
+}
+
+/* ---------- 月牙 ---------- */
+
+/* 星星：淡入并从小长大，之后缓慢地明暗交替 */
+.theme-scene__star {
+  fill: currentColor;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation:
+    nn-star-in 700ms cubic-bezier(0.33, 1, 0.68, 1) var(--delay, 0ms) forwards,
+    nn-star-twinkle 2600ms ease-in-out calc(var(--delay, 0ms) + 700ms) infinite;
+}
+
+@keyframes nn-star-in {
+  from { opacity: 0; transform: scale(0.2) rotate(-45deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes nn-star-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.theme-scene[data-retract='1'] .theme-scene__star {
+  animation: nn-star-out 420ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes nn-star-out {
+  from { opacity: 0.8; transform: scale(1) rotate(0deg); }
+  to { opacity: 0; transform: scale(0.2) rotate(45deg); }
+}
+
+/* 流星：围着月亮，从左下往右上缓缓划过。
+   是月亮那张 SVG 里的线段，尾巴的渐变由 #nn-meteor-trail 提供；
+   SVG 元素上 transform 的 px 就是画布坐标单位 */
+.theme-scene__meteor {
+  stroke: url(#nn-meteor-trail);
+  stroke-width: 1;
+  stroke-linecap: round;
+  opacity: 0;
+  animation: nn-meteor var(--dur, 2200ms) cubic-bezier(0.33, 0, 0.67, 1) var(--delay, 0ms) forwards;
+}
+
+@keyframes nn-meteor {
+  0% { opacity: 0; transform: translate(0, 0); }
+  25% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--run, 46px), calc(-1 * var(--run, 46px))); }
+}
+
+/* ---------- 草地与萤火虫 ----------
+   viewBox 的宽度由脚本按屏幕比例算，所以手机和电脑上草叶的粗细、高矮都一样，
+   只是多少不同 */
+
+.theme-scene__ground {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: var(--ground-h, 20vh);
+  overflow: visible;
+}
+
+.theme-scene__ground .draw {
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.theme-scene__blade {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+/* 草叶摇摆和画线是两个属性，互不干扰 */
+.theme-scene__blade.draw {
+  animation:
+    nn-draw var(--dur, 700ms) cubic-bezier(0.33, 1, 0.68, 1) var(--delay, 0ms) forwards,
+    nn-sway var(--sway, 3200ms) cubic-bezier(0.37, 0, 0.63, 1) var(--delay, 0ms) infinite alternate;
+}
+
+@keyframes nn-sway {
+  from { transform: rotate(-3deg); }
+  to { transform: rotate(3deg); }
+}
+
+/* 萤火虫：草叶上方的小光点，慢慢漂，忽明忽暗 */
+.theme-scene__firefly {
+  fill: currentColor;
+  opacity: 0;
+  animation:
+    nn-firefly-in 600ms ease-out var(--delay, 0ms) forwards,
+    nn-firefly-float var(--float, 2600ms) cubic-bezier(0.37, 0, 0.63, 1) var(--delay, 0ms) infinite alternate,
+    nn-firefly-glow var(--glow, 1400ms) ease-in-out calc(var(--delay, 0ms) + 600ms) infinite alternate;
+}
+
+@keyframes nn-firefly-in {
+  to { opacity: 0.9; }
+}
+
+@keyframes nn-firefly-float {
+  from { transform: translate(0, 0); }
+  to { transform: translate(var(--dx, 6px), var(--dy, -10px)); }
+}
+
+@keyframes nn-firefly-glow {
+  from { opacity: 0.9; }
+  to { opacity: 0.2; }
 }
 
 /* ---------- 连线上的流动光点 ---------- */
