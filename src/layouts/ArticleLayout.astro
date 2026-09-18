@@ -1,6 +1,7 @@
 ---
 import '../styles/prose.css';
 import BaseLayout from './BaseLayout.astro';
+import PaletteDecor from '../components/PaletteDecor.astro';
 import type { MarkdownHeading } from 'astro';
 import type { AnyEntry, ContentKind } from '../lib/content';
 import { entryHref, formatDate, countWords, entryCover } from '../lib/content';
@@ -35,6 +36,7 @@ for (const h of headings) {
 ---
 
 <BaseLayout title={data.title} description={data.summary} ogImage={cover}>
+  <PaletteDecor />
   <div class="progress" id="reading-progress" aria-hidden="true"></div>
 
   {

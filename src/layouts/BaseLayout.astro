@@ -76,6 +76,15 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           stored === 'dark' ||
           (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
         root.dataset.theme = dark ? 'dark' : 'light';
+
+        // 主题色也要在首帧前定好，否则会先闪一下默认的墨色
+        var palette = null;
+        try {
+          palette = localStorage.getItem('nn-palette');
+        } catch (e) {
+          /* 隐私模式读取失败时用默认色 */
+        }
+        root.dataset.palette = palette || 'ink';
       })();
     </script>
 
@@ -91,15 +100,35 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           }
         }
 
+        function setPalette(next) {
+          document.documentElement.dataset.palette = next;
+          try {
+            localStorage.setItem('nn-palette', next);
+          } catch (e) {
+            /* 隐私模式下写入失败时静默降级 */
+          }
+          markPalette();
+        }
+
+        // 菜单里打钩的那一项跟着当前主题色走
+        function markPalette() {
+          var now = document.documentElement.dataset.palette || 'ink';
+          document.querySelectorAll('[data-palette-set]').forEach(function (btn) {
+            btn.setAttribute('aria-checked', btn.dataset.paletteSet === now ? 'true' : 'false');
+          });
+        }
+
         // ClientRouter 换页时会用新文档的 <html> 属性覆盖当前的，
-        // 而 data-theme 是运行时加的、新文档里没有，于是一导航就被抹掉退回浅色。
-        // 每次换完页重新贴一次
+        // 而 data-theme / data-palette 是运行时加的、新文档里没有，
+        // 于是一导航就被抹掉退回默认。每次换完页重新贴一次
         function restoreTheme() {
           var root = document.documentElement;
           root.classList.add('js');
           var stored = null;
+          var palette = null;
           try {
             stored = localStorage.getItem('nn-theme');
+            palette = localStorage.getItem('nn-palette');
           } catch (e) {
             /* 隐私模式读取失败时退回系统偏好 */
           }
@@ -107,19 +136,24 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
             stored === 'dark' ||
             (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
           root.dataset.theme = dark ? 'dark' : 'light';
+          root.dataset.palette = palette || 'ink';
+          markPalette();
         }
 
         document.addEventListener('astro:after-swap', restoreTheme);
+        document.addEventListener('astro:page-load', markPalette);
 
         // 不走 View Transitions API：它被浏览器跳过时 ready 会 reject，
         // 动画不执行而主题已经切了，表现就是整屏瞬间换色。
         //
-        // 仿 Edge 移动端：幕布淡入 → 完全不透明后才切主题 → 幕布上画线条动画
-        // → 幕布淡出露出新主题。切主题那一刻页面被整个挡住，不会有颜色对不上的帧。
-        // 转浅色：黑底白线，顺时针画圆、光线从圆边长出来、整组慢慢转，两朵云和几只飞鸟。
-        // 转深色：白底黑线，勾出月牙、星星冒出来、流星围着月亮划过，草上有萤火虫。
-        // 图标从切换按钮飞到屏幕中央，结尾线条在中央原路收回。
-        // 时间轴见 global.css 里 .theme-scene 上方的注释，整段不超过 4 秒
+        // 幕布淡入 → 完全不透明后才切主题 → 幕布上放一整幅线条画 → 幕布淡出。
+        // 白天：黑底白线，太阳从群山背后升起，出山之后才长出光线并慢慢转；
+        //       天上有云（灰→白）和一群飞向远处的大雁，地上是带小花的草地。
+        // 夜里：白底黑线，月亮从湖对岸的地平线升起，然后流星划过；
+        //       湖里有鸭子和荷叶荷花，岸边是草，空中有萤火虫和银河。
+        //
+        // 图层从后往前：sky（天上的东西）→ icon（日月）→ terrain（群山 / 湖面）
+        // → ground（近处的草）。日月被 terrain 挡住，所以「升起」才成立。
         //
         // 幕布淡入 240ms，淡入结束（transitionend）就切主题；SWAP_AT 只是兜底
         var SWAP_AT = 600;
@@ -128,7 +162,7 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
         var DONE_AT = 3900;
         var switching = false;
 
-        // 固定种子的伪随机：每次画出来的草地和流星都一样，不会忽密忽疏
+        // 固定种子的伪随机：每次画出来的山形、草地、银河都一样，不会忽密忽疏
         function seeded(seed) {
           return function () {
             seed = (seed + 0x6d2b79f5) | 0;
@@ -138,19 +172,23 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           };
         }
 
-        // 一朵线条云，原点在底边左端，宽 46、高约 20
-        var CLOUD = 'M0 0a8 8 0 0 1 6-12a12 12 0 0 1 22-4a9 9 0 0 1 16 8a6 6 0 0 1 2 8Z';
+        // 一朵线条云：从右下角起笔，先沿底边画到左端，再一路拱回起点。
+        // 一笔画完自己的轮廓，不会「绕一圈再回头补一条底线」
+        var CLOUD = 'M46 0H0a8 8 0 0 1 6-12a12 12 0 0 1 22-4a9 9 0 0 1 16 8a6 6 0 0 1 2 8Z';
 
+        // 太阳：圆本身不画线，它是升上来的；光线等它整个出了山才长出来
         function sunMarkup() {
           var rays = '';
           for (var i = 0; i < 8; i++) {
             var a = (i * Math.PI) / 4 - Math.PI / 2;
             var inner = 36;
             var outer = i % 2 ? 44 : 48;
+            // 八条光线一起淡入，不逐条错开——错开看着仍然像在「一笔一笔画轮廓」。
+            // 等太阳快升到位（升起是 800~2400ms）才亮起来
             rays +=
-              '<line class="draw" pathLength="1" stroke-width="2" style="--delay:' +
-              (820 + i * 70) +
-              'ms;--dur:560ms" x1="' +
+              '<line class="theme-scene__ray" stroke-width="2" style="--delay:' +
+              1900 +
+              'ms" x1="' +
               (100 + inner * Math.cos(a)).toFixed(1) +
               '" y1="' +
               (100 + inner * Math.sin(a)).toFixed(1) +
@@ -160,59 +198,20 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
               (100 + outer * Math.sin(a)).toFixed(1) +
               '"/>';
           }
-
-          // 云避开光线能扫到的范围（圆心 48 以内），一朵在左上、一朵在右下
-          var clouds =
-            '<g transform="translate(-6 60)"><g class="theme-scene__cloud" style="--drift:7px">' +
-            '<path class="draw" pathLength="1" stroke-width="1.6" style="--delay:1300ms;--dur:1100ms" d="' +
-            CLOUD +
-            '"/></g></g>' +
-            '<g transform="translate(134 166) scale(0.72)"><g class="theme-scene__cloud" style="--drift:-9px">' +
-            '<path class="draw" pathLength="1" stroke-width="2.2" style="--delay:1550ms;--dur:1000ms" d="' +
-            CLOUD +
-            '"/></g></g>';
-
-          // 右上角远处的三只鸟，一前两后
-          var birds = [
-            [150, 40, 1, 1500],
-            [166, 50, 0.75, 1700],
-            [140, 54, 0.62, 1850],
-          ]
-            .map(function (b) {
-              return (
-                '<g transform="translate(' +
-                b[0] +
-                ' ' +
-                b[1] +
-                ') scale(' +
-                b[2] +
-                ')"><g class="theme-scene__bird" style="--delay:' +
-                b[3] +
-                'ms"><path d="M-6 0q3-3.5 6 0q3-3.5 6 0"/></g></g>'
-              );
-            })
-            .join('');
-
-          // 圆默认从三点钟方向开始、顺时针走，转 -90° 让它从正上方起笔
           return (
-            clouds +
-            birds +
-            '<circle class="draw" pathLength="1" stroke-width="2.2" cx="100" cy="100" r="25"' +
-            ' transform="rotate(-90 100 100)" style="--delay:260ms;--dur:1000ms"/>' +
+            '<circle class="theme-scene__orb" cx="100" cy="100" r="25" stroke-width="2.2"/>' +
             '<g class="theme-scene__rays">' +
             rays +
             '</g>'
           );
         }
 
+        // 月亮：同样不画线，从地平线升起来。星星等它升到位再冒出来
         function moonMarkup() {
-          // 月牙沿用常见的线性图标轮廓，放大到画布中央。
-          // 线宽跟着 scale(5) 一起放大，写 0.44，放大后和太阳的 2.2 一样粗
           var moon =
-            '<path class="draw" pathLength="1" stroke-width="0.44"' +
-            ' transform="translate(40 40) scale(5)" style="--delay:260ms;--dur:1200ms"' +
+            '<path class="theme-scene__orb" stroke-width="0.44"' +
+            ' transform="translate(40 40) scale(5)"' +
             ' d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
-          // 位置照着 Edge 的截图摆，大小有别
           var stars = [
             [143, 57, 1.1],
             [40, 81, 0.7],
@@ -232,16 +231,14 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
               ') scale(' +
               s[2] +
               ')"><path class="theme-scene__star" style="--delay:' +
-              (1100 + i * 130) +
+              (1700 + i * 120) +
               'ms" d="M0 -6L0.8 -0.8L6 0L0.8 0.8L0 6L-0.8 0.8L-6 0L-0.8 -0.8Z"/></g>';
           });
           return moon + out;
         }
 
-        // 流星围着月亮出现：画在月亮那张图里（坐标 0~200，月亮在正中），
-        // 从左下往右上缓缓划过。起点在月亮周围一圈较大的范围里随机撒，
-        // 但要离「穿过圆心的那条 45° 斜线」足够远——否则沿斜线走时会从月亮身上穿过去。
-        // 点到那条斜线的距离是 |dx + dy| / √2
+        // 月亮周围的流星：画在月亮这张图里、排在月亮后面，所以压在月亮上一层。
+        // 起点只挑离「穿过圆心的 45° 斜线」足够远的位置，划过时不会从月亮身上穿过
         function meteorMarkup() {
           var rand = seeded(7);
           var out =
@@ -251,7 +248,7 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
             '</linearGradient></defs>';
           var made = 0;
           var tries = 0;
-          while (made < 16 && tries < 400) {
+          while (made < 14 && tries < 400) {
             tries++;
             var angle = rand() * Math.PI * 2;
             var dist = 50 + rand() * 105;
@@ -272,7 +269,7 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
               '" y2="' +
               (y - len).toFixed(1) +
               '" style="--delay:' +
-              Math.round(700 + made * 130 + rand() * 160) +
+              Math.round(1900 + made * 150 + rand() * 160) +
               'ms;--dur:' +
               Math.round(1900 + rand() * 700) +
               'ms;--run:' +
@@ -283,49 +280,470 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           return out;
         }
 
-        // viewBox 的宽度按屏幕比例现算，preserveAspectRatio="none" 也不会变形：
-        // 草叶在手机和电脑上一样粗、一样高，屏幕越宽草越多。
-        // 深色方向在草叶上方加萤火虫
-        function groundMarkup(groundH, night) {
-          var rand = seeded(11);
-          var width = Math.max(200, Math.round((160 * window.innerWidth) / groundH));
-          var blades = '';
-          for (var x = 3; x < width; x += 6 + rand() * 7) {
-            var h = 16 + rand() * 34 + (rand() < 0.1 ? 26 : 0);
-            var lean = (rand() - 0.5) * 22;
-            blades +=
-              '<path class="draw theme-scene__blade" pathLength="1" style="--delay:' +
-              Math.round(420 + (x / width) * 1100 + rand() * 160) +
-              'ms;--sway:' +
-              Math.round(2600 + rand() * 1600) +
-              'ms" d="M' +
-              x.toFixed(1) +
-              ' 160Q' +
-              (x + lean * 0.25).toFixed(1) +
-              ' ' +
-              (160 - h * 0.55).toFixed(1) +
-              ' ' +
-              (x + lean).toFixed(1) +
-              ' ' +
-              (160 - h).toFixed(1) +
-              '"/>';
+        // 天上：白天是云和大雁，夜里是银河、星星和更远的流星。
+        // 这一层压在最后面，会被群山和湖面挡住
+        function skyMarkup(night, geom) {
+          var W = geom.W;
+          var rand = seeded(night ? 31 : 37);
+          var out = '';
+
+          function pick(top, bottom) {
+            for (var i = 0; i < 40; i++) {
+              var x = rand() * W;
+              var y = top + rand() * (bottom - top);
+              if (Math.hypot(x - W / 2, y - geom.centerY) > geom.keepOut) return [x, y];
+            }
+            return null;
           }
 
-          var flies = '';
+          if (night) {
+            // 银河：一条从左下贯穿到右上的星带，中间厚两侧薄，一直铺到地平线。
+            // 垂直方向用三个随机数相加逼近正态分布。
+            // 不在月亮那一圈挖空——银河是最底层，月亮内部填了底色，
+            // 自然就把穿过它的那一段挡住了，月亮之外照常看得见
+            var bandW = Math.max(120, Math.min(260, geom.H * 0.3));
+            var dust = Math.round(Math.min(420, (W * geom.horizonY) / 2400));
+            for (var d = 0; d < dust; d++) {
+              var t = rand();
+              var bx = -W * 0.2 + t * W * 1.4;
+              var by = geom.horizonY + 40 - t * (geom.horizonY + 140);
+              var spread = ((rand() + rand() + rand()) / 1.5 - 1) * bandW;
+              var px = bx + spread * 0.3;
+              var py = by + spread;
+              if (py < -20 || py > geom.horizonY - 6 || px < -20 || px > W + 20) continue;
+              var near = 1 - Math.min(1, Math.abs(spread) / bandW);
+              out +=
+                '<circle class="theme-scene__dust" cx="' +
+                px.toFixed(0) +
+                '" cy="' +
+                py.toFixed(0) +
+                '" r="' +
+                (0.5 + near * 1.2 + rand() * 0.4).toFixed(2) +
+                '" style="--o:' +
+                (0.2 + near * 0.7).toFixed(2) +
+                ';--delay:' +
+                Math.round(400 + rand() * 1500) +
+                'ms"/>';
+            }
+
+            var stars = Math.max(8, Math.min(22, Math.round((W * geom.H) / 52000)));
+            for (var s = 0; s < stars; s++) {
+              var sp = pick(10, geom.horizonY - 40);
+              if (!sp) continue;
+              out +=
+                '<g transform="translate(' +
+                sp[0].toFixed(0) +
+                ' ' +
+                sp[1].toFixed(0) +
+                ') scale(' +
+                (0.35 + rand() * 0.45).toFixed(2) +
+                ')"><path class="theme-scene__star" style="--delay:' +
+                Math.round(1700 + rand() * 900) +
+                'ms" d="M0 -6L0.8 -0.8L6 0L0.8 0.8L0 6L-0.8 0.8L-6 0L-0.8 -0.8Z"/></g>';
+            }
+
+            // 更远处的流星：都压在地平线以上，不会像之前那样从湖里冒出来
+            for (var m = 0; m < 6; m++) {
+              var mp = pick(20, geom.horizonY - 70);
+              if (!mp) continue;
+              var len = Math.round(26 + rand() * 26);
+              out +=
+                '<line class="theme-scene__meteor" x1="' +
+                mp[0].toFixed(0) +
+                '" y1="' +
+                mp[1].toFixed(0) +
+                '" x2="' +
+                (mp[0] + len).toFixed(0) +
+                '" y2="' +
+                (mp[1] - len).toFixed(0) +
+                '" style="--delay:' +
+                Math.round(2000 + m * 300 + rand() * 200) +
+                'ms;--dur:' +
+                Math.round(2400 + rand() * 800) +
+                'ms;--run:' +
+                Math.round(110 + rand() * 90) +
+                'px"/>';
+            }
+          } else {
+            // 云：全都挂在远处的天上，画完之后由灰转白、慢慢飘
+            for (var c = 0; c < 6; c++) {
+              var cp = pick(60, geom.horizonY - 90);
+              if (!cp) continue;
+              var scale = 1.3 + rand() * 1.2;
+              var delay = Math.round(500 + c * 170 + rand() * 160);
+              out +=
+                '<g transform="translate(' +
+                cp[0].toFixed(0) +
+                ' ' +
+                cp[1].toFixed(0) +
+                ') scale(' +
+                scale.toFixed(2) +
+                ')"><g class="theme-scene__cloud" style="--drift:' +
+                (rand() < 0.5 ? '' : '-') +
+                Math.round(5 + rand() * 6) +
+                'px;--drift-delay:' +
+                (delay + 900) +
+                'ms"><path class="draw" pathLength="1" style="--delay:' +
+                delay +
+                'ms;--dur:900ms" d="' +
+                CLOUD +
+                '"/></g></g>';
+            }
+
+            // 一行大雁：排成人字，一边扇翅膀一边往右上方飞远（越飞越小）
+            var flockX = W * 0.62;
+            var flockY = geom.horizonY - geom.H * 0.34;
+            var geese = '';
+            [
+              [0, 0, 1],
+              [-26, 12, 0.9],
+              [-52, 24, 0.82],
+              [26, 12, 0.9],
+              [52, 24, 0.82],
+              [-78, 36, 0.72],
+            ].forEach(function (g, i) {
+              geese +=
+                '<g transform="translate(' +
+                g[0] +
+                ' ' +
+                g[1] +
+                ') scale(' +
+                g[2] +
+                ')"><path class="theme-scene__bird" style="--delay:' +
+                (1500 + i * 120) +
+                'ms" d="M-7 0q3.5-4.5 7 0q3.5-4.5 7 0"/></g>';
+            });
+            // 位置写在外层的 transform 属性上，飞远写在内层的 CSS 动画里：
+            // 同一个元素上这两者会互相覆盖
+            out +=
+              '<g transform="translate(' +
+              flockX.toFixed(0) +
+              ' ' +
+              flockY.toFixed(0) +
+              ')"><g class="theme-scene__flock">' +
+              geese +
+              '</g></g>';
+          }
+
+          return (
+            '<svg class="theme-scene__sky" viewBox="0 0 ' +
+            Math.round(W) +
+            ' ' +
+            Math.round(geom.H) +
+            '" preserveAspectRatio="none" aria-hidden="true">' +
+            out +
+            '</svg>'
+          );
+        }
+
+        // 中景：白天是层叠的群山，夜里是湖。
+        // 这一层不透明，而且压在日月之上——日月正是从它背后升起来的。
+        // 每道山脊、湖面都是填了幕布底色的封闭形状，近的自然盖住远的
+        function terrainMarkup(night, geom) {
+          var W = geom.W;
+          var H = geom.H;
+          var rand = seeded(night ? 53 : 59);
+          var out = '';
+
+          if (night) {
+            // 湖：从对岸的地平线一直铺到近岸的草地
+            var lakeBottom = H - geom.groundH + 10;
+            out +=
+              '<path class="theme-scene__water" d="M-40 ' +
+              geom.horizonY.toFixed(0) +
+              'Q' +
+              (W * 0.3).toFixed(0) +
+              ' ' +
+              (geom.horizonY - 8).toFixed(0) +
+              ' ' +
+              (W * 0.62).toFixed(0) +
+              ' ' +
+              (geom.horizonY - 1).toFixed(0) +
+              'T' +
+              (W + 40).toFixed(0) +
+              ' ' +
+              (geom.horizonY - 5).toFixed(0) +
+              'L' +
+              (W + 40).toFixed(0) +
+              ' ' +
+              lakeBottom.toFixed(0) +
+              'L-40 ' +
+              lakeBottom.toFixed(0) +
+              'Z"/>' +
+              // 对岸那条线单独描一遍，地平线要清楚。
+              // 和群山同理：要在月亮升起（800ms）之前画完
+              '<path class="draw" pathLength="1" style="--delay:80ms;--dur:620ms" d="M-40 ' +
+              geom.horizonY.toFixed(0) +
+              'Q' +
+              (W * 0.3).toFixed(0) +
+              ' ' +
+              (geom.horizonY - 8).toFixed(0) +
+              ' ' +
+              (W * 0.62).toFixed(0) +
+              ' ' +
+              (geom.horizonY - 1).toFixed(0) +
+              'T' +
+              (W + 40).toFixed(0) +
+              ' ' +
+              (geom.horizonY - 5).toFixed(0) +
+              '"/>';
+
+            var lakeH = lakeBottom - geom.horizonY;
+
+            // 水面波纹
+            var ripples = Math.round(Math.min(26, W / 64));
+            for (var w = 0; w < ripples; w++) {
+              var ry = geom.horizonY + 18 + rand() * (lakeH - 30);
+              var deep = (ry - geom.horizonY) / lakeH;
+              var rw = 24 + rand() * (60 + deep * 170);
+              var rx = rand() * (W - rw);
+              out +=
+                '<line class="draw" pathLength="1" stroke-opacity="' +
+                (0.3 + deep * 0.4).toFixed(2) +
+                '" x1="' +
+                rx.toFixed(0) +
+                '" y1="' +
+                ry.toFixed(0) +
+                '" x2="' +
+                (rx + rw).toFixed(0) +
+                '" y2="' +
+                ry.toFixed(0) +
+                '" style="--delay:' +
+                Math.round(1000 + w * 70 + rand() * 200) +
+                'ms;--dur:700ms"/>';
+            }
+
+            // 月亮的倒影：正下方一列短横线，越往下越散
+            for (var g = 0; g < 7; g++) {
+              var my = geom.horizonY + 24 + g * ((lakeH - 40) / 7);
+              var mw = (56 - g * 4) * (0.7 + rand() * 0.6);
+              var jitter = (rand() - 0.5) * 26;
+              out +=
+                '<line class="draw" pathLength="1" stroke-opacity="' +
+                (0.85 - g * 0.08).toFixed(2) +
+                '" x1="' +
+                (W / 2 + jitter - mw / 2).toFixed(0) +
+                '" y1="' +
+                my.toFixed(0) +
+                '" x2="' +
+                (W / 2 + jitter + mw / 2).toFixed(0) +
+                '" y2="' +
+                my.toFixed(0) +
+                '" style="--delay:' +
+                Math.round(2100 + g * 130) +
+                'ms;--dur:600ms"/>';
+            }
+
+            // 荷叶：一个完整的椭圆加一道缺口线。
+            // 之前用「绕一大圈再收回圆心」的路径画缺口，配上虚线画线动画收不齐，
+            // 看着就是没闭合。现在轮廓归轮廓、缺口归缺口，两笔各画各的。
+            // 椭圆填幕布底色，把身下的水纹挡掉
+            [
+              [W * 0.16, 0.5, 1.2],
+              [W * 0.23, 0.72, 0.95],
+              [W * 0.3, 0.9, 0.78],
+              [W * 0.75, 0.6, 1.1],
+              [W * 0.83, 0.82, 0.88],
+            ].forEach(function (p, i) {
+              var py = geom.horizonY + lakeH * p[1];
+              out +=
+                '<g transform="translate(' +
+                p[0].toFixed(0) +
+                ' ' +
+                py.toFixed(0) +
+                ') scale(' +
+                p[2] +
+                ')"><ellipse class="theme-scene__pad" rx="22" ry="12" style="--delay:' +
+                (1600 + i * 170) +
+                'ms"/>' +
+                '<path class="draw" pathLength="1" style="--delay:' +
+                (1950 + i * 170) +
+                'ms;--dur:350ms" d="M0 0l21 4"/></g>';
+            });
+          } else {
+            // 群山：远处高而尖，近处矮而缓，最前面一层是只有远山一半高的小丘。
+            // 每道都是封闭并填底色的形状，从远到近依次画，近的盖住远的，
+            // 太阳也藏在它们后面。
+            // [峰高占屏高, 线的浓淡, 基线比地平线低多少, 每段宽度, 是否画成圆缓的曲线]
+            [
+              [0.3, 0.4, 0, 6, false],
+              [0.15, 0.68, 46, 4, false],
+              [0.07, 0.95, 104, 3, true],
+            ].forEach(function (cfg, i) {
+              var base = geom.horizonY + cfg[2];
+              var ceiling = geom.centerY + geom.keepOut * 0.5;
+              var maxLift = Math.max(40, Math.min(H * cfg[0], base - ceiling));
+              var step = W / cfg[3];
+              var pts = 'M-40 ' + base.toFixed(0);
+
+              for (var x = -40 + step * (0.3 + rand() * 0.4); x < W + 40; x += step) {
+                var peak = base - maxLift * (0.5 + rand() * 0.5);
+                var dip = base - maxLift * 0.18 * rand();
+                var half = step * (0.35 + rand() * 0.3);
+                if (cfg[4]) {
+                  // 近处的小丘：用二次曲线，圆缓，没有尖角
+                  pts +=
+                    'Q' + (x - step * 0.25).toFixed(0) + ' ' + peak.toFixed(0) +
+                    ' ' + x.toFixed(0) + ' ' + ((peak + dip) / 2).toFixed(0) +
+                    'Q' + (x + half * 0.6).toFixed(0) + ' ' + dip.toFixed(0) +
+                    ' ' + (x + half).toFixed(0) + ' ' + dip.toFixed(0);
+                } else {
+                  pts +=
+                    'L' + x.toFixed(0) + ' ' + peak.toFixed(0) +
+                    'L' + (x + half).toFixed(0) + ' ' + dip.toFixed(0);
+                }
+              }
+
+              // 右端落回基线，再沿屏幕底边绕回左端封口
+              pts +=
+                'L' + (W + 40).toFixed(0) + ' ' + base.toFixed(0) +
+                'L' + (W + 40).toFixed(0) + ' ' + (H + 40).toFixed(0) +
+                'L-40 ' + (H + 40).toFixed(0) + 'Z';
+              out +=
+                '<path class="draw theme-scene__ridge" pathLength="1" stroke-opacity="' +
+                cfg[1] +
+                // 山要在太阳升起之前画完，否则太阳会先从还没画出来的山那里冒出来。
+                // 三道山脊在 800ms 内全部画完，太阳 800ms 才开始升
+                '" style="--delay:' +
+                (60 + i * 120) +
+                'ms;--dur:' +
+                (620 - i * 60) +
+                'ms" d="' +
+                pts +
+                '"/>';
+            });
+          }
+
+          return (
+            '<svg class="theme-scene__terrain" viewBox="0 0 ' +
+            Math.round(W) +
+            ' ' +
+            Math.round(H) +
+            '" preserveAspectRatio="none" aria-hidden="true">' +
+            out +
+            '</svg>'
+          );
+        }
+
+        // 近处的地面：一丛丛的草，白天点几朵小花，夜里是岸边的草和萤火虫。
+        // viewBox 的宽度按屏幕比例现算，所以手机和电脑上草的粗细高矮一致
+        function groundMarkup(night, geom) {
+          var rand = seeded(11);
+          var groundH = geom.groundH;
+          var width = Math.max(200, Math.round((160 * geom.W) / groundH));
+          var out = '';
+
+          // 一丛草：三五根从同一点散出来，比一根根等距排开自然。
+          // 从 30 开始，太靠边的一丛会被屏幕切掉，看着像一块白团
+          for (var x = 30; x < width - 20; x += 16 + rand() * 20) {
+            var blades = 2 + Math.round(rand() * 3);
+            var delay = Math.round(300 + (x / width) * 1000 + rand() * 160);
+            for (var b = 0; b < blades; b++) {
+              var h = 18 + rand() * 34 + (rand() < 0.12 ? 26 : 0);
+              var lean = (b - (blades - 1) / 2) * (5 + rand() * 5) + (rand() - 0.5) * 6;
+              var bx = x + (rand() - 0.5) * 5;
+              out +=
+                '<path class="draw theme-scene__blade" pathLength="1" style="--delay:' +
+                (delay + b * 40) +
+                'ms;--sway:' +
+                Math.round(2600 + rand() * 1600) +
+                'ms" d="M' +
+                bx.toFixed(1) +
+                ' 160Q' +
+                (bx + lean * 0.3).toFixed(1) +
+                ' ' +
+                (160 - h * 0.55).toFixed(1) +
+                ' ' +
+                (bx + lean).toFixed(1) +
+                ' ' +
+                (160 - h).toFixed(1) +
+                '"/>';
+            }
+
+            // 白天在草里点几朵小花：一根细茎顶着五片花瓣。
+            // 花瓣要描边、填幕布底色——以前是整片填白，缩小之后糊成一小团白点，
+            // 贴着屏幕边缘时看着就像画面上多了一块脏东西
+            if (!night && x > 70 && x < width - 70 && rand() < 0.2) {
+              var fx = x + (rand() - 0.5) * 8;
+              var fh = 40 + rand() * 26;
+              var petals = '';
+              for (var p = 0; p < 5; p++) {
+                petals +=
+                  '<ellipse rx="2.2" ry="4" transform="rotate(' +
+                  (p * 72) +
+                  ') translate(0 -4)"/>';
+              }
+              out +=
+                '<g class="theme-scene__flower theme-scene__blade" style="--delay:' +
+                (delay + 260) +
+                'ms;--sway:' +
+                Math.round(3000 + rand() * 1400) +
+                'ms">' +
+                '<path class="draw" pathLength="1" style="--delay:' +
+                (delay + 200) +
+                'ms;--dur:600ms" d="M' +
+                fx.toFixed(1) +
+                ' 160Q' +
+                (fx + 3).toFixed(1) +
+                ' ' +
+                (160 - fh * 0.6).toFixed(1) +
+                ' ' +
+                fx.toFixed(1) +
+                ' ' +
+                (160 - fh).toFixed(1) +
+                '"/>' +
+                // 位置放外层、张开动画放内层：同一个元素上 transform 属性会被动画覆盖，
+                // 所有的花会一起塌到原点，在屏幕左边堆成一团
+                '<g transform="translate(' +
+                fx.toFixed(1) +
+                ' ' +
+                (160 - fh).toFixed(1) +
+                ')"><g class="theme-scene__petals" style="--delay:' +
+                (delay + 520) +
+                'ms">' +
+                petals +
+                '</g></g></g>';
+            }
+          }
+
+          // 白天草上飞几只小虫：两笔的小翅膀，飘来飘去
+          if (!night) {
+            var bug = seeded(29);
+            var bugs = Math.max(4, Math.round(width / 150));
+            for (var k = 0; k < bugs; k++) {
+              // 位置放外层，飘动放内层：同一个元素上 transform 属性会被动画覆盖
+              out +=
+                '<g transform="translate(' +
+                (((k + 0.3 + bug() * 0.5) / bugs) * width).toFixed(1) +
+                ' ' +
+                (56 + bug() * 60).toFixed(1) +
+                ')"><g class="theme-scene__firefly theme-scene__bug" style="--delay:' +
+                Math.round(1600 + bug() * 900) +
+                'ms;--float:' +
+                Math.round(1600 + bug() * 900) +
+                'ms;--glow:' +
+                Math.round(700 + bug() * 500) +
+                'ms;--dx:' +
+                Math.round((bug() - 0.5) * 26) +
+                'px;--dy:' +
+                Math.round(-8 - bug() * 12) +
+                'px"><path d="M-3 0q1.5-2.5 3 0q1.5-2.5 3 0"/></g></g>';
+            }
+          }
+
           if (night) {
             var glow = seeded(23);
-            // 大约每 90 个单位一只，窄屏至少 5 只
             var count = Math.max(5, Math.round(width / 90));
             for (var i = 0; i < count; i++) {
-              flies +=
+              out +=
                 '<circle class="theme-scene__firefly" r="' +
                 (1.1 + glow() * 0.8).toFixed(2) +
                 '" cx="' +
                 (((i + 0.2 + glow() * 0.6) / count) * width).toFixed(1) +
                 '" cy="' +
-                (70 + glow() * 60).toFixed(1) +
+                (60 + glow() * 70).toFixed(1) +
                 '" style="--delay:' +
-                Math.round(1200 + glow() * 1000) +
+                Math.round(1600 + glow() * 1000) +
                 'ms;--float:' +
                 Math.round(2200 + glow() * 1400) +
                 'ms;--glow:' +
@@ -344,11 +762,7 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
             ' 160" preserveAspectRatio="none" aria-hidden="true" style="--ground-h:' +
             groundH +
             'px">' +
-            '<path class="draw" pathLength="1" style="--delay:200ms;--dur:1400ms" d="M0 159.5H' +
-            width +
-            '"/>' +
-            blades +
-            flies +
+            out +
             '</svg>'
           );
         }
@@ -394,35 +808,41 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
 
         function playScene(next, btn, onSwap) {
           var night = next === 'dark';
-          // 横屏给草地多一点高度，竖屏收一点，免得挤到中间的图标
-          var landscape = window.innerWidth > window.innerHeight;
-          var groundH = Math.round(
-            Math.min(window.innerHeight * (landscape ? 0.2 : 0.13), 180),
-          );
+          var W = window.innerWidth;
+          var H = window.innerHeight;
+          var landscape = W > H;
+
+          // 画面的几何：近处的草占底下一条，地平线（山脚线 / 湖对岸）压在中间偏下，
+          // 日月从地平线后面升到画面中央附近
+          var iconSize = Math.min(W * 0.66, 280);
+          var geom = {
+            W: W,
+            H: H,
+            iconSize: iconSize,
+            keepOut: iconSize * 0.72,
+            centerY: night ? H * 0.42 : H / 2,
+            groundH: Math.round(Math.min(H * (landscape ? 0.16 : 0.12), 150)),
+            horizonY: Math.round(H * (night ? 0.68 : 0.62)),
+          };
 
           var el = document.createElement('div');
           el.className = 'theme-scene';
           el.dataset.mode = night ? 'night' : 'day';
           el.setAttribute('aria-hidden', 'true');
+          // 顺序就是层级：天空在最后面，然后日月，再是群山 / 湖面，最后是近处的草
           el.innerHTML =
-            groundMarkup(groundH, night) +
+            skyMarkup(night, geom) +
             '<svg class="theme-scene__icon" viewBox="0 0 200 200">' +
-            (night ? meteorMarkup() + moonMarkup() : sunMarkup()) +
-            '</svg>';
+            (night ? moonMarkup() + meteorMarkup() : sunMarkup()) +
+            '</svg>' +
+            terrainMarkup(night, geom) +
+            groundMarkup(night, geom);
 
-          // 图标从按钮飞出来：量出按钮中心相对屏幕中心的偏移，和两者的尺寸比
-          var rect = btn.getBoundingClientRect();
-          var iconSize = Math.min(window.innerWidth * 0.66, 280);
+          // 日月都从地平线后面升起：起点压到地平线下方一点
           el.style.setProperty(
-            '--from-x',
-            Math.round(rect.left + rect.width / 2 - window.innerWidth / 2) + 'px',
+            '--rise-y',
+            Math.round(geom.horizonY - geom.centerY + iconSize * 0.3) + 'px',
           );
-          el.style.setProperty(
-            '--from-y',
-            Math.round(rect.top + rect.height / 2 - window.innerHeight / 2) + 'px',
-          );
-          // 太阳和月牙本体大约占图标宽度的四分之一，缩到和按钮里的小图标差不多大
-          el.style.setProperty('--from-s', ((rect.width * 2.2) / iconSize).toFixed(3));
 
           document.body.appendChild(el);
           var unlock = lockPage(el);
@@ -478,6 +898,41 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           // 兜底：别让幕布一直挂着
           timers.push(setTimeout(finish, DONE_AT + 1500));
         }
+
+        // 主题色菜单：开合和选色都走事件委托，顶栏被换掉也不用重新绑
+        function closePalette() {
+          var menu = document.getElementById('palette-menu');
+          var btn = document.getElementById('palette-toggle');
+          if (menu) menu.hidden = true;
+          if (btn) btn.setAttribute('aria-expanded', 'false');
+        }
+
+        document.addEventListener('click', function (event) {
+          var target = event.target.closest && event.target.closest('#palette-toggle, [data-palette-set]');
+
+          if (target && target.id === 'palette-toggle') {
+            var menu = document.getElementById('palette-menu');
+            if (!menu) return;
+            var open = menu.hidden;
+            menu.hidden = !open;
+            target.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) markPalette();
+            return;
+          }
+
+          if (target) {
+            setPalette(target.dataset.paletteSet);
+            closePalette();
+            return;
+          }
+
+          // 点到别处就收起来
+          closePalette();
+        });
+
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') closePalette();
+        });
 
         // 主题切换走事件委托，顶栏被换掉也不用重新绑
         document.addEventListener('click', function (event) {

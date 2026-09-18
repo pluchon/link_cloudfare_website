@@ -81,6 +81,18 @@ export const branches = [
   },
 ] as const;
 
+// 主题色。默认是墨色，另外三套只改强调色和底色的冷暖，线条骨架不动。
+// key 对应 <html data-palette>，具体色值在 global.css 里；
+// dot 是菜单里那个小圆点的颜色，用浅色模式下的强调色
+export const palettes = [
+  { key: 'ink', label: '默认', dot: '#c6462f' },
+  { key: 'moss', label: '淡雅绿', dot: '#2f6b46' },
+  { key: 'wood', label: '木叶棕', dot: '#96551f' },
+  { key: 'mist', label: '远山黛', dot: '#2f4d78' },
+] as const;
+
+export type PaletteKey = (typeof palettes)[number]['key'];
+
 // 每条分支在首页最多展示几篇
 export const BRANCH_LEAF_LIMIT = 5;
 

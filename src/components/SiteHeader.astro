@@ -1,5 +1,5 @@
 ---
-import { site, nav } from '../config/site';
+import { site, nav, palettes } from '../config/site';
 
 const path = Astro.url.pathname;
 
@@ -26,6 +26,9 @@ function isActive(href: string): boolean {
           </a>
         ))
       }
+    </nav>
+
+    <div class="tools">
       <button class="icon-btn" id="theme-toggle" type="button" aria-label="切换深色模式">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>
@@ -35,6 +38,45 @@ function isActive(href: string): boolean {
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
         </svg>
       </button>
-    </nav>
+
+      <div class="palette">
+        <button
+          class="icon-btn"
+          id="palette-toggle"
+          type="button"
+          aria-label="切换主题色"
+          aria-expanded="false"
+          aria-controls="palette-menu"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4H19a2 2 0 0 0 2-2 9 9 0 0 0-9-8z"></path>
+            <circle cx="7.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"></circle>
+            <circle cx="10.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"></circle>
+            <circle cx="15" cy="8.5" r="1.1" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </button>
+
+        <div class="palette__menu" id="palette-menu" role="menu" hidden>
+          <span class="palette__caret" aria-hidden="true"></span>
+          {
+            palettes.map((item) => (
+              <button
+                class="palette__item"
+                type="button"
+                role="menuitemradio"
+                data-palette-set={item.key}
+                aria-checked="false"
+              >
+                <span class="palette__dot" style={`--dot: ${item.dot}`} aria-hidden="true" />
+                <span class="palette__name">{item.label}</span>
+                <svg class="palette__tick" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 8.5 6.5 12 13 4"></path>
+                </svg>
+              </button>
+            ))
+          }
+        </div>
+      </div>
+    </div>
   </div>
 </header>

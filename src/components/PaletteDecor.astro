@@ -1,0 +1,145 @@
+---
+// 主题色各自的页边装饰：贴在正文右侧，可以往左伸进正文背后
+// （正文字色深、背景浅，压在下面不影响阅读）。左侧那条空白留给文章目录栏。
+// 木叶棕是一棵枯树，枝头几片叶子、地上几片落叶；
+// 淡雅绿是一口池塘，水面三片荷叶，岸外四丛芦草；
+// 远山黛是落日加两重远山。默认的墨色不放装饰。
+//
+// 三条画法上的规矩：
+// 1. 枝条从树干（直线 x=190）出发，叶子的落点就取枝条的末端坐标，
+//    两边都写成绝对坐标，放大看也不会有缝。
+// 2. 芦草一律往上长（路径里的 y 都是负的），别的方向看着像倒插。
+// 3. 山是封闭多边形，起点和终点都甩到画布外的左下和右下，
+//    可见范围里只剩山脊本身，不会出现垂直的切断面。
+---
+
+<div class="decor" data-for="wood" aria-hidden="true">
+  <svg class="decor__art" viewBox="0 0 320 720" preserveAspectRatio="xMaxYMax meet">
+    <path d="M0 668h320" />
+    <!-- 树干：一条直线，从地面到树梢 -->
+    <path d="M190 668V112" />
+    <!-- 枝条：都从树干出发，末端就是叶子的位置 -->
+    <path d="M190 410C176 404 150 392 132 368" />
+    <path d="M190 356C204 350 228 338 244 316" />
+    <path d="M190 302C178 296 158 286 144 268" />
+    <path d="M190 252C202 246 220 236 234 218" />
+    <path d="M190 206C180 200 166 192 156 178" />
+    <path d="M190 164C200 158 212 150 222 136" />
+    <!-- 叶子：原点落在各自枝条的末端上 -->
+    <g transform="translate(132 368) rotate(-28)"><path class="decor__leaf" d="M0 0c-7-3-10-11-6-18 8 3 12 11 6 18z" /></g>
+    <g transform="translate(244 316) rotate(26)"><path class="decor__leaf" d="M0 0c7-3 10-11 6-18-8 3-12 11-6 18z" /></g>
+    <g transform="translate(144 268) rotate(-22)"><path class="decor__leaf" d="M0 0c-6-3-9-10-5-16 7 3 10 10 5 16z" /></g>
+    <g transform="translate(234 218) rotate(24)"><path class="decor__leaf" d="M0 0c6-3 9-10 5-16-7 3-10 10-5 16z" /></g>
+    <g transform="translate(156 178) rotate(-18)"><path class="decor__leaf" d="M0 0c-6-3-8-9-5-15 6 3 9 9 5 15z" /></g>
+    <g transform="translate(222 136) rotate(20)"><path class="decor__leaf" d="M0 0c6-3 8-9 5-15-6 3-9 9-5 15z" /></g>
+    <!-- 树梢那片叶子长在树干顶端 -->
+    <g transform="translate(190 112)"><path class="decor__leaf" d="M0 0c-6-6-6-16 0-23 7 7 7 17 0 23z" /></g>
+    <!-- 飘落中的两片 -->
+    <path class="decor__leaf" d="M148 486c-9-3-13-11-9-18 9 3 14 11 9 18z" />
+    <path class="decor__leaf" d="M246 552c9-3 13-11 9-18-9 3-14 11-9 18z" />
+    <!-- 地上的落叶 -->
+    <path class="decor__leaf" d="M100 656c-11-2-17-9-14-16 11 1 18 8 14 16z" />
+    <path class="decor__leaf" d="M152 660c-9-2-14-8-11-14 9 1 15 7 11 14z" />
+    <path class="decor__leaf" d="M244 658c10-2 16-8 13-15-10 1-17 7-13 15z" />
+    <path class="decor__leaf" d="M292 662c9-2 14-8 11-14-9 1-15 7-11 14z" />
+  </svg>
+</div>
+
+<div class="decor" data-for="moss" aria-hidden="true">
+  <svg class="decor__art" viewBox="0 0 320 720" preserveAspectRatio="xMaxYMax meet">
+    <!-- 一口完整的池塘 -->
+    <ellipse class="decor__pond" cx="168" cy="470" rx="140" ry="112" />
+    <!-- 水面的荷叶 -->
+    <g transform="translate(112 452)">
+      <ellipse class="decor__pad" rx="26" ry="14" />
+      <path d="M0 0l25 5" />
+    </g>
+    <g transform="translate(208 500) scale(0.85)">
+      <ellipse class="decor__pad" rx="26" ry="14" />
+      <path d="M0 0l-25 5" />
+    </g>
+    <g transform="translate(140 538) scale(0.7)">
+      <ellipse class="decor__pad" rx="26" ry="14" />
+      <path d="M0 0l24-6" />
+    </g>
+    <!-- 岸外的芦草：根部在下，叶子一律往上长 -->
+    <g transform="translate(26 606)">
+      <path class="decor__blade" d="M0 0c-4-42-2-74 6-104-14 26-18 60-6 104z" />
+      <path class="decor__blade" d="M0 0c6-40 18-68 38-88-16 26-28 54-38 88z" />
+      <path class="decor__blade" d="M0 0c-14-32-32-52-56-64 20 20 38 42 56 64z" />
+    </g>
+    <g transform="translate(302 598) scale(0.9)">
+      <path class="decor__blade" d="M0 0c4-42 2-74-6-104 14 26 18 60 6 104z" />
+      <path class="decor__blade" d="M0 0c-6-40-18-68-38-88 16 26 28 54 38 88z" />
+      <path class="decor__blade" d="M0 0c14-30 30-48 52-60-18 18-34 38-52 60z" />
+    </g>
+    <g transform="translate(96 352) scale(0.78)">
+      <path class="decor__blade" d="M0 0c-4-42-2-74 6-104-14 26-18 60-6 104z" />
+      <path class="decor__blade" d="M0 0c6-40 18-68 38-88-16 26-28 54-38 88z" />
+    </g>
+    <g transform="translate(246 342) scale(0.72)">
+      <path class="decor__blade" d="M0 0c4-42 2-74-6-104 14 26 18 60 6 104z" />
+      <path class="decor__blade" d="M0 0c-6-40-18-68-38-88 16 26 28 54 38 88z" />
+    </g>
+  </svg>
+</div>
+
+<div class="decor" data-for="mist" aria-hidden="true">
+  <!-- 山往左伸出画面：viewBox 比别的宽，两条山脊的起点和终点都甩到画布之外，
+       所以可见范围里只有山脊线本身 -->
+  <svg class="decor__art decor__art--wide" viewBox="0 0 640 720" preserveAspectRatio="xMaxYMax meet">
+    <circle cx="500" cy="400" r="46" />
+    <path class="decor__hill" d="M-240 780L-40 660L120 470L220 540L330 400L450 470L560 360L700 430L700 780Z" />
+    <path class="decor__hill" d="M-240 780L-20 690L140 580L250 630L380 520L500 580L700 520L700 780Z" />
+  </svg>
+</div>
+
+<style>
+  .decor {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* 只有正文右侧真的空出位置了才画，窄屏一律不出现 */
+  @media (min-width: 82rem) {
+    :root[data-palette='wood'] .decor[data-for='wood'],
+    :root[data-palette='moss'] .decor[data-for='moss'],
+    :root[data-palette='mist'] .decor[data-for='mist'] {
+      display: block;
+    }
+  }
+
+  .decor__art {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: min(26vw, 380px);
+    height: min(72vh, 720px);
+    fill: none;
+    stroke: var(--line-strong);
+    stroke-width: 1;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    opacity: 0.6;
+  }
+
+  /* 山景要更宽，才能把山脊一路带到画面左边再落下去 */
+  .decor__art--wide { width: min(52vw, 760px); }
+
+  /* 叶子、荷叶、草叶是小块面，填一层极淡的强调色 */
+  .decor__leaf,
+  .decor__pad,
+  .decor__blade {
+    fill: var(--accent-wash);
+  }
+
+  /* 池塘水面和远山填页面底色：远山才挡得住后面那一重和落日 */
+  .decor__pond,
+  .decor__hill {
+    fill: var(--bg);
+  }
+</style>
