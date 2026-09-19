@@ -147,10 +147,12 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
         // 动画不执行而主题已经切了，表现就是整屏瞬间换色。
         //
         // 幕布淡入 → 完全不透明后才切主题 → 幕布上放一整幅线条画 → 幕布淡出。
-        // 白天：黑底白线，太阳从群山背后升起，出山之后才长出光线并慢慢转；
+        // 幕布一进场就把底色从旧主题渐变到新主题，线条颜色跟着反过来，
+        // 整幅画是在新底色上画出来的。
+        // 白天：底色由黑转白，太阳从群山背后升起，出山之后才长出光线并慢慢转；
         //       天上有云（灰→白）和一群飞向远处的大雁，地上是带小花的草地。
-        // 夜里：白底黑线，月亮从湖对岸的地平线升起，然后流星划过；
-        //       湖里有鸭子和荷叶荷花，岸边是草，空中有萤火虫和银河。
+        // 夜里：底色由白转黑，月亮从湖对岸的地平线升起，然后流星划过；
+        //       湖里有荷叶，岸边是草，空中有萤火虫和银河。
         //
         // 图层从后往前：sky（天上的东西）→ icon（日月）→ terrain（群山 / 湖面）
         // → ground（近处的草）。日月被 terrain 挡住，所以「升起」才成立。
@@ -471,8 +473,8 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
               lakeBottom.toFixed(0) +
               'Z"/>' +
               // 对岸那条线单独描一遍，地平线要清楚。
-              // 和群山同理：要在月亮升起（800ms）之前画完
-              '<path class="draw" pathLength="1" style="--delay:80ms;--dur:620ms" d="M-40 ' +
+              // 和群山同理：等底色渐变走完再起笔，并在月亮升起（960ms）之前画完
+              '<path class="draw" pathLength="1" style="--delay:300ms;--dur:620ms" d="M-40 ' +
               geom.horizonY.toFixed(0) +
               'Q' +
               (W * 0.3).toFixed(0) +
@@ -600,14 +602,16 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
                 'L' + (W + 40).toFixed(0) + ' ' + (H + 40).toFixed(0) +
                 'L-40 ' + (H + 40).toFixed(0) + 'Z';
               out +=
-                '<path class="draw theme-scene__ridge" pathLength="1" stroke-opacity="' +
+                // 浓淡走 --ink：山脊的填色要从第一帧起就挡着太阳，
+                // 只有描边跟着画线动画显影，关键帧里得能引用这个浓淡值。
+                // 起笔等底色渐变（380ms）差不多走完，三道山脊到 960ms 全部收笔，
+                // 太阳 960ms 才开始升，不会从还没画出来的山那里冒出来
+                '<path class="draw theme-scene__ridge" pathLength="1" style="--ink:' +
                 cfg[1] +
-                // 山要在太阳升起之前画完，否则太阳会先从还没画出来的山那里冒出来。
-                // 三道山脊在 800ms 内全部画完，太阳 800ms 才开始升
-                '" style="--delay:' +
-                (60 + i * 120) +
+                ';--delay:' +
+                (300 + i * 100) +
                 'ms;--dur:' +
-                (620 - i * 60) +
+                (560 - i * 50) +
                 'ms" d="' +
                 pts +
                 '"/>';

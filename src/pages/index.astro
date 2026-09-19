@@ -419,9 +419,11 @@ for (const branch of branches) {
   .node {
     --glow: 0;
     --glow-angle: 0deg;
-    --g1: #c084fc;
-    --g2: #f472b6;
-    --g3: #38bdf8;
+    /* 三色跟着主题色走，色值在 global.css 的 --glow-* 里；
+       后面那个是万一 token 没加载时的兜底 */
+    --g1: var(--glow-1, #c084fc);
+    --g2: var(--glow-2, #f472b6);
+    --g3: var(--glow-3, #38bdf8);
     position: relative;
     border: var(--hair) solid var(--line);
     background: color-mix(in srgb, var(--bg) 90%, transparent);
@@ -1521,23 +1523,40 @@ for (const branch of branches) {
         measure();
       }
 
+      // 拖动范围按「整张图在画布里的实际位置」算，上下左右四边都要量。
+      // map 的 transform-origin 是 left center：x 从 map 左边起按倍率放，
+      // y 要绕着 map 自身的中线换算，和 focusOn 用的是同一套公式。
+      //
+      // 以前这里只量了右边和下边，等于假定图的左上角永远在画布原点。
+      // 卡片全展开、倍率又是 100% 时，图会往上长出画布，
+      // 而上边界被写死成固定余量，于是往上拖到一半就卡住，顶上的卡片够不着
       function measure() {
         if (!wide) return;
-        var right = 0;
-        var bottom = 0;
+        var mh = map.offsetHeight;
+        var left = Infinity;
+        var top = Infinity;
+        var right = -Infinity;
+        var bottom = -Infinity;
+
         map.querySelectorAll('[data-pan-item]').forEach(function (el) {
-          var box = boxIn(el, scene);
-          right = Math.max(right, (box.x + box.w) * scale);
-          bottom = Math.max(bottom, (box.y + box.h) * scale);
+          var box = boxIn(el, map);
+          var x = map.offsetLeft + box.x * scale;
+          var y = map.offsetTop + mh / 2 + (box.y - mh / 2) * scale;
+          left = Math.min(left, x);
+          top = Math.min(top, y);
+          right = Math.max(right, x + box.w * scale);
+          bottom = Math.max(bottom, y + box.h * scale);
         });
+
+        if (left === Infinity) return;
 
         // 四周各留一屏七成的余量，随便怎么拖都够
         var slackX = canvas.clientWidth * 0.7;
         var slackY = canvas.clientHeight * 0.7;
         minX = Math.min(0, canvas.clientWidth - right) - slackX;
+        maxX = Math.max(0, -left) + slackX;
         minY = Math.min(0, canvas.clientHeight - bottom) - slackY;
-        maxX = slackX;
-        maxY = slackY;
+        maxY = Math.max(0, -top) + slackY;
 
         tx = Math.min(maxX, Math.max(minX, tx));
         ty = Math.min(maxY, Math.max(minY, ty));

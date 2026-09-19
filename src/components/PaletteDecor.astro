@@ -95,11 +95,13 @@
 </div>
 
 <style>
+  /* z-index 负数：垫在所有内容下面，只压在页面底色之上。
+     正文、图片、目录栏都不会被它盖住 */
   .decor {
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: -1;
     pointer-events: none;
   }
 

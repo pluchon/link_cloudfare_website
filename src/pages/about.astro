@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import PaletteDecor from '../components/PaletteDecor.astro';
 import '../styles/prose.css';
 import { getCollection, render } from 'astro:content';
 import { site, profile } from '../config/site';
@@ -13,6 +14,8 @@ const skills = doc?.data.skills ?? [];
 ---
 
 <BaseLayout title="关于" description={`关于 ${site.name}`}>
+  <PaletteDecor />
+
   <section class="wrap card-wrap">
     <div class="card" data-reveal>
       {

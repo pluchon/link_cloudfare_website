@@ -140,6 +140,38 @@
   --accent-wash: rgba(123, 167, 216, 0.14);
 }
 
+/* ---------- 卡片描边的光 ----------
+   首页卡片悬浮时沿边跑的那道光，一组三色。深浅两套主题共用：
+   取的都是中等亮度的饱和色，压在月白底或墨黑底上都看得见，
+   所以不需要按 data-theme 再分一遍。
+   默认（ink）留着原来那道紫粉蓝的极光，另外三套各自跟着主题的冷暖走 */
+:root {
+  --glow-1: #c084fc;
+  --glow-2: #f472b6;
+  --glow-3: #38bdf8;
+}
+
+/* 淡雅绿：草汁到湖水 */
+:root[data-palette="moss"] {
+  --glow-1: #4ade80;
+  --glow-2: #a3e635;
+  --glow-3: #2dd4bf;
+}
+
+/* 木叶棕：金黄、橙、赭红，一把秋叶 */
+:root[data-palette="wood"] {
+  --glow-1: #fbbf24;
+  --glow-2: #fb923c;
+  --glow-3: #e2725b;
+}
+
+/* 远山黛：天蓝到雾青 */
+:root[data-palette="mist"] {
+  --glow-1: #38bdf8;
+  --glow-2: #818cf8;
+  --glow-3: #22d3ee;
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
@@ -540,16 +572,18 @@ body.is-canvas > main {
 /* ---------- 深浅切换：幕布上的一幅线条画 ----------
    幕布先淡入盖满，完全不透明之后才切主题，画播完，幕布淡出露出新主题。
    切主题那一刻页面被整个挡住，不存在「覆盖层和页面颜色对不上」的帧。
-   幕布底色跟着「切换前」走：转浅色是黑底白线的日出，转深色是白底黑线的湖夜，
-   淡入时和原页面几乎同色，像是页面自己慢慢空了出来。
+   幕布进场时用「切换前」的底色，和原页面几乎同色，像是页面自己慢慢空了出来；
+   随后底色渐变成「切换后」的底色，整幅画都画在新底色上，幕布淡出时两边已经对齐。
 
    图层从后往前：sky（云、雁、银河、星）→ icon（日月）→ terrain（群山 / 湖面）
    → ground（近处的草）。terrain 不透明并填了幕布底色，所以日月是真的从它背后升起来的。
 
    时间轴（毫秒）：
-   0     幕布淡入；日月从地平线后面升起
+   0     幕布淡入，底色开始由旧变新
    ~240  幕布淡入结束，切主题
-   1600  升到位：白天长出光线并慢慢转，夜里星星冒出来、流星开始划
+   300   群山 / 湖岸起笔（底色这时已经基本到位），960 收笔
+   960   日月从地平线后面升起
+   2380  升到位：白天长出光线并慢慢转，夜里星星冒出来、流星开始划
    3000  收笔：线条原路收回，日月淡出
    3400  幕布淡出
    3900  移除 */
@@ -579,6 +613,40 @@ body.is-canvas > main {
   --scene-ink: #1c1c1e;
 }
 
+/* 幕布先换底色：一进场就从「切换前」的底色渐变到「切换后」的底色，
+   线条颜色跟着反过来。整幅画是画在新底色上的，幕布淡出时两边颜色已经对齐。
+   自定义属性得注册成 <color> 才能插值，浏览器不支持 @property 时退化成中途跳一次色。
+   380ms 结束，比最早起笔的那根草（300ms）稍晚一点，不会出现底色和线条撞成一片灰的帧 */
+@property --scene-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #000;
+}
+
+@property --scene-ink {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ececec;
+}
+
+.theme-scene {
+  animation: nn-tint-day 380ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.theme-scene[data-mode='night'] {
+  animation-name: nn-tint-night;
+}
+
+@keyframes nn-tint-day {
+  from { --scene-bg: #000; --scene-ink: #ececec; }
+  to { --scene-bg: #fff; --scene-ink: #1c1c1e; }
+}
+
+@keyframes nn-tint-night {
+  from { --scene-bg: #fff; --scene-ink: #1c1c1e; }
+  to { --scene-bg: #000; --scene-ink: #ececec; }
+}
+
 .theme-scene[data-open='1'] { opacity: 1; }
 
 .theme-scene[data-leaving='1'] {
@@ -599,10 +667,11 @@ body.is-canvas > main {
   height: auto;
   overflow: visible;
   transform: translate(-50%, -50%);
-  /* 等群山 / 湖面画完（约 800ms）再升起，否则日月会从还没画出来的山那里冒出来 */
+  /* 等群山 / 湖面画完（最后一道 960ms 收笔）再升起，
+     否则日月会从还没画出来的山那里冒出来。呼吸接在升到位的那一刻 */
   animation:
-    nn-rise 1600ms cubic-bezier(0.33, 1, 0.68, 1) 800ms both,
-    nn-icon-breathe 1500ms cubic-bezier(0.33, 1, 0.68, 1) 2400ms forwards;
+    nn-rise 1420ms cubic-bezier(0.33, 1, 0.68, 1) 960ms both,
+    nn-icon-breathe 1500ms cubic-bezier(0.33, 1, 0.68, 1) 2380ms forwards;
 }
 
 /* 夜里月亮抬高一点，别压在湖的水平线上 */
@@ -847,6 +916,21 @@ body.is-canvas > main {
 .theme-scene .theme-scene__water,
 .theme-scene .theme-scene__pad {
   fill: var(--scene-bg);
+}
+
+/* 山脊的填色从第一帧就在（和幕布同色，看不出来），只有描边跟着画线动画显影。
+   要是整块 opacity 从 0 起，起笔前那几十毫秒山是全透明的，
+   藏在山后面的太阳会先露一下脸。浓淡写在 --ink 上，关键帧里才能引用 */
+.theme-scene__terrain .theme-scene__ridge.draw {
+  opacity: 1;
+  stroke-opacity: 0;
+  animation-name: nn-draw-solid;
+}
+
+@keyframes nn-draw-solid {
+  0% { stroke-dashoffset: 1.04; stroke-opacity: 0; }
+  12% { stroke-opacity: var(--ink, 1); }
+  100% { stroke-dashoffset: 0; stroke-opacity: var(--ink, 1); }
 }
 
 /* 只有没被缩放过的元素才用 non-scaling-stroke：
