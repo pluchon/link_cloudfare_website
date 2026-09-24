@@ -577,8 +577,6 @@ for (const h of headings) {
         // 竖滚已经在 CSS 里关掉了，不然手指想滚页面会先滚到代码块里去
         if (pre.scrollHeight > pre.clientHeight + 4) {
           wrapper.dataset.clipped = '1';
-          // 桌面端：只有这种真的能在块内上下滚的，才拦住滚动链
-          pre.dataset.scrolls = '1';
 
           var more = document.createElement('button');
           more.type = 'button';

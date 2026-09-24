@@ -1,6 +1,10 @@
 # 硅基计划 个人项目介绍 墨衡OJ 全栈+AI能力集成
 
-> 基于 Spring Cloud Alibaba 的微服务在线判题平台，覆盖刷题、竞赛与后台出题管理：自研 Docker 常驻容器池判题沙箱，RabbitMQ 异步判题，接入通义大模型做 AI 出题、AI 帮建竞赛与做题辅导。前端分 B 端管理后台与 C 端学员前台两套 Vue 3 工程。后端地址：`https://github.com/pluchon/online_oj`，前端地址：`https://github.com/pluchon/online_oj_vue`
+> 基于SpringCloud Alibaba在线判题平台，覆盖刷题、竞赛与出题管理，并配置Docker容器池判题沙箱并接入Qwen大模型
+
+***
+
+![moheng](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260924155155790.png)
 
 ***
 
@@ -16,6 +20,10 @@
 
 ### 系统架构
 
+整张图拆成两半看：第一张是请求怎么在服务之间流转，第二张是各服务落在哪些存储上、向谁注册。
+
+**服务调用**
+
 ```mermaid
 flowchart TD
     subgraph Client ["客户端"]
@@ -24,7 +32,6 @@ flowchart TD
     end
 
     Gateway["oj-gateway :19090<br/>路由 / JWT 鉴权 / 拦截 internal 路径"]
-    Nacos["Nacos 3.2.4<br/>服务注册 / 配置中心"]
 
     subgraph Services ["业务服务"]
         Friend["oj-friend :9202<br/>题库 / 提交 / 竞赛 / 排名 / 消息 / 用户"]
@@ -34,14 +41,8 @@ flowchart TD
         Ai["oj-ai :9205<br/>模型调用（只计算不写库）"]
     end
 
-    subgraph Middleware ["中间件"]
-        MySQL[("MySQL 8.4")]
-        Redis[("Redis")]
-        MQ["RabbitMQ 3.13"]
-        ES["Elasticsearch 8.18.8 + IK"]
-        XXL["XXL-JOB Admin 2.4.0"]
-    end
-
+    MQ["RabbitMQ 3.13"]
+    XXL["XXL-JOB Admin 2.4.0"]
     Pool["Docker 常驻容器池<br/>(oj_worker_*)"]
     Bailian["通义百炼"]
 
@@ -65,6 +66,28 @@ flowchart TD
     Ai --> Bailian
     XXL -->|调度| Job
     Job -->|Feign 竞赛结算 / 缓存刷新| Friend
+```
+
+**存储与注册中心**
+
+```mermaid
+flowchart LR
+    subgraph Services ["服务"]
+        Gateway["oj-gateway"]
+        Friend["oj-friend"]
+        System["oj-system"]
+        Job["oj-job"]
+        Judge["oj-judge"]
+        Ai["oj-ai"]
+    end
+
+    subgraph Storage ["存储"]
+        MySQL[("MySQL 8.4")]
+        Redis[("Redis")]
+        ES["Elasticsearch 8.18.8 + IK"]
+    end
+
+    Nacos["Nacos 3.2.4<br/>服务注册 / 配置中心"]
 
     Friend --> MySQL
     Friend --> Redis

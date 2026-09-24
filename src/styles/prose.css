@@ -154,10 +154,10 @@
   /* 长代码块不撑高整篇文章，超过约 25 行就在块内滚动 */
   max-height: 36rem;
   overflow: auto;
-  /* 竖向默认放开滚动链。`overflow: auto` 让每个代码块都成了滚动容器，
-     哪怕内容根本没超出、块内没有可滚的距离，contain 也照样把滚动拦在块里——
-     鼠标停在一段短代码上，页面就滚不动了。只有真的能在块内上下滚的代码块
-     才由脚本打上 data-scrolls，那时候 contain 才有意义 */
+  /* 竖向一律放开滚动链：块内滚到顶或到底之后，继续滚就交给页面。
+     以前给真能在块内滚的代码块加过 contain，结果滚到头页面就卡住，
+     鼠标得移出代码块才能接着往下读。横向留 contain，
+     免得横滑到代码末尾触发浏览器的前进 / 后退手势 */
   overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
   font-size: 0.8125rem;
@@ -198,14 +198,6 @@
   border: 0;
   padding: 0;
   color: inherit;
-}
-
-/* 真能在块内上下滚的代码块，才拦住滚动链：滚到代码块底部时页面不要跟着窜。
-   触屏下竖滚是关掉的（见文件末尾的 hover: none），所以只在有鼠标的环境生效 */
-@media (hover: hover) {
-  .prose pre[data-scrolls='1'] {
-    overscroll-behavior-y: contain;
-  }
 }
 
 /* ---------- Mermaid 图 ----------
