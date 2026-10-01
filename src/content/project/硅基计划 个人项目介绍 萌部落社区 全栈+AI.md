@@ -10,6 +10,8 @@
 
 > tags: [SpringBoot, SpringCloud Gateway, Nacos, OpenFeign, MyBatis‑Plus, Redis, RabbitMQ、WebSocket, JWT, Docker, Vue3, RAG, LangChain, LangGraph, Claudecode, Codex, 前端]  
 
+> github: https://github.com/pluchon/mengmeng_forum
+
 ## 项目总览
 
 ### 访问路径

@@ -10,6 +10,8 @@ const schema = z.object({
   publishedAt: z.coerce.date(),
   category: z.string(),
   tags: z.array(z.string()).default([]),
+  // 文章里那行 github: 推出来的仓库地址，详情页日期行右边显示
+  repos: z.array(z.object({ label: z.string(), url: z.string() })).default([]),
   cover: z.string().optional(),
 });
 

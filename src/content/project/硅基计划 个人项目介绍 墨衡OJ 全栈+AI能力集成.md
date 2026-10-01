@@ -10,6 +10,8 @@
 
 > tags: [SpringBoot, SpringCloud Alibaba, Nacos, OpenFeign, MyBatis-Plus, Redis, RabbitMQ, Elasticsearch, XXL-JOB, Sentinel, Zipkin, Docker, Spring AI Alibaba, Vue3, Element Plus, Monaco, ECharts, 前端]
 
+> github: 后端 https://github.com/pluchon/online_oj, 前端 https://github.com/pluchon/online_oj_vue
+
 ## 项目总览
 
 ### 项目简介

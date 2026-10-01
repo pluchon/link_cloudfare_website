@@ -21,10 +21,17 @@ export interface PlainMarkdownOptions {
   defaultCategory: string;
 }
 
+interface Repo {
+  /** 多个仓库时用来区分的名字（前端 / 后端），只有一个仓库时为空 */
+  label: string;
+  url: string;
+}
+
 interface ParsedDoc {
   title: string;
   summary: string;
   tags: string[];
+  repos: Repo[];
   cover?: string;
   body: string;
 }
@@ -35,6 +42,10 @@ const IMAGE_ONLY = /^!\[[^\]]*\]\(\s*(\S+?)(?:\s+["'][^)]*)?\s*\)$/;
 const ANY_IMAGE = /!\[[^\]]*\]\(\s*(\S+?)(?:\s+["'][^)]*)?\s*\)/;
 const TOC = /^\[toc\]$/i;
 const TAGS = /^tags\s*[:：]\s*\[(.*)\]\s*$/i;
+// 仓库地址：github: https://github.com/a/b
+// 多个仓库用逗号隔开，各自前面写个名字：github: 后端 https://…, 前端 https://…
+const GITHUB = /^github\s*[:：]\s*(.+)$/i;
+const REPO_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?/;
 
 function splitTags(raw: string): string[] {
   return raw
@@ -43,7 +54,19 @@ function splitTags(raw: string): string[] {
     .filter(Boolean);
 }
 
-// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags 引用块、[toc]
+// 只认 github.com 下的仓库地址，别的一律丢掉：这个链接会直接渲染成页面上的外链
+function splitRepos(raw: string): Repo[] {
+  const repos: Repo[] = [];
+  for (const part of raw.split(/[,，、]/)) {
+    const url = part.match(REPO_URL)?.[0];
+    if (!url) continue;
+    const label = part.replace(url, '').replace(/[[\]<>()（）:：]/g, '').trim();
+    repos.push({ label, url: url.replace(/\/$/, '') });
+  }
+  return repos;
+}
+
+// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags 引用块、github 引用块、[toc]
 // 都算在内，一直读到第一行「正经正文」为止，整段不进正文
 function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   const lines = raw.replace(/\r\n/g, '\n').split('\n');
@@ -59,6 +82,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   let summary = '';
   let cover = '';
   let tags: string[] = [];
+  let repos: Repo[] = [];
 
   for (; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -80,6 +104,11 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
         if (!tags.length) tags = splitTags(tagged[1]);
         continue;
       }
+      const repoLine = inner.match(GITHUB);
+      if (repoLine) {
+        if (!repos.length) repos = splitRepos(repoLine[1]);
+        continue;
+      }
       // 摘要只认第一段引用；再出现引用块说明正文已经开始了
       if (summary) break;
       summary = inner;
@@ -89,6 +118,12 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     const tagged = line.match(TAGS);
     if (tagged) {
       if (!tags.length) tags = splitTags(tagged[1]);
+      continue;
+    }
+
+    const repoLine = line.match(GITHUB);
+    if (repoLine) {
+      if (!repos.length) repos = splitRepos(repoLine[1]);
       continue;
     }
 
@@ -129,6 +164,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     title: title || fallbackTitle,
     summary,
     tags,
+    repos,
     cover: cover || undefined,
     body,
   };
@@ -274,6 +310,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
             publishedAt,
             category,
             tags: parsed.tags,
+            repos: parsed.repos,
             cover: parsed.cover,
           },
         });

@@ -368,10 +368,33 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
             }
           } else {
             // 云：全都挂在远处的天上，画完之后由灰转白、慢慢飘
-            for (var c = 0; c < 6; c++) {
-              var cp = pick(60, geom.horizonY - 90);
+            // 云要自己挑位置，不能只用 pick()：pick 只避开太阳，不管云和云之间。
+            // 手机上太阳那一圈几乎占满屏宽，能放云的只剩顶上一条，
+            // 六朵大云随机落进去就叠成一团，靠右的还会被屏幕切掉。
+            // 所以窄屏少放几朵、画小一点，并且逐朵检查：整朵在屏幕内、
+            // 不压太阳、和已经放好的云不重叠。云的路径宽 46、高约 20，原点在左下角。
+            // 横向把屏宽均分成几栏，一朵云占一栏：纯随机会扎堆，四朵全挤在右半边也不稀奇
+            var narrow = W < 640;
+            var cloudCount = narrow ? 4 : 6;
+            var slotW = (W - 28) / cloudCount;
+            var placed = [];
+            for (var c = 0; c < cloudCount; c++) {
+              var scale = narrow ? 0.9 + rand() * 0.6 : 1.3 + rand() * 1.2;
+              var cw = 46 * scale;
+              var ch = 20 * scale;
+              var cp = null;
+              for (var tries = 0; tries < 60 && !cp; tries++) {
+                var cx = 14 + slotW * c + rand() * Math.max(0, slotW - cw);
+                cx = Math.min(cx, W - cw - 14);
+                var cy = 60 + ch + rand() * Math.max(1, geom.horizonY - 90 - 60 - ch);
+                if (Math.hypot(cx + cw / 2 - W / 2, cy - ch / 2 - geom.centerY) < geom.keepOut + cw / 2) continue;
+                var clash = placed.some(function (b) {
+                  return cx < b.x + b.w + 18 && cx + cw + 18 > b.x && cy - ch < b.y + 14 && cy + 14 > b.y - b.h;
+                });
+                if (!clash) cp = [cx, cy];
+              }
               if (!cp) continue;
-              var scale = 1.3 + rand() * 1.2;
+              placed.push({ x: cp[0], y: cp[1], w: cw, h: ch });
               var delay = Math.round(500 + c * 170 + rand() * 160);
               out +=
                 '<g transform="translate(' +
