@@ -1,7 +1,5 @@
 ![personal-website-poster](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261007214017035.png)
 
-[访问网站](https://www.nuonuoya.cn) · [开发约定](./AGENTS.md)
-
 ## 站里有什么
 
 首页是一张可以拖动、缩放的思维导图。点开分类，再展开文章和标签；每类显示最新 5 篇，其余内容从「查看全部」进入。手机上用同一套内容排成竖向树，正常向下滚动。
