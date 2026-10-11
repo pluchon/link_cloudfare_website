@@ -28,7 +28,8 @@ export const GET: APIRoute = async () => {
     ...urls.map((item) =>
       [
         '  <url>',
-        `    <loc>${new URL(item.loc, site.url).href}</loc>`,
+        // 文件名里带 & 的文章，地址里也会有 &，不转义整份 XML 就解析不了
+        `    <loc>${new URL(item.loc, site.url).href.replace(/&/g, '&amp;')}</loc>`,
         item.lastmod ? `    <lastmod>${item.lastmod.toISOString()}</lastmod>` : '',
         '  </url>',
       ]

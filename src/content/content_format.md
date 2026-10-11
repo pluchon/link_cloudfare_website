@@ -12,4 +12,6 @@
 
 > github: https://github.com/你的名字/仓库名
 
+> bilibili: https://www.bilibili.com/video/BV号/
+
 正文……

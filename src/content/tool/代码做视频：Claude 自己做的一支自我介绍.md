@@ -9,7 +9,8 @@
 ***
 
 > tags: [Remotion, Claude, Claude Code, AI视频, 视频制作, 工作流]  
-> github: https://github.com/pluchon/vedio_studio_remotion_personal
+> github: https://github.com/pluchon/vedio_studio_remotion_personal  
+> bilibili: https://www.bilibili.com/video/BV1FUHa6jEjH/
 
 ## 先说在前面
 

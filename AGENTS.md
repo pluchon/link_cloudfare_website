@@ -89,9 +89,10 @@
 | 标签 | 任意一行 `tags: [甲, 乙]`，`、` 和 `,` 都认 |
 | 封面 | 元信息区的第一张图，没有就取正文第一张 |
 | 仓库 | 元信息区一行 `github: https://github.com/甲/乙`；多个仓库写成 `github: 后端 https://…, 前端 https://…`。只认 github.com 的地址，详情页「Markdown 原文」右边显示成新标签页打开的链接 |
+| 视频 | 元信息区一行 `bilibili: https://www.bilibili.com/video/BV号/`。只认 B 站视频页，分享链接后面的追踪参数会被丢掉；显示在仓库链接右边，B 站图标加「视频链接」 |
 | 草稿 | 文件名以 `_` 开头 |
 
-标题、简介、标签、仓库这几行会从正文里剔除，不会重复渲染。格式模板见
+标题、简介、标签、仓库、视频这几行会从正文里剔除，不会重复渲染。格式模板见
 `src/content/content_format.md` 和 `src/content/profile_format.md`。
 
 **日期那条有坑**：`gitDate()` 失败时**绝不能退回 mtime**。仓库开了 `core.autocrlf`，

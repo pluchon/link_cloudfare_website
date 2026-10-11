@@ -12,6 +12,8 @@ const schema = z.object({
   tags: z.array(z.string()).default([]),
   // 文章里那行 github: 推出来的仓库地址，详情页日期行右边显示
   repos: z.array(z.object({ label: z.string(), url: z.string() })).default([]),
+  // 文章里那行 bilibili: 推出来的视频地址，跟在仓库链接后面
+  video: z.string().optional(),
   cover: z.string().optional(),
 });
 

@@ -12,6 +12,8 @@
 
 > github: https://github.com/pluchon/vedio_studio_remotion_personal
 
+> bilibili: https://www.bilibili.com/video/BV16kaz6fE85/
+
 ## 先说在前面
 
 过去几天里我做了四支视频：两支日常随笔，一支五分钟的人类文明探索史，还有一支从麦田一路退到可观测宇宙之外的科普短片。全程没有打开任何剪辑软件，画面都是代码渲染出来的。代码是 Claude 写的（Claude Code 里的 Opus 5.5），我做的事情就四样：给素材、提想法、看样片、说哪里不对。

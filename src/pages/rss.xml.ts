@@ -16,7 +16,7 @@ export const GET: APIRoute = async () => {
 
   const body = items
     .map(({ kind, entry }) => {
-      const link = new URL(entryHref(kind, entry.data.slug), site.url).href;
+      const link = esc(new URL(entryHref(kind, entry.data.slug), site.url).href);
       return [
         '    <item>',
         `      <title>${esc(entry.data.title)}</title>`,

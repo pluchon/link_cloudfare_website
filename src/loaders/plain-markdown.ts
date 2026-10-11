@@ -12,7 +12,9 @@ import { fileURLToPath } from 'node:url';
 //   标签   ← 文件里任意一行 tags: [甲, 乙]
 //   封面   ← 正文第一张图（在 lib/content.ts 的 entryCover 里取）
 //   草稿   ← 文件名以下划线开头
-// 标题、简介、标签这三行会从正文里剔除，不会在文章里重复出现
+//   仓库   ← 元信息区一行 github: https://github.com/甲/乙
+//   视频   ← 元信息区一行 bilibili: https://www.bilibili.com/video/BV号/
+// 标题、简介、标签、仓库、视频这几行会从正文里剔除，不会在文章里重复出现
 
 export interface PlainMarkdownOptions {
   /** 相对项目根目录，例如 src/content/blog */
@@ -32,6 +34,7 @@ interface ParsedDoc {
   summary: string;
   tags: string[];
   repos: Repo[];
+  video?: string;
   cover?: string;
   body: string;
 }
@@ -46,6 +49,10 @@ const TAGS = /^tags\s*[:：]\s*\[(.*)\]\s*$/i;
 // 多个仓库用逗号隔开，各自前面写个名字：github: 后端 https://…, 前端 https://…
 const GITHUB = /^github\s*[:：]\s*(.+)$/i;
 const REPO_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?/;
+// 视频地址：bilibili: https://www.bilibili.com/video/BVxxxx/
+// 只取到视频号为止，分享链接后面带的 share_source、vd_source 这些追踪参数一律丢掉
+const BILIBILI = /^bilibili\s*[:：]\s*(.+)$/i;
+const VIDEO_URL = /https:\/\/www\.bilibili\.com\/video\/\w+/;
 
 function splitTags(raw: string): string[] {
   return raw
@@ -66,7 +73,13 @@ function splitRepos(raw: string): Repo[] {
   return repos;
 }
 
-// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags 引用块、github 引用块、[toc]
+// 只认 B 站的视频页，理由同上
+function pickVideo(raw: string): string {
+  const url = raw.match(VIDEO_URL)?.[0];
+  return url ? `${url}/` : '';
+}
+
+// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags / github / bilibili 引用块、[toc]
 // 都算在内，一直读到第一行「正经正文」为止，整段不进正文
 function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   const lines = raw.replace(/\r\n/g, '\n').split('\n');
@@ -83,6 +96,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   let cover = '';
   let tags: string[] = [];
   let repos: Repo[] = [];
+  let video = '';
 
   for (; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -109,6 +123,11 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
         if (!repos.length) repos = splitRepos(repoLine[1]);
         continue;
       }
+      const videoLine = inner.match(BILIBILI);
+      if (videoLine) {
+        if (!video) video = pickVideo(videoLine[1]);
+        continue;
+      }
       // 摘要只认第一段引用；再出现引用块说明正文已经开始了
       if (summary) break;
       summary = inner;
@@ -127,6 +146,12 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
       continue;
     }
 
+    const videoLine = line.match(BILIBILI);
+    if (videoLine) {
+      if (!video) video = pickVideo(videoLine[1]);
+      continue;
+    }
+
     const img = line.match(IMAGE_ONLY);
     if (img) {
       if (!cover) cover = img[1];
@@ -136,11 +161,18 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     break;
   }
 
-  // 正文里残留的 tags 行和 [toc] 一并清掉（有人习惯把 tags 写在末尾）
+  // 正文里残留的 tags 行和 [toc] 一并清掉（有人习惯把 tags 写在末尾）。
+  // 代码块里的不算：讲文章格式的那篇，示例里就有一行 tags，清掉了示例就不完整
+  let fenced = false;
   const body = lines
     .slice(i)
     .filter((line) => {
       const t = line.trim();
+      if (/^(```|~~~)/.test(t)) {
+        fenced = !fenced;
+        return true;
+      }
+      if (fenced) return true;
       if (TOC.test(t)) return false;
       return !TAGS.test(t.replace(/^>\s?/, ''));
     })
@@ -165,6 +197,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     summary,
     tags,
     repos,
+    video: video || undefined,
     cover: cover || undefined,
     body,
   };
@@ -311,6 +344,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
             category,
             tags: parsed.tags,
             repos: parsed.repos,
+            video: parsed.video,
             cover: parsed.cover,
           },
         });
