@@ -12,6 +12,8 @@
 
 > github: https://github.com/pluchon/meng_center
 
+> bilibili: https://www.bilibili.com/video/BV1GGng6qE26/
+
 萌部落是一个日漫萌系、水色主题的多用户社区。用户可以发帖、评论、私信，有签到和等级，还有三个 AI 角色可以聊天。后端是 Java 微服务加一个 Python AI 服务，前端是 Vue 3。
 
 这是一个兴趣项目，也是几种技术放在一起的练习，所以首要目标是好维护、好扩展：服务按业务域拆分，同步调用只保留少数几条固定方向，其余都走事件。
