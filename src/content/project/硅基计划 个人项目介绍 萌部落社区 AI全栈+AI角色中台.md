@@ -10,6 +10,8 @@
 
 > tags: [SpringBoot, SpringCloud Alibaba, Nacos, MyBatis-Plus, Flyway, Redis, RabbitMQ, Elasticsearch, XXL-JOB, WebSocket, Python, FastAPI, LangChain, LangGraph, 通义千问, Vue3, Element Plus, Pinia, 前端]
 
+> github: https://github.com/pluchon/meng_center
+
 萌部落是一个日漫萌系、水色主题的多用户社区。用户可以发帖、评论、私信，有签到和等级，还有三个 AI 角色可以聊天。后端是 Java 微服务加一个 Python AI 服务，前端是 Vue 3。
 
 这是一个兴趣项目，也是几种技术放在一起的练习，所以首要目标是好维护、好扩展：服务按业务域拆分，同步调用只保留少数几条固定方向，其余都走事件。
@@ -41,7 +43,7 @@ sequenceDiagram
     Note over S: 管理员通过后发出 user.approved<br/>消息域据此发欢迎通知
 ```
 
-目前没有管理端页面。审核通过、驳回等操作只能调后端的管理员接口，接口规格写在仓库的 `docs/auth.md` 里。
+目前没有管理端页面。审核通过、驳回等操作只能调后端的管理员接口，接口规格写在仓库的 [`docs/auth.md`](https://github.com/pluchon/meng_center/blob/main/docs/auth.md) 里。
 
 ### 发帖与浏览
 
@@ -107,7 +109,7 @@ flowchart TD
 
 ![性格档位](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120408642.png)
 
-关系界限、现实生活优先、防沉迷和危机处理这些规则写在 `docs/meng.md` 第 8 节，优先级高于角色设定。
+关系界限、现实生活优先、防沉迷和危机处理这些规则写在 [`docs/meng.md`](https://github.com/pluchon/meng_center/blob/main/docs/meng.md) 第 8 节，优先级高于角色设定。
 
 ## 架构
 
@@ -157,7 +159,7 @@ flowchart LR
 | ai        | 8106 | 帖子理解、审核、推荐计算、萌萌对话图，不存任何业务状态 |
 | companion | 8107 | 萌萌的会话编排、好感、记忆、作品、限次                 |
 
-几条固定的规则，细节写在 `docs/architecture.md`：
+几条固定的规则，细节写在 [`docs/architecture.md`](https://github.com/pluchon/meng_center/blob/main/docs/architecture.md)：
 
 - 同步调用只有少数固定方向，而且只读，深度为 1。唯一的例外是萌萌：companion 调 ai，ai 的工具再只读地调 content 和 growth。
 - 一件事发生后别的服务要跟着反应，一律走 RabbitMQ 事件，事务提交后才发送。
@@ -358,7 +360,7 @@ npm ci
 npm run dev
 ```
 
-用户端在 <http://127.0.0.1:5173>，请求经 Vite 代理转到网关。完整的步骤、端口表和环境变量清单在 `deploy/README.md` 和 `docs/setup.md`。
+用户端在 <http://127.0.0.1:5173>，请求经 Vite 代理转到网关。完整的步骤、端口表和环境变量清单在 [`deploy/README.md`](https://github.com/pluchon/meng_center/blob/main/deploy/README.md) 和 [`docs/setup.md`](https://github.com/pluchon/meng_center/blob/main/docs/setup.md)。
 
 ## 测试
 
@@ -370,7 +372,7 @@ npm run dev
 | `./verification/Test-Functional.ps1` | 注册、审核、登录、改密的完整联调                             |
 | `./verification/Test-Secrets.ps1`    | 扫描仓库里有没有密钥的值                                     |
 
-前端在 `vue_front/front_user` 下用 `npm run lint`、`npm run lint:style`、`npm run build` 检查。其他联调和浏览器脚本见 `verification/README.md`。
+前端在 `vue_front/front_user` 下用 `npm run lint`、`npm run lint:style`、`npm run build` 检查。其他联调和浏览器脚本见 [`verification/README.md`](https://github.com/pluchon/meng_center/blob/main/verification/README.md)。
 
 ## 文档
 
@@ -378,23 +380,23 @@ npm run dev
 
 | 文档 | 文件 | 内容 |
 | --- | --- | --- |
-| 架构设计 | `docs/architecture.md` | 定位、技术栈、服务划分、防耦合规则、暂不做的事 |
-| 事件与内部接口 | `docs/contracts.md` | 跨服务交互的完整清单和新增流程 |
-| 认证模块 | `docs/auth.md` | 注册、登录、找回密码、审核，以及个人中心 |
-| 内容域 | `docs/content.md` | 帖子、评论、配图、热榜、搜索、收藏夹 |
-| 成长域 | `docs/growth.md` | 签到、经验、等级、积分 |
-| 消息域 | `docs/im.md` | 私信、通知、实时连接 |
-| AI 域 | `docs/ai.md` | 帖子理解、推荐、语义搜索、发帖页 AI 入口、成长总结、审核 |
-| 萌萌 | `docs/meng.md` | 角色、好感度、记忆、对话链路、作品、关系界限与安全、页面 |
-| 前端规范 | `docs/frontend.md` | 目录、三文件拆分、不硬编码的做法、检查工具 |
-| 环境、密钥与约定 | `docs/setup.md` | 本机环境、环境变量清单、命名约定 |
-| 本地中间件 | `deploy/README.md` | 启动、端口与凭据约定 |
-| 验证 | `verification/README.md` | 测试和联调脚本、压测基线 |
-| 仓库卫生规则 | `AGENTS.md` | 什么能进仓库，干完活要收拾什么 |
+| 架构设计 | [`docs/architecture.md`](https://github.com/pluchon/meng_center/blob/main/docs/architecture.md) | 定位、技术栈、服务划分、防耦合规则、暂不做的事 |
+| 事件与内部接口 | [`docs/contracts.md`](https://github.com/pluchon/meng_center/blob/main/docs/contracts.md) | 跨服务交互的完整清单和新增流程 |
+| 认证模块 | [`docs/auth.md`](https://github.com/pluchon/meng_center/blob/main/docs/auth.md) | 注册、登录、找回密码、审核，以及个人中心 |
+| 内容域 | [`docs/content.md`](https://github.com/pluchon/meng_center/blob/main/docs/content.md) | 帖子、评论、配图、热榜、搜索、收藏夹 |
+| 成长域 | [`docs/growth.md`](https://github.com/pluchon/meng_center/blob/main/docs/growth.md) | 签到、经验、等级、积分 |
+| 消息域 | [`docs/im.md`](https://github.com/pluchon/meng_center/blob/main/docs/im.md) | 私信、通知、实时连接 |
+| AI 域 | [`docs/ai.md`](https://github.com/pluchon/meng_center/blob/main/docs/ai.md) | 帖子理解、推荐、语义搜索、发帖页 AI 入口、成长总结、审核 |
+| 萌萌 | [`docs/meng.md`](https://github.com/pluchon/meng_center/blob/main/docs/meng.md) | 角色、好感度、记忆、对话链路、作品、关系界限与安全、页面 |
+| 前端规范 | [`docs/frontend.md`](https://github.com/pluchon/meng_center/blob/main/docs/frontend.md) | 目录、三文件拆分、不硬编码的做法、检查工具 |
+| 环境、密钥与约定 | [`docs/setup.md`](https://github.com/pluchon/meng_center/blob/main/docs/setup.md) | 本机环境、环境变量清单、命名约定 |
+| 本地中间件 | [`deploy/README.md`](https://github.com/pluchon/meng_center/blob/main/deploy/README.md) | 启动、端口与凭据约定 |
+| 验证 | [`verification/README.md`](https://github.com/pluchon/meng_center/blob/main/verification/README.md) | 测试和联调脚本、压测基线 |
+| 仓库卫生规则 | [`AGENTS.md`](https://github.com/pluchon/meng_center/blob/main/AGENTS.md) | 什么能进仓库，干完活要收拾什么 |
 
 ## 目前没有的东西
 
 - 管理端前端已经移除。管理员接口仍然在，页面规格留在文档里。
 - 抽奖还没有做，积分目前只用来记录。
 - 上线部署没有做，现在只支持在本机运行。
-- 正式的用户协议和短信通道需要运营者提供，当前默认关闭注册提交和短信发送，见 `docs/setup.md` 第 4 节。
+- 正式的用户协议和短信通道需要运营者提供，当前默认关闭注册提交和短信发送，见 [`docs/setup.md`](https://github.com/pluchon/meng_center/blob/main/docs/setup.md) 第 4 节。
