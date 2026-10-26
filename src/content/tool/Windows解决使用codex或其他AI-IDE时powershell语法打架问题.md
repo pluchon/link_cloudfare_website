@@ -4,7 +4,7 @@
 
 ***
 
-![1758766224464](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906102822292.jpg)
+![1758766224464](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906102822292.jpg)
 
 ***
 
@@ -18,7 +18,7 @@
 
 打开Windows应用商店搜`powershell` ，注意看版本号是不是7以上  
 
-![image-20260906102507711](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906102507763.png)
+![image-20260906102507711](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906102507763.png)
 
 如果没问题，点击下载安装
 
@@ -28,7 +28,7 @@
 
 打开你的Windows的搜索框，搜索powershell后，打开powershell终端，右侧有一个"V"的下拉菜单，点击设置，选择启动菜单栏，第一个预设定的启动终端，选择我们刚刚安装的powershell
 
-![image-20260906102543079](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906102543120.png)
+![image-20260906102543079](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906102543120.png)
 
 ## 第三步：给AI-IDE加入提示词
 
@@ -56,17 +56,17 @@
 
 codex（ChatGPT）粘贴的位置如下
 
-![image-20260906102623898](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906102623936.png)
+![image-20260906102623898](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906102623936.png)
 
 Claude工作区粘贴的位置如下（一般Claude使用的是Git bash，但是这里为了方便也可以粘贴）
 
-![image-20260906102648960](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906102648997.png)
+![image-20260906102648960](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906102648997.png)
 
 ## 第四步：测试效果
 
 > 尝试在一个新的对话里输入，让它看看默认执行的powershell是什么版本
 
-![image-20260906102719080](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906102719137.png)
+![image-20260906102719080](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906102719137.png)
 
 ## 写在最后
 

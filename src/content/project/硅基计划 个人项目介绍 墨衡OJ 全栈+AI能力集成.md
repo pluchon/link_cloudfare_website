@@ -4,7 +4,7 @@
 
 ***
 
-![moheng](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260924155155790.png)
+![moheng](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260924155155790.png)
 
 ***
 
@@ -309,37 +309,37 @@ online_oj_vue
 
 **登录**
 
-![image-20260927231124354](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231124597.png)
+![image-20260927231124354](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231124597.png)
 
 **数据概览**
 
-![image-20260927231207113](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231241823.png)
+![image-20260927231207113](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231241823.png)
 
 **难题分析**
 
-![image-20260927231307548](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231307604.png)
+![image-20260927231307548](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231307604.png)
 
 **用户管理**
 
-![image-20260927231324730](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231324792.png)
+![image-20260927231324730](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231324792.png)
 
 **题目管理**
 
-![image-20260927231337067](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231337120.png)
+![image-20260927231337067](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231337120.png)
 
 **题目编辑与 AI 出题**
 
-![image-20260927231353110](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231353183.png)
+![image-20260927231353110](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231353183.png)
 
 **竞赛管理与 AI 帮建**
 
-![image-20260927231451814](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231451883.png)
+![image-20260927231451814](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231451883.png)
 
 **申诉管理**
 
-![image-20260927231524164](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231524228.png)
+![image-20260927231524164](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231524228.png)
 
-![image-20260927231534530](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231534607.png)
+![image-20260927231534530](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231534607.png)
 
 ### 路由与页面
 
@@ -432,33 +432,33 @@ flowchart LR
 
 **登录**
 
-![image-20260927231600624](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231600674.png)
+![image-20260927231600624](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231600674.png)
 
 **题库**
 
-![image-20260927231629603](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231629693.png)
+![image-20260927231629603](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231629693.png)
 
 **做题工作台与 AI 辅导**
 
-![image-20260927231708043](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231708093.png)
+![image-20260927231708043](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231708093.png)
 
 **提交申诉**
 
-![image-20260927231731801](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231731867.png)
+![image-20260927231731801](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231731867.png)
 
 **竞赛与排名**
 
-![image-20260927231749970](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231750032.png)
+![image-20260927231749970](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231750032.png)
 
-![image-20260927231759641](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231759716.png)
+![image-20260927231759641](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231759716.png)
 
 **赛后复盘**
 
-![image-20260927231846525](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231846581.png)
+![image-20260927231846525](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231846581.png)
 
 **个人中心**
 
-![image-20260927231926061](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260927231926142.png)
+![image-20260927231926061](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260927231926142.png)
 
 ### 路由与页面
 

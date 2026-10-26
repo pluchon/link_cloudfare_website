@@ -11,7 +11,7 @@ export const site = {
   since: 2026,
   footerNote: '今天也辛苦啦，要不要在这里休息一会儿？小萌会陪着你的♪٩(´ω`)و♪',
   notFoundPoster:
-    'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/404.webp',
+    'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404.webp',
 } as const;
 
 // 顶栏导航（/tags/ 页面保留，只是不进导航）
@@ -27,7 +27,7 @@ export const nav = [
 // 首页思维导图的根节点，也是关于页的名片
 // avatar 留空则渲染成占位线框；要换成照片就填 OSS 完整 URL
 export const profile = {
-  avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/profile.webp',
+  avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/profile.webp',
   name: '诺诺',
   bio: '在写代码，也在记笔记。把踩过的坑和读过的东西留在这里',
   // 第三方链接：href 换成自己的即可。图标源文件 viewBox 各不相同
@@ -49,35 +49,35 @@ export const branches = [
     label: '项目',
     href: '/project/',
     desc: '做过的项目与笔记',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/project.webp',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/project.webp',
   },
   {
     key: 'tool',
     label: '工具',
     href: '/tool/',
     desc: '对使用的工具进行整理，包含教程清单',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/tool.webp',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/tool.webp',
   },
   {
     key: 'explore',
     label: '探究',
     href: '/explore/',
     desc: '自己奇思妙想或时代的自我研究成果展示',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/explore.webp',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/explore.webp',
   },
   {
     key: 'daily',
     label: '日常',
     href: '/daily/',
     desc: '生活里的碎片记录',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/daily.webp',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/daily.webp',
   },
   {
     key: 'xiaomeng',
     label: '小萌',
     href: '/xiaomeng/',
     desc: '小萌的一些资料与设计构想',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/profile_website/xiaomeng.webp',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/xiaomeng.webp',
   },
 ] as const;
 

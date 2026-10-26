@@ -4,7 +4,7 @@
 
 ***
 
-![image-20261003175945733](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003175945860.png)
+![image-20261003175945733](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003175945860.png)
 
 ***
 
@@ -133,7 +133,7 @@ flowchart TD
 
 把这些放在最显眼的地方，才是一次真诚的自我介绍。
 
-![image-20261003180111462](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003180111536.png)
+![image-20261003180111462](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003180111536.png)
 
 ### 3. 样片被砍：主角换成像素小螃蟹
 
@@ -150,7 +150,7 @@ flowchart TD
 
 至于 Haiku、Sonnet 和 Fable，我沿用了同一套骨架参数，调整了色值和比例。
 
-![image-20261003180245100](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003180245162.png)
+![image-20261003180245100](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003180245162.png)
 
 ### 4. 音画同步的单一数据源（Single Source of Truth）
 
@@ -199,7 +199,7 @@ flowchart TD
 
 转场发生时，只有背景层在做圆形展开或花边擦除；**主角全片只有一个实例，站在原地看着身后的布景风云变幻**。跨段落的 0.7 秒过渡期内，主角平滑插值走到新姿势，镜头也平滑插值到新的构图中心。字幕条则挂在镜头之外，镜头再怎么推拉，文字永远安安稳稳待在底部。
 
-![image-20261003180347900](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003180347975.png)
+![image-20261003180347900](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003180347975.png)
 
 ### 6. 纯算法合成 8-bit 配乐
 
@@ -239,7 +239,7 @@ flowchart TD
 
 还有一个真事被我做成了片子里的彩蛋：小螃蟹在起跳落地的一瞬间，我原本写的 Squash 公式弹性系数给大了，导致在第 305 帧时，整个身体被压成了一根又细又长的香肠。在片子后半段介绍制作过程时，那条胶片上特意挑出来打叉的一格，就是这根货真价实的“第 305 帧香肠”。
 
-![image-20261003180511579](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003180511638.png)
+![image-20261003180511579](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003180511638.png)
 
 ---
 
@@ -262,7 +262,7 @@ flowchart TD
 
 至于颜文字，还踩了个字体坑：像 `(≧▽≦)`、`Σ(ﾟДﾟ)` 这类符号混合了希腊字母和片假名，常规英文字体直接碎成豆腐块。动手前我先挂载了 `M PLUS Rounded 1c` 和 `站酷快乐体` 兜底；遇到连字体库都没有的特殊符号 `✧`，就直接在代码里用 Path 拼了一颗小星星塞进去。
 
-![image-20261003180703038](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003180703101.png)
+![image-20261003180703038](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003180703101.png)
 
 ---
 
@@ -295,7 +295,7 @@ flowchart TD
 - 讲到“我究竟有没有感受”，是一颗被打上问号的心脏；
 - 而最后定格的那句**“但有一条很确定：我不想骗你”**，则化作一枚实打实落下的红色印章。
 
-![image-20261003180816840](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261003180816902.png)
+![image-20261003180816840](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261003180816902.png)
 
 ---
 

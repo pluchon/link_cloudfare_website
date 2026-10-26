@@ -1,4 +1,4 @@
-![personal-website-poster](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261007214017035.png)
+![personal-website-poster](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/personal_website/20261007214017035.png)
 
 ## 站里有什么
 

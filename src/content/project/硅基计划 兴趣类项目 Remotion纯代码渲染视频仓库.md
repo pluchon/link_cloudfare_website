@@ -4,7 +4,7 @@
 
 ***
 
-![视频工作室封面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261011195744118.png)
+![视频工作室封面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261011195744118.png)
 
 ***
 

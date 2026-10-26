@@ -4,7 +4,7 @@
 
 ***
 
-![萌部落：分享热爱，收集日常](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120405595.png)
+![萌部落：分享热爱，收集日常](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120405595.png)
 
 ***
 
@@ -24,7 +24,7 @@
 
 注册需要邮箱或手机号，并通过滑块验证和验证码。提交后账号处于待审核状态，管理员通过后才能登录。被拒绝的用户能看到原因，可以重新申请。同一个账号可以在多台设备上登录，个人中心里能看到每台设备并让它下线。
 
-![登录页面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120405584.png)
+![登录页面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120405584.png)
 
 ```mermaid
 sequenceDiagram
@@ -51,17 +51,17 @@ sequenceDiagram
 
 帖子分五个分类，正文用 Markdown，可以带最多十张配图、封面和标签，也可以先存成草稿。主页的帖子流有推荐、最新、热门三种排序，推荐是默认。详情页有评论和回复，评论可以带图和表情，支持置顶、点赞和 @ 提到。喜欢和收藏都有计数，收藏可以放进不同的收藏夹。
 
-![主页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120405494.png)
+![主页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120405494.png)
 
-![帖子详情](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120405549.png)
+![帖子详情](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120405549.png)
 
-![发帖页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120405503.png)
+![发帖页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120405503.png)
 
 ### 搜索
 
 搜索框默认按相关度排序：先用向量找出候选帖子，再由 AI 判断哪些真正相关。AI 不可用时退回关键词检索，结果照常返回。热门和最新两种排序直接走关键词检索。
 
-![搜索结果页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120405531.png)
+![搜索结果页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120405531.png)
 
 ```mermaid
 flowchart TD
@@ -79,7 +79,7 @@ flowchart TD
 
 作者可以看到自己帖子的浏览、喜欢、评论、收藏的汇总，近期趋势图，以及按热度排序的帖子表现。图表库在点开可视化时才加载。
 
-![创作中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120407273.png)
+![创作中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120407273.png)
 
 ### 成长
 
@@ -89,13 +89,13 @@ flowchart TD
 
 消息中心分私信、评论、喜欢和系统四个标签页。私信支持文字、表情、图片、已读回执、撤回和在线状态，也可以屏蔽对方。导航栏的未读数通过一条 WebSocket 实时更新。
 
-![消息中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120407253.png)
+![消息中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120407253.png)
 
 ### 个人中心
 
 可以修改昵称、签名、头像和用户名，更换或绑定邮箱和手机号，管理登录设备，查看关注和粉丝。昵称、签名和头像会经过 AI 审核，未通过的内容会被清除，并在消息中心里说明原因。
 
-![个人中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120407467.png)
+![个人中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120407467.png)
 
 ### 萌萌
 
@@ -103,13 +103,13 @@ flowchart TD
 
 聊天时角色会记住用户说过的事，可以查帖子、写文档、画图。每个角色有三档语气，用户自己选，例如奶糖是正常、撒娇、撒娇卖萌。记忆按角色分开，跟凛说过的事，小葵不知道。
 
-![萌萌首页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120407729.png)
+![萌萌首页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120407729.png)
 
-![萌萌聊天](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120408493.png)
+![萌萌聊天](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120408493.png)
 
-![记忆弹窗](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120408617.png)
+![记忆弹窗](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120408617.png)
 
-![性格档位](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261018120408642.png)
+![性格档位](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261018120408642.png)
 
 关系界限、现实生活优先、防沉迷和危机处理这些规则写在 [`docs/meng.md`](https://github.com/pluchon/meng_center/blob/main/docs/meng.md) 第 8 节，优先级高于角色设定。
 

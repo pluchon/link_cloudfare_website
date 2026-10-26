@@ -4,7 +4,7 @@
 
 ***
 
-![x](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20260906100610174.png)
+![x](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20260906100610174.png)
 
 ***
 

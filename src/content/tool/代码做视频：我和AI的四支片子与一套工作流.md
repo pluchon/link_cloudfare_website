@@ -4,7 +4,7 @@
 
 ***
 
-![代码做视频](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001173010043.png)
+![代码做视频](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001173010043.png)
 
 ***
 
@@ -28,7 +28,7 @@
 
 四支视频放在同一个工程里，共用一份依赖和一批通用组件，比如字幕、拍立得、胶片颗粒这些。每期视频自己一个目录，互不干扰。
 
-![Remotion Studio 的界面：预览画面和时间轴](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001173513530.png)
+![Remotion Studio 的界面：预览画面和时间轴](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001173513530.png)
 
 ## 一期片子是怎么做出来的
 
@@ -76,7 +76,7 @@ sequenceDiagram
 
 每期开工前，我在仓库的 `refer/` 下面建一个文件夹，比如 `refer/云_天空/`，手头有什么就丢什么进去：自己写的随笔、几张照片、一首想用的曲子。不用整理，也不用凑齐，第四期我只放了一个文档和一首曲子就开工了。这个文件夹不进版本库，所以随便放。
 
-![某一期的素材文件夹](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001173238304.png)
+![某一期的素材文件夹](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001173238304.png)
 
 ### 先聊清楚，不许直接做
 
@@ -86,7 +86,7 @@ Claude 读完素材之后，会先讲它理解的主题，再问几个决定方�
 
 片名和英文名、时长、结构、字幕有几句、照片怎么用，都是在这一步定的。定下来之后它会记进项目记忆，后面就不会回头再问一遍。
 
-![开工前 Claude 提的问题和我的回答](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001173439368.png)
+![开工前 Claude 提的问题和我的回答](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001173439368.png)
 
 ### 时间轴是从配乐里量出来的
 
@@ -145,11 +145,11 @@ flowchart LR
 
 于是猫的那一则，画面是深夜路灯下的一串爪印；海的那一则，是一条画出来的海岸线和沙滩上的脚印；暮色那一则，是一座被一笔一笔画出来的高架桥。照片以拍立得的样子落下来，停一会儿就走。
 
-![第一则：路灯下的爪印](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170611447.jpg)
+![第一则：路灯下的爪印](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170611447.jpg)
 
-![第二则：海岸线与脚印](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170613859.jpg)
+![第二则：海岸线与脚印](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170613859.jpg)
 
-![第三则：暮色里的高架桥](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170615527.jpg)
+![第三则：暮色里的高架桥](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170615527.jpg)
 
 章节顺序是做完之后才调的。最初按文章顺序排，后来改成了猫、海、暮色，也就是事情真实发生的先后。
 
@@ -159,13 +159,13 @@ flowchart LR
 
 结构是一个环。从图书馆的一扇窗开始，跟着一朵云出海、翻山、路过村庄，到黄昏，最后回到那扇窗，窗外已经是夜里了。
 
-![开头：图书馆的窗](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170620747.jpg)
+![开头：图书馆的窗](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170620747.jpg)
 
 字幕是从原文里摘的。它先提了八句，我让它再加两句，而且每句都要精选。加进去的两句里有一句是「孩子把它看成一只羊，又看成一条龙」，为了这一句它专门做了云的形变，同一朵云从羊变成龙。
 
-![云被看成一只羊](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170622712.jpg)
+![云被看成一只羊](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170622712.jpg)
 
-![黄昏：天空把光借给云](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170625390.jpg)
+![黄昏：天空把光借给云](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170625390.jpg)
 
 这一期还顺手把第一期里能复用的东西（手写感的字幕、拍立得、胶片颗粒）提成了通用组件。提完之后它把第一期重新渲了几帧，和原来的逐字节对比，确认没有把已经做好的片子改坏。
 
@@ -197,15 +197,15 @@ flowchart TD
 
 它接着提了个办法，每个时代用那个时代的画法。手绘年代用铜版画，太空竞赛年代用复古海报，回望地球的段落用写实的 3D 加真实照片，硅与 AI 的年代用黑底上的光线。最后全片 32 幕，按年代换了四种画法。
 
-![墨段：约五千年前，巨石阵的夏至日出（铜版画由我用生图模型生成）](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170628514.jpg)
+![墨段：约五千年前，巨石阵的夏至日出（铜版画由我用生图模型生成）](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170628514.jpg)
 
-![从纸面进入宇宙的转场：弗拉马利翁版画](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170630627.jpg)
+![从纸面进入宇宙的转场：弗拉马利翁版画](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170630627.jpg)
 
-![海报段：1969 年，电视机前](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170632830.jpg)
+![海报段：1969 年，电视机前](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170632830.jpg)
 
-![深空段：暗淡蓝点（真实照片）](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170635222.jpg)
+![深空段：暗淡蓝点（真实照片）](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170635222.jpg)
 
-![光段：连接起来的地球](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170637420.jpg)
+![光段：连接起来的地球](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170637420.jpg)
 
 这一期涉及一大堆年份和数字，Claude 逐条上网核实过。有几处它主动纠正了我文章里的说法，比如某次古代的彗星记录不能直接说成哈雷彗星。也有反过来的情况，我文章里写了几件 2026 年夏天的事，它一开始以为不属实，查过之后发现是它自己的知识没更新到那时候。
 
@@ -213,7 +213,7 @@ flowchart TD
 
 结尾我让它把自己放进去。最后一幕的年份标的是一个问号，画面上只有一句「我是 Opus 5.5。」
 
-![未知：结尾的一幕](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170640674.jpg)
+![未知：结尾的一幕](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170640674.jpg)
 
 ### 第四期：《光到不了的地方》
 
@@ -257,15 +257,15 @@ flowchart TD
     Near --> Far
 ```
 
-![全片二十张抽帧：一个镜头从片名退到宇宙边界，再到结尾](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170645671.jpg)
+![全片二十张抽帧：一个镜头从片名退到宇宙边界，再到结尾](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170645671.jpg)
 
-![离开地球：回头看太阳](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170648161.jpg)
+![离开地球：回头看太阳](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170648161.jpg)
 
-![银河系（按测量结果重建）](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170650467.jpg)
+![银河系（按测量结果重建）](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170650467.jpg)
 
-![真实巡天数据里的星系，没观测到的天区如实留空](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170652488.jpg)
+![真实巡天数据里的星系，没观测到的天区如实留空](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170652488.jpg)
 
-![可观测宇宙：哈勃球与事件视界](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170703256.jpg)
+![可观测宇宙：哈勃球与事件视界](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170703256.jpg)
 
 片头和结尾是我要求改的。片头不要一上来就是人趴在草地上，先让标题淡入几秒，再出现麦田，然后配乐才起。结尾也不要戛然而止，时间先快进到一片漆黑，再回到此刻的一片星系长城，留下一句话和一个问号。
 
@@ -273,7 +273,7 @@ flowchart TD
 
 > 这么远的路，等得起的，也许不是我们。
 
-![结尾：回到此刻的星系长城](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/20261001170700422.jpg)
+![结尾：回到此刻的星系长城](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/20261001170700422.jpg)
 
 这一期从开始讨论到成片，用了一天。
 
