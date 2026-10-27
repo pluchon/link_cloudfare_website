@@ -8,13 +8,13 @@ import { fileURLToPath } from 'node:url';
 //   标题   ← 第一个 # 一级标题
 //   简介   ← 紧跟标题的 > 引用块
 //   分类   ← 所在子文件夹名；直接放在根目录则用集合默认名
-//   日期   ← 文件名的 YYYY-MM-DD- 前缀 > git 最后提交时间 > 文件修改时间
+//   日期   ← 元信息区一行 date: 2026-10-27 > 文件名的 YYYY-MM-DD- 前缀 > git 首次提交时间 > 文件修改时间
 //   标签   ← 文件里任意一行 tags: [甲, 乙]
 //   封面   ← 正文第一张图（在 lib/content.ts 的 entryCover 里取）
 //   草稿   ← 文件名以下划线开头
 //   仓库   ← 元信息区一行 github: https://github.com/甲/乙
 //   视频   ← 元信息区一行 bilibili: https://www.bilibili.com/video/BV号/
-// 标题、简介、标签、仓库、视频这几行会从正文里剔除，不会在文章里重复出现
+// 标题、简介、标签、日期、仓库、视频这几行会从正文里剔除，不会在文章里重复出现
 
 export interface PlainMarkdownOptions {
   /** 相对项目根目录，例如 src/content/blog */
@@ -35,6 +35,7 @@ interface ParsedDoc {
   tags: string[];
   repos: Repo[];
   video?: string;
+  date?: Date;
   cover?: string;
   body: string;
 }
@@ -53,6 +54,15 @@ const REPO_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?/;
 // 只取到视频号为止，分享链接后面带的 share_source、vd_source 这些追踪参数一律丢掉
 const BILIBILI = /^bilibili\s*[:：]\s*(.+)$/i;
 const VIDEO_URL = /https:\/\/www\.bilibili\.com\/video\/\w+/;
+// 发布时间：date: 2026-10-27，可以带时分 date: 2026-10-27 14:57，按台北时间算。
+// 手写这一行，改错字就不会动日期；觉得改动够大了再自己改这一行
+const DATE_LINE = /^date\s*[:：]\s*(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?\s*$/i;
+
+function pickDate(m: RegExpMatchArray): Date | undefined {
+  const pad = (s: string | undefined) => (s ?? '0').padStart(2, '0');
+  const d = new Date(`${m[1]}-${pad(m[2])}-${pad(m[3])}T${pad(m[4])}:${pad(m[5])}:00+08:00`);
+  return Number.isNaN(d.valueOf()) ? undefined : d;
+}
 
 function splitTags(raw: string): string[] {
   return raw
@@ -97,6 +107,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   let tags: string[] = [];
   let repos: Repo[] = [];
   let video = '';
+  let date: Date | undefined;
 
   for (; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -128,6 +139,11 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
         if (!video) video = pickVideo(videoLine[1]);
         continue;
       }
+      const dateLine = inner.match(DATE_LINE);
+      if (dateLine) {
+        date ??= pickDate(dateLine);
+        continue;
+      }
       // 摘要只认第一段引用；再出现引用块说明正文已经开始了
       if (summary) break;
       summary = inner;
@@ -149,6 +165,12 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     const videoLine = line.match(BILIBILI);
     if (videoLine) {
       if (!video) video = pickVideo(videoLine[1]);
+      continue;
+    }
+
+    const dateLine = line.match(DATE_LINE);
+    if (dateLine) {
+      date ??= pickDate(dateLine);
       continue;
     }
 
@@ -198,6 +220,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     tags,
     repos,
     video: video || undefined,
+    date,
     cover: cover || undefined,
     body,
   };
@@ -224,40 +247,14 @@ function runGit(args: string[]): string | null {
   }
 }
 
-// 从 `git log --follow --numstat` 的输出里，取最近一次「真的改了内容」的提交时间。
+// 没写 date: 行的文章，取它第一次进版本库的时间，也就是发布那天。
 //
-// 不能用 `git log --follow -1`：--follow 只负责穿过重命名把更早的历史接上，
-// -1 取到的仍是最新那次提交——而目录改名那次提交本身就是「最后一次碰过这个文件」。
-// 2026-09-13 把 article → project、info → tool 之后，5 篇没动过内容的文章
-// 日期全变成了改名那天。纯改名在 numstat 里是 `0\t0\t旧路径 => 新路径`，
-// 增删行数都为 0，据此跳过；二进制文件显示 `-\t-`，按有改动算
-function lastContentDate(log: string): string {
-  let date = '';
-  let oldest = '';
-  let changed = false;
-
-  for (const line of log.split('\n')) {
-    if (line.startsWith('@@')) {
-      if (date && changed) return date;
-      date = line.slice(2).trim();
-      oldest = date;
-      changed = false;
-      continue;
-    }
-    const cols = line.split('\t');
-    if (cols.length < 3) continue;
-    const [add, del] = cols;
-    if (add === '-' || del === '-' || Number(add) + Number(del) > 0) changed = true;
-  }
-
-  if (date && changed) return date;
-  // 所有提交都没改行（比如加进来的是空文件）：退回最早那次
-  return oldest;
-}
-
+// 以前取的是「最后一次改了内容」的提交，结果改一个错字日期就跳到当天；
+// 2026-10-26 一次批量修图片链接，全站文章的日期一起变成了那天。
+// --follow 穿过重命名把更早的历史接上，所以目录改名也不会影响首次提交时间。
+// git log 默认新的在前，最后一行就是最早那次
 function gitDate(file: string): Date | null {
-  const query = () =>
-    runGit(['log', '--follow', '--format=@@%aI', '--numstat', '--', file]);
+  const query = () => runGit(['log', '--follow', '--format=%aI', '--', file]);
 
   // 失败重试一次：commit 期间 index.lock 占着会让第一次必然失败
   let out = query();
@@ -273,7 +270,7 @@ function gitDate(file: string): Date | null {
   // git 能用但没有记录：这个文件还没进版本库，此时 mtime 才是对的
   if (!out) return null;
 
-  const d = new Date(lastContentDate(out));
+  const d = new Date(out.split('\n').at(-1)!.trim());
   if (Number.isNaN(d.valueOf())) return null;
 
   gitDateCache.set(file, d.valueOf());
@@ -316,10 +313,12 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
         const raw = await fs.readFile(file, 'utf8');
         const parsed = parseDoc(raw, name);
 
-        // 日期：文件名前缀最可靠，其次 git，最后才是文件修改时间
+        // 日期：手写的 date: 行 > 文件名前缀 > git 首次提交 > 文件修改时间
         const prefix = name.match(DATE_PREFIX);
         let publishedAt: Date;
-        if (prefix) {
+        if (parsed.date) {
+          publishedAt = parsed.date;
+        } else if (prefix) {
           publishedAt = new Date(`${prefix[1]}-${prefix[2]}-${prefix[3]}T00:00:00Z`);
         } else {
           publishedAt = gitDate(file) ?? (await fs.stat(file)).mtime;

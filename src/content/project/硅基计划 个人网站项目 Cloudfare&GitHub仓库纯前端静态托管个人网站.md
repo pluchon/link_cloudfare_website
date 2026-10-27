@@ -8,7 +8,9 @@
 
 ***
 
-> tags: [Astro, Cloudflare Pages, GitHub, Turnstile, 静态网站, Markdown]
+> tags: [Astro, Cloudflare Pages, 静态网站, 着色器, 前端, AI Coding]
+
+> date: 2026-09-05
 
 > github: https://github.com/pluchon/link_cloudfare_website
 

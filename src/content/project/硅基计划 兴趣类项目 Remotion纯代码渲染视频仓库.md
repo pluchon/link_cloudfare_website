@@ -8,7 +8,9 @@
 
 ***
 
-> tags: [Remotion, React, three.js, 着色器, 视频制作]
+> tags: [Remotion, React, Three.js, 着色器, 视频制作, AI Coding]
+
+> date: 2026-10-11
 
 > github: https://github.com/pluchon/vedio_studio_remotion_personal
 

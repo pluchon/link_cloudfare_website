@@ -8,7 +8,9 @@
 
 ***
 
-> tags: [SpringBoot, SpringCloud Alibaba, Nacos, MyBatis-Plus, Flyway, Redis, RabbitMQ, Elasticsearch, XXL-JOB, WebSocket, Python, FastAPI, LangChain, LangGraph, 通义千问, Vue3, Element Plus, Pinia, 前端]
+> tags: [Spring Boot, Spring Cloud Alibaba, Nacos, MyBatis-Plus, Redis, RabbitMQ, Elasticsearch, XXL-JOB, Python, FastAPI, LangGraph, AI 应用, Vue 3, 前端]
+
+> date: 2026-10-18
 
 > github: https://github.com/pluchon/meng_center
 

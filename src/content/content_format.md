@@ -10,6 +10,8 @@
 
 > tags: [设计, 前端]
 
+> date: 2026-10-27
+
 > github: https://github.com/你的名字/仓库名
 
 > bilibili: https://www.bilibili.com/video/BV号/

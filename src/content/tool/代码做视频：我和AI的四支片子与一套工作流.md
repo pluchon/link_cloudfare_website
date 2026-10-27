@@ -8,7 +8,9 @@
 
 ***
 
-> tags: [Remotion, Claude, Claude Code, AI视频, 视频制作, 工作流]
+> tags: [Remotion, Claude Code, 视频制作, AI Coding]
+
+> date: 2026-10-01
 
 > github: https://github.com/pluchon/vedio_studio_remotion_personal
 

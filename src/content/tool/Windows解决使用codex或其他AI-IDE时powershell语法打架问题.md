@@ -8,7 +8,9 @@
 
 ***
 
-> tags: [codex, powershell, 转义问题, 更好的使用AI工具]
+> tags: [Codex, PowerShell, Windows, AI Coding]
+
+> date: 2026-09-06
 
 其实这个问题不复杂，本质上就是一句话：Windows 原生的powershell5太旧了，语法多处不兼容，而AI默认执行powershell是使用powershell7语法的  
 
