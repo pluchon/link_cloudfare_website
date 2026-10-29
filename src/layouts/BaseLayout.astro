@@ -61,6 +61,21 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
 
     <!-- 主题必须在首帧前定好，否则深色模式会闪一下白；
          .js 也在这里打上，入场动画的初始隐藏状态只在有 JS 时才生效 -->
+    <!-- 每个会话第一次落在首页时先去门户页（/door/）。
+         只看「本会话有没有进过站」：从文章页、闸门以外的页面进站的不打扰，
+         ClientRouter 换页时这段即使重跑，标记已经在了也不会再跳 -->
+    <script is:inline>
+      (function () {
+        try {
+          if (sessionStorage.getItem('nn-entered')) return;
+          sessionStorage.setItem('nn-entered', '1');
+          if (location.pathname === '/') location.replace('/door/');
+        } catch (e) {
+          /* 隐私模式读写失败就不跳，直接看首页 */
+        }
+      })();
+    </script>
+
     <script is:inline>
       (function () {
         var root = document.documentElement;

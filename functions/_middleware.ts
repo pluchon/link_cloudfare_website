@@ -10,12 +10,18 @@ interface Env {
   GATE_COOKIE_SECRET?: string;
 }
 
-// 分类改名前发出去的链接要继续可用。
-// 放在闸门校验之前：重定向不涉及内容，没必要先过 Turnstile
-const RENAMED = [
+// 分类改名、文章换分类之前发出去的链接要继续可用。
+// 放在闸门校验之前：重定向不涉及内容，没必要先过 Turnstile。
+// 请求里的中文路径是百分号编码过的，所以单篇文章的映射要 encodeURI
+const RENAMED: ReadonlyArray<readonly [string, string]> = [
   ['/article', '/project'],
   ['/info', '/tool'],
-] as const;
+  [encodeURI('/daily/日常随笔-人生没有标准答案'), encodeURI('/explore/人生没有标准答案')],
+  [
+    encodeURI('/daily/日常随笔-在算法的荒原上，做一只看月亮的鸟'),
+    encodeURI('/explore/在算法的荒原上，做一只看月亮的鸟'),
+  ],
+];
 
 function renamedTarget(pathname: string): string | null {
   for (const [from, to] of RENAMED) {

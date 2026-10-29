@@ -9,6 +9,8 @@ export const site = {
   url: 'https://www.nuonuoya.cn',
   lang: 'zh-CN',
   since: 2026,
+  // 门户页（/door/）标题下面那一行
+  doorLine: '在辽阔之外，安放日常。',
   footerNote: '今天也辛苦啦，要不要在这里休息一会儿？小萌会陪着你的♪٩(´ω`)و♪',
   notFoundPoster:
     'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404.webp',

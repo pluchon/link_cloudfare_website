@@ -1,0 +1,243 @@
+---
+// 门户页：一个可以走动的黑洞场景，点黑洞俯冲进去，落到思维导图首页。
+// 每个会话第一次打开首页时会被送到这里（判断写在 BaseLayout 的首帧脚本里）
+import { site } from '../config/site';
+
+// 机位数量要和 src/door/scene.ts 里的 STOPS 一致
+const stops = 3;
+---
+<!doctype html>
+<html lang={site.lang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#030714" />
+    <title>{site.name}</title>
+    <link rel="icon" href="/icon-64.png" type="image/png" sizes="64x64" />
+    <link rel="prefetch" href="/" />
+    <script is:inline>
+      try {
+        sessionStorage.setItem('nn-entered', '1');
+      } catch (e) {
+        /* 隐私模式写不进去也无妨，最多下次再看一遍门户 */
+      }
+    </script>
+  </head>
+  <body>
+    <canvas class="stage" data-stage tabindex="0" aria-label="黑洞场景：滚动或拖动换个角度，点击黑洞进入"></canvas>
+
+    <div class="veil" data-veil aria-hidden="true"></div>
+
+    <main class="copy" data-copy>
+      <h1 class="copy__title">{site.name}</h1>
+      <p class="copy__line">{site.doorLine}</p>
+      <p class="copy__hint" data-hint>点击黑洞 · 进入</p>
+    </main>
+
+    <a class="skip" href="/">直接进入 →</a>
+
+    <span class="corner corner--tl" aria-hidden="true"></span>
+    <span class="corner corner--bl" aria-hidden="true"></span>
+    <div class="ticks" aria-hidden="true">
+      {Array.from({ length: stops }, () => <span class="ticks__tick" data-tick></span>)}
+    </div>
+
+    <style is:global>
+      html {
+        --door-dur: 240ms;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          --door-dur: 80ms;
+        }
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #030714;
+        color: #e9e7f2;
+        font-family: 'Songti SC', 'STSong', 'SimSun', 'Noto Serif CJK SC', serif;
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
+
+    <style>
+      .stage {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        outline: none;
+        touch-action: none;
+      }
+
+      .veil {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .copy {
+        position: fixed;
+        left: clamp(1.5rem, 8vw, 10rem);
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        max-width: 26rem;
+      }
+
+      .copy__title {
+        margin: 0;
+        font-size: clamp(2rem, 4.4vw, 4rem);
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: 0.06em;
+      }
+
+      .copy__line {
+        margin: 2rem 0 0;
+        font-size: 1.05rem;
+        letter-spacing: 0.3em;
+        opacity: 0.8;
+      }
+
+      .copy__hint {
+        margin: 3.5rem 0 0;
+        font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+        font-size: 0.78rem;
+        letter-spacing: 0.25em;
+        opacity: 0.5;
+      }
+
+      .skip {
+        position: fixed;
+        right: 1.5rem;
+        top: 1.25rem;
+        color: inherit;
+        opacity: 0.55;
+        font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+        font-size: 0.78rem;
+        letter-spacing: 0.15em;
+        text-decoration: none;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid transparent;
+        transition: opacity var(--door-dur), border-color var(--door-dur);
+      }
+
+      .skip:hover,
+      .skip:focus-visible {
+        opacity: 1;
+        border-color: currentColor;
+        outline: none;
+      }
+
+      .corner {
+        position: fixed;
+        pointer-events: none;
+        opacity: 0.6;
+      }
+
+      .corner--tl {
+        left: 1.5rem;
+        top: 1.5rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-left: 1px solid currentColor;
+        border-top: 1px solid currentColor;
+      }
+
+      .corner--bl {
+        left: 1.5rem;
+        bottom: 1.75rem;
+        width: 1.75rem;
+        border-top: 1px solid currentColor;
+      }
+
+      .ticks {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.75rem;
+        width: 9rem;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.9rem;
+        padding-right: 1.5rem;
+        border-bottom: 1px solid rgba(233, 231, 242, 0.35);
+        pointer-events: none;
+      }
+
+      .ticks__tick {
+        width: 1px;
+        height: 0.45rem;
+        background: currentColor;
+        opacity: 0.35;
+        transition: opacity var(--door-dur), height var(--door-dur);
+      }
+
+      .ticks__tick[data-active] {
+        opacity: 1;
+        height: 0.8rem;
+      }
+
+      /* 不支持 WebGL2：没有场景可看，提示改成直接进入 */
+      :global(.flat) .copy {
+        pointer-events: auto;
+      }
+
+      @media (max-width: 40rem) {
+        .copy {
+          top: auto;
+          bottom: 5.5rem;
+          transform: none;
+          left: 1.5rem;
+          right: 1.5rem;
+        }
+
+        .copy__title {
+          font-size: 1.7rem;
+        }
+
+        .copy__line {
+          margin-top: 1rem;
+          letter-spacing: 0.18em;
+        }
+
+        .copy__hint {
+          margin-top: 1.5rem;
+        }
+      }
+    </style>
+
+    <script>
+      import { mountDoor, supportsWebGL2 } from '../door/scene';
+
+      const canvas = document.querySelector<HTMLCanvasElement>('[data-stage]')!;
+      const veil = document.querySelector<HTMLElement>('[data-veil]')!;
+      const hint = document.querySelector<HTMLElement>('[data-hint]')!;
+      const copy = document.querySelector<HTMLElement>('[data-copy]')!;
+      const ticks = [...document.querySelectorAll<HTMLElement>('[data-tick]')];
+
+      if (supportsWebGL2()) {
+        mountDoor({
+          canvas,
+          target: '/',
+          ticks,
+          veil,
+          copy,
+          onDive: () => (hint.textContent = '正在穿过视界…'),
+        });
+      } else {
+        document.documentElement.classList.add('flat');
+        hint.innerHTML = '<a href="/" style="color:inherit">进入 →</a>';
+      }
+    </script>
+  </body>
+</html>
