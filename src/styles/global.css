@@ -1,3 +1,5 @@
+@import './warp.css';
+
 /* ============================================================
    设计基底：细线骨架 + 大留白 + 克制排版
    线条是唯一的结构语言：不用阴影、不用圆角色块
@@ -272,6 +274,17 @@ body.is-canvas > main {
   position: relative;
 }
 
+/* 宽屏画布页：顶栏浮在画布上面，背景插画一直铺到顶栏底下，顶栏的半透明才看得出来。
+   顶栏留在文档流里的话，它底下只有纯色的 body 背景，透明了也看不出 */
+@media (min-width: 60.01rem) {
+  body.is-canvas > .site-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+}
+
 /* 窄屏塞不下一屏，退回正常滚动 */
 @media (max-width: 60rem) {
   body.is-canvas {
@@ -317,8 +330,9 @@ body.is-canvas > main {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: saturate(180%) blur(12px);
+  /* 微透明：底下的插画、卡片能隐约透上来，靠模糊保证导航字读得清 */
+  background: color-mix(in srgb, var(--bg) 66%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
   border-bottom: var(--hair) solid var(--line);
 }
 
@@ -503,28 +517,47 @@ body.is-canvas > main {
   background: var(--dot, var(--accent));
 }
 
-/* 窄屏站名换短名。四个链接做抽屉不划算，缩站名就能全部留在一行 */
+/* 窄屏：顶栏分两行。第一行站名（短名）和右边三个图标，第二行六个导航项平均铺满。
+   以前是硬挤在一行，导航加到六项、图标加到三个以后 375px 宽就放不下，整页横向溢出 */
 .brand__short { display: none; }
 
 @media (max-width: 40rem) {
-  .site-header__inner { gap: 0.75rem; }
+  .site-header__inner {
+    flex-wrap: wrap;
+    gap: 0;
+    height: auto;
+    padding-block: 0.45rem 0.2rem;
+  }
+
   .brand { font-size: 0.9375rem; }
   .brand__full { display: none; }
   .brand__short { display: inline; }
 
-  .site-nav { gap: 0; }
-  .site-nav a { padding: 0.4rem 0.35rem; font-size: 0.8125rem; }
+  .tools {
+    margin-left: auto;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .site-nav {
+    order: 3;
+    width: 100%;
+    margin: 0.15rem 0 0;
+    padding-top: 0.15rem;
+    gap: 0;
+    justify-content: space-between;
+    border-top: var(--hair) solid var(--line);
+  }
+
+  .site-nav a { padding: 0.45rem 0.35rem; font-size: 0.8125rem; }
   /* 下划线要跟着改后的内边距收，否则会伸到文字外面 */
   .site-nav a::after { left: 0.35rem; right: 0.35rem; }
-
-  .icon-btn { margin-left: 0.15rem; }
 }
 
-/* 360px 以下再挤一档，保证五个导航项不换行 */
 @media (max-width: 22.5rem) {
-  .site-nav a { padding: 0.4rem 0.2rem; font-size: 0.78125rem; }
+  .site-nav a { padding: 0.45rem 0.2rem; font-size: 0.78125rem; }
   .site-nav a::after { left: 0.2rem; right: 0.2rem; }
-  .icon-btn { width: 2rem; margin-left: 0; }
+  .icon-btn { width: 2rem; }
 }
 
 /* ---------- 页脚 ---------- */

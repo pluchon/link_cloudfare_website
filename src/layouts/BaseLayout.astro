@@ -64,6 +64,33 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
     <!-- 每个会话第一次落在首页时先去门户页（/door/）。
          只看「本会话有没有进过站」：从文章页、闸门以外的页面进站的不打扰，
          ClientRouter 换页时这段即使重跑，标记已经在了也不会再跳 -->
+    <!-- 从门户页穿过黑洞过来的：第一帧就盖上和门户加载画面一模一样的网格（样式在 warp.css），
+         页面就绪后渐隐。标记是门户页跳转前写进 sessionStorage 的，用一次就删 -->
+    <script is:inline>
+      (function () {
+        try {
+          if (!sessionStorage.getItem('nn-arrive')) return;
+          sessionStorage.removeItem('nn-arrive');
+        } catch (e) {
+          return;
+        }
+        var root = document.documentElement;
+        root.dataset.arrive = 'in';
+        var reveal = function () {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              root.dataset.arrive = 'out';
+              setTimeout(function () {
+                delete root.dataset.arrive;
+              }, 1200);
+            });
+          });
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reveal);
+        else reveal();
+      })();
+    </script>
+
     <script is:inline>
       (function () {
         try {

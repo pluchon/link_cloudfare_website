@@ -10,7 +10,23 @@ export const site = {
   lang: 'zh-CN',
   since: 2026,
   // 门户页（/door/）标题下面那一行
-  doorLine: '在辽阔之外，安放日常。',
+  doorLine: '在辽阔之外，安放日常',
+  // 首页思维导图的背景插画（OSS 完整 URL）。白天是小萌的房间，夜里是小萌坐在空间站甲板上看黑洞。
+  // 人物都在左下角，导图在宽屏会往右让开。留空就用 CSS 画的同构图占位；
+  // 竖屏（手机）可以单独给一张，不给就用横屏那张居中裁切
+  homeBackdrop: {
+    light: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/home-day.webp?v=20261029',
+    dark: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/home-night.webp?v=20261029',
+    lightPortrait: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/home-day-portrait.webp?v=20261029',
+    darkPortrait: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/home-night-portrait.webp?v=20261029',
+  },
+  // 门户页标题区的装饰文字：眉题、英文副行、坐标行（人马座 A* 的天球坐标，银河系中心那个黑洞）
+  door: {
+    eyebrow: 'OBSERVATION DECK',
+    eyebrowCn: '观测甲板 · 01',
+    en: 'A QUIET BASE BEYOND THE EVENT HORIZON',
+    coord: 'RA 17h 45m 40s · DEC −29° 00′ 28″ · 人马座方向',
+  },
   footerNote: '今天也辛苦啦，要不要在这里休息一会儿？小萌会陪着你的♪٩(´ω`)و♪',
   notFoundPoster:
     'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404.webp',

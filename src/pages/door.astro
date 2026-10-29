@@ -1,10 +1,38 @@
 ---
-// 门户页：一个可以走动的黑洞场景，点黑洞俯冲进去，落到思维导图首页。
+// 门户页：站在绕黑洞公转的空间站观景甲板上望向黑洞。按住拖动可以 360° 看，一拖动镜头就慢慢退出
+// 空间站、变成绕黑洞的自由视角（可以一直转到正上方俯视）；双击回到甲板。
+// 点黑洞（或引线上的文字）俯冲进去，落到思维导图首页；五个分类各是一个绕黑洞运行的探测器，点了直接去那个分类。
 // 每个会话第一次打开首页时会被送到这里（判断写在 BaseLayout 的首帧脚本里）
-import { site } from '../config/site';
+import { site, branches } from '../config/site';
+import { getPublished, formatDate, entryCover, thumbUrl, type ContentKind } from '../lib/content';
+import '../styles/warp.css';
 
-// 机位数量要和 src/door/scene.ts 里的 STOPS 一致
-const stops = 3;
+// 终端屏幕：点探测器后镜头飞过去停靠，屏幕上是这个分类此刻的样子。
+// 内容在构建时取，和分类页本身同一份数据——站点只在推送时构建，所以它和真实页面一样「实时」。
+// 不用 iframe 嵌真页面：站点头里是 X-Frame-Options: DENY，而且那会再开一个页面和一个 WebGL 背景
+const terminals = await Promise.all(
+  branches.map(async (b) => {
+    const entries = await getPublished(b.key as ContentKind);
+    return {
+      ...b,
+      total: entries.length,
+      latest: entries.slice(0, 4).map((e) => ({
+        title: e.data.title,
+        summary: e.data.summary,
+        date: formatDate(e.data.publishedAt),
+        // 封面走 OSS 缩略图样式，和首页导图一样，省流量
+        cover: thumbUrl(entryCover(e)),
+      })),
+    };
+  }),
+);
+
+// 标注：一条引线 + 端点圈 + 文字。黑洞、基地、五个探测器各一组，位置由 scene.ts 每帧更新
+const tags = [
+  { id: 'hole', text: '穿越黑洞来到基地', href: '/', sub: 'EVENT HORIZON' },
+  { id: 'base', text: '基地', href: '', sub: 'BASE' },
+  ...branches.map((b) => ({ id: b.key, text: b.label, href: b.href, sub: b.key.toUpperCase() })),
+];
 ---
 <!doctype html>
 <html lang={site.lang}>
@@ -12,7 +40,7 @@ const stops = 3;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <meta name="theme-color" content="#030714" />
+    <meta name="theme-color" content="#020308" />
     <title>{site.name}</title>
     <link rel="icon" href="/icon-64.png" type="image/png" sizes="64x64" />
     <link rel="prefetch" href="/" />
@@ -25,27 +53,232 @@ const stops = 3;
     </script>
   </head>
   <body>
-    <canvas class="stage" data-stage tabindex="0" aria-label="黑洞场景：滚动或拖动换个角度，点击黑洞进入"></canvas>
+    <!-- 开场加载画面「校准星图」：写在 HTML 里，页面一打开就有，不等脚本。
+         视界 + 一圈刻度表盘，进度是沿表盘点亮的弧线；七颗星随进度依次亮起、连成星座。
+         进度按真实里程碑走（见下面的内联脚本和场景脚本里的 __boot 调用） -->
+    <div class="boot" data-boot role="progressbar" aria-label="正在校准星图" aria-valuemin="0" aria-valuemax="100">
+      <!-- 四周装饰：和门户 HUD 同一套语言，像观测站开机时的仪表 -->
+      <div class="boot__frame" aria-hidden="true">
+        <span class="boot__corner boot__corner--tl"></span>
+        <span class="boot__corner boot__corner--tr"></span>
+        <span class="boot__corner boot__corner--bl"></span>
+        <span class="boot__corner boot__corner--br"></span>
+        <span class="boot__tape boot__tape--top"></span>
+        <span class="boot__tape boot__tape--left"></span>
+        <span class="boot__tag boot__tag--tl">OBS-01 · 观测甲板</span>
+        <span class="boot__tag boot__tag--tr">SYS · BOOT</span>
+        <span class="boot__tag boot__tag--bl">RA 17h 45m 40s · DEC −29° 00′ 28″</span>
+        <span class="boot__tag boot__tag--br">LINK · STANDBY</span>
+      </div>
+      <svg class="boot__chart" viewBox="-200 -190 400 300" aria-hidden="true">
+        <polyline class="boot__lines" data-boot-lines points="-150,-92 -96,-138 -18,-160 58,-128 128,-150 160,-60 118,40"></polyline>
+        {
+          [
+            [-150, -92],
+            [-96, -138],
+            [-18, -160],
+            [58, -128],
+            [128, -150],
+            [160, -60],
+            [118, 40],
+          ].map(([x, y], i) => <circle class="boot__star" data-boot-star={i} cx={x} cy={y} r={i % 3 === 0 ? 3.2 : 2.2} />)
+        }
+        <circle class="boot__dial" r="74"></circle>
+        <circle class="boot__ticks" r="82"></circle>
+        <circle class="boot__arc" data-boot-arc r="74" transform="rotate(-90)"></circle>
+        <circle class="boot__glow" r="40"></circle>
+        <circle class="boot__horizon" r="34"></circle>
+      </svg>
+      <p class="boot__label">正在校准星图 · <span data-boot-pct>0%</span></p>
+      <p class="boot__sub">STAR CHART CALIBRATION</p>
+    </div>
+    <script is:inline>
+      // 开场加载的进度：分几个真实里程碑，每段之间缓慢逼近这一段的上限，不会停在一个数上不动。
+      //   页面解析完 0.2 → 场景脚本开始执行 0.5 → 场景搭好 0.8 → 着色器编译完 1
+      // 走到 1 之后渐隐收起。场景脚本没跑起来（不支持 WebGL2、脚本出错）也最多等 12 秒
+      (function () {
+        var root = document.querySelector('[data-boot]');
+        if (!root) return;
+        var arc = root.querySelector('[data-boot-arc]');
+        var lines = root.querySelector('[data-boot-lines]');
+        var stars = root.querySelectorAll('[data-boot-star]');
+        var pct = root.querySelector('[data-boot-pct]');
+        var CIRC = 2 * Math.PI * 74;
+        var LINE = lines.getTotalLength ? lines.getTotalLength() : 600;
+        arc.style.strokeDasharray = CIRC;
+        lines.style.strokeDasharray = LINE;
+        var shown = 0;
+        var floor = 0;
+        var cap = 0.18;
+        var done = false;
+        var last = performance.now();
+        function paint() {
+          arc.style.strokeDashoffset = CIRC * (1 - shown);
+          lines.style.strokeDashoffset = LINE * (1 - shown);
+          for (var i = 0; i < stars.length; i++) stars[i].classList.toggle('on', shown >= (i + 0.5) / stars.length);
+          var p = Math.round(shown * 100);
+          pct.textContent = p + '%';
+          root.setAttribute('aria-valuenow', p);
+        }
+        function tick() {
+          var now = performance.now();
+          var dt = Math.min((now - last) / 1000, 0.25);
+          last = now;
+          // 先追到已确认的进度，再往这一段的上限慢慢爬；都按时间算，后台降帧也照样走
+          var goal = Math.max(floor, shown + (cap - shown) * Math.min(dt * 0.6, 1));
+          shown += (goal - shown) * Math.min(dt * 5, 1);
+          if (done && 1 - shown < 0.004) {
+            shown = 1;
+            paint();
+            root.dataset.state = 'done';
+            setTimeout(function () {
+              root.hidden = true;
+            }, 700);
+            return;
+          }
+          paint();
+          requestAnimationFrame(tick);
+        }
+        window.__boot = {
+          reach: function (value, nextCap) {
+            floor = Math.max(floor, value);
+            cap = Math.max(cap, nextCap || value);
+          },
+          done: function () {
+            floor = 1;
+            cap = 1;
+            done = true;
+          },
+        };
+        document.addEventListener('DOMContentLoaded', function () {
+          window.__boot.reach(0.2, 0.45);
+        });
+        setTimeout(window.__boot.done, 12000);
+        requestAnimationFrame(tick);
+      })();
+    </script>
+
+    <canvas class="stage" data-stage tabindex="0" aria-label="黑洞场景：按住拖动换视角，双击回到甲板，点击黑洞进入"></canvas>
+
+    <div class="vignette" aria-hidden="true"></div>
+
+    <!-- 标题区做成一块观测站铭牌：眉题 → 逐字浮现的标题 → 分割线里的标语 → 英文副行 → 坐标 -->
+    <header class="copy" data-copy>
+      <p class="copy__eyebrow">
+        <span>{site.door.eyebrow}</span>
+        <i aria-hidden="true"></i>
+        <span>{site.door.eyebrowCn}</span>
+      </p>
+      <h1 class="copy__title" aria-label={site.name}>
+        {[...site.name].map((ch, i) => <span style={`--i: ${i}`} aria-hidden="true">{ch}</span>)}
+      </h1>
+      <p class="copy__rule">
+        <i aria-hidden="true"></i>
+        <span>{site.doorLine.split(/[，,]/).join(' · ')}</span>
+        <i aria-hidden="true"></i>
+      </p>
+      <p class="copy__en">{site.door.en}</p>
+      <p class="copy__coord">{site.door.coord}</p>
+    </header>
+
+    <svg class="callout" aria-hidden="true">
+      {
+        tags.map((t) => (
+          <g>
+            <polyline class="callout__line" data-tag-line={t.id} points="0,0 0,0" />
+            <circle class="callout__dot" data-tag-dot={t.id} r={t.id === 'hole' ? 3 : 5} />
+          </g>
+        ))
+      }
+    </svg>
+    {
+      tags.map((t) =>
+        t.href ? (
+          <a class:list={['callout__label', t.id === 'hole' && 'callout__label--hole']} data-tag-label={t.id} href={t.href}>
+            {t.text}
+            {t.sub && <small>{t.sub}</small>}
+          </a>
+        ) : (
+          <span class="callout__label callout__label--quiet" data-tag-label={t.id}>
+            {t.text}
+            <small>{t.sub}</small>
+          </span>
+        ),
+      )
+    }
+
+    <!-- 探测器终端：停靠后从探测器那侧展开；点屏幕先收起面板，再穿过黑洞去这个分类 -->
+    {
+      terminals.map((t) => (
+        <a class="terminal" data-terminal={t.key} href={t.href} hidden aria-label={`跃迁至${t.label}`}>
+          <span class="terminal__bar">
+            <span>探测器 · {t.key.toUpperCase()}</span>
+            <span>链路稳定 · 共 {t.total} 篇</span>
+          </span>
+          <span class="terminal__head">
+            <span class="terminal__title">{t.label}</span>
+            <span class="terminal__desc">{t.desc}</span>
+          </span>
+          <span class="terminal__list">
+            {t.latest.map((item) => (
+              <span class="terminal__item">
+                {item.cover ? (
+                  <img class="terminal__cover" src={item.cover} alt="" loading="lazy" decoding="async" />
+                ) : (
+                  <span class="terminal__cover" />
+                )}
+                <span class="terminal__meta">
+                  <span class="terminal__row">
+                    <span class="terminal__name">{item.title}</span>
+                    <span class="terminal__date">{item.date}</span>
+                  </span>
+                  {item.summary && <span class="terminal__summary">{item.summary}</span>}
+                </span>
+              </span>
+            ))}
+            {t.latest.length === 0 && <span class="terminal__empty">这里还没有内容</span>}
+          </span>
+          <span class="terminal__go">点击屏幕 · 跃迁至「{t.label}」</span>
+        </a>
+      ))
+    }
+
+    <!-- 四周的装饰：角框、方位刻度带、俯仰刻度、读数 -->
+    <div class="hud" aria-hidden="true">
+      <span class="hud__corner hud__corner--tl"></span>
+      <span class="hud__corner hud__corner--tr"></span>
+      <span class="hud__corner hud__corner--bl"></span>
+      <span class="hud__corner hud__corner--br"></span>
+      <div class="hud__tape hud__tape--heading" data-heading-tape></div>
+      <span class="hud__caret"></span>
+      <div class="hud__tape hud__tape--pitch" data-pitch-tape></div>
+      <span class="hud__read hud__read--tr" data-view>视角 · 甲板</span>
+      <span class="hud__read hud__read--bl" data-distance></span>
+      <span class="hud__read hud__read--br" data-heading></span>
+      <span class="hud__read hud__read--hint">按住拖动 · 点探测器对接 · 双击返回甲板</span>
+    </div>
 
     <div class="veil" data-veil aria-hidden="true"></div>
 
-    <main class="copy" data-copy>
-      <h1 class="copy__title">{site.name}</h1>
-      <p class="copy__line">{site.doorLine}</p>
-      <p class="copy__hint" data-hint>点击黑洞 · 进入</p>
-    </main>
-
-    <a class="skip" href="/">直接进入 →</a>
-
-    <span class="corner corner--tl" aria-hidden="true"></span>
-    <span class="corner corner--bl" aria-hidden="true"></span>
-    <div class="ticks" aria-hidden="true">
-      {Array.from({ length: stops }, () => <span class="ticks__tick" data-tick></span>)}
+    <!-- 穿过视界之后的加载画面（样式在 warp.css，和目标页第一帧共用） -->
+    <div class="warp" data-warp hidden aria-live="polite">
+      <div class="warp__base"></div>
+      <div class="warp__floor" data-warp-floor></div>
+      <span class="warp__fill" data-warp-fill></span>
+      <span class="warp__label" data-warp-label></span>
+      <span class="warp__pct" data-warp-pct>0%</span>
     </div>
 
     <style is:global>
       html {
         --door-dur: 240ms;
+        --door-ink: #e9e6f0;
+        --door-line: rgba(233, 230, 240, 0.4);
+        --door-mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+        /* 门户页的英文装饰字：DIN 一类的工业字体，像航天器上的铭牌。全是系统自带字体，不加载 Web 字体：
+           Windows 的 Bahnschrift、macOS 的 DIN Alternate / Avenir Next，都没有就退回系统无衬线 */
+        --door-din: Bahnschrift, 'DIN Alternate', 'Avenir Next Condensed', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+        --door-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', STSong, SimSun, serif;
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -59,8 +292,8 @@ const stops = 3;
         margin: 0;
         height: 100%;
         overflow: hidden;
-        background: #030714;
-        color: #e9e7f2;
+        background: #020308;
+        color: var(--door-ink);
         font-family: 'Songti SC', 'STSong', 'SimSun', 'Noto Serif CJK SC', serif;
         -webkit-font-smoothing: antialiased;
       }
@@ -75,6 +308,14 @@ const stops = 3;
         display: block;
         outline: none;
         touch-action: none;
+        cursor: grab;
+      }
+
+      .vignette {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
       }
 
       .veil {
@@ -87,131 +328,761 @@ const stops = 3;
 
       .copy {
         position: fixed;
-        left: clamp(1.5rem, 8vw, 10rem);
-        top: 50%;
-        transform: translateY(-50%);
+        left: clamp(1.5rem, 6vw, 6rem);
+        top: clamp(4rem, 12vh, 8rem);
         pointer-events: none;
-        max-width: 26rem;
       }
 
-      .copy__title {
+      .copy p {
         margin: 0;
-        font-size: clamp(2rem, 4.4vw, 4rem);
-        font-weight: 600;
-        line-height: 1.3;
-        letter-spacing: 0.06em;
+        white-space: nowrap;
       }
 
-      .copy__line {
-        margin: 2rem 0 0;
-        font-size: 1.05rem;
+      .copy p span {
+        flex: none;
+      }
+
+      /* 眉题：英文 · 一段细线 · 中文编号 */
+      .copy__eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        font-family: var(--door-din);
+        font-size: 0.68rem;
+        letter-spacing: 0.42em;
+        color: rgba(143, 212, 255, 0.85);
+      }
+
+      .copy__eyebrow i {
+        width: 3.5rem;
+        height: 1px;
+        background: linear-gradient(to right, rgba(143, 212, 255, 0.7), rgba(143, 212, 255, 0.1));
+      }
+
+      .copy__eyebrow span:last-child {
         letter-spacing: 0.3em;
-        opacity: 0.8;
+        color: rgba(233, 230, 240, 0.6);
       }
 
-      .copy__hint {
-        margin: 3.5rem 0 0;
-        font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
-        font-size: 0.78rem;
-        letter-spacing: 0.25em;
-        opacity: 0.5;
+      /* 标题：冷白到淡金的渐变字，一层很淡的辉光；开场逐字从模糊里浮出来，只放一次 */
+      .copy__title {
+        margin: 1.1rem 0 0;
+        white-space: nowrap;
+        font-family: var(--door-serif);
+        font-size: clamp(1.35rem, 3.3vw, 3.1rem);
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        line-height: 1.25;
+        filter: drop-shadow(0 0 18px rgba(255, 214, 170, 0.18));
       }
 
-      .skip {
+      .copy__title span {
+        display: inline-block;
+        background: linear-gradient(180deg, #f6f3fb 15%, #d9dcef 55%, #e8c894 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        animation: door-glyph 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        animation-delay: calc(500ms + var(--i) * 70ms);
+      }
+
+      @keyframes door-glyph {
+        from {
+          opacity: 0;
+          filter: blur(8px);
+          transform: translateY(0.25em);
+        }
+      }
+
+      /* 分割线里的标语：长线 · 字 · 短线 */
+      .copy__rule {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1.2rem !important;
+        font-size: clamp(0.82rem, 1.05vw, 0.98rem);
+        letter-spacing: 0.4em;
+        color: rgba(233, 230, 240, 0.82);
+      }
+
+      .copy__rule i {
+        height: 1px;
+        background: rgba(233, 230, 240, 0.45);
+      }
+
+      .copy__rule i:first-child {
+        width: 2.8rem;
+      }
+
+      .copy__rule i:last-child {
+        width: 5rem;
+        background: linear-gradient(to right, rgba(233, 230, 240, 0.45), transparent);
+      }
+
+      .copy__en {
+        margin-top: 1.4rem !important;
+        font-family: var(--door-din);
+        font-size: 0.62rem;
+        letter-spacing: 0.5em;
+        color: rgba(233, 230, 240, 0.5);
+      }
+
+      .copy__coord {
+        margin-top: 0.5rem !important;
+        font-family: var(--door-mono);
+        font-size: 0.6rem;
+        letter-spacing: 0.16em;
+        color: rgba(255, 196, 120, 0.6);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .copy__title span {
+          animation-duration: 1ms;
+          animation-delay: 0ms;
+        }
+      }
+
+      /* 引线 */
+      .callout {
         position: fixed;
-        right: 1.5rem;
-        top: 1.25rem;
-        color: inherit;
-        opacity: 0.55;
-        font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
-        font-size: 0.78rem;
-        letter-spacing: 0.15em;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: visible;
+        transition: opacity var(--door-dur);
+      }
+
+      .callout__line {
+        fill: none;
+        stroke: var(--door-line);
+        stroke-width: 1;
+        opacity: 0;
+        transition: opacity var(--door-dur);
+      }
+
+      .callout__dot {
+        fill: none;
+        stroke: var(--door-ink);
+        stroke-width: 1;
+        opacity: 0;
+        transition: opacity var(--door-dur);
+      }
+
+      .callout__label {
+        position: fixed;
+        left: 0;
+        top: 0;
+        padding: 0.2rem 0;
+        color: var(--door-ink);
+        font-size: 0.85rem;
+        letter-spacing: 0.2em;
         text-decoration: none;
-        padding: 0.4rem 0;
+        white-space: nowrap;
         border-bottom: 1px solid transparent;
+        opacity: 0;
         transition: opacity var(--door-dur), border-color var(--door-dur);
       }
 
-      .skip:hover,
-      .skip:focus-visible {
-        opacity: 1;
+      .callout__label small {
+        margin-left: 0.5em;
+        font-family: var(--door-din);
+        font-size: 0.6rem;
+        letter-spacing: 0.16em;
+        opacity: 0.55;
+      }
+
+      .callout__label--hole {
+        font-size: 0.95rem;
+        letter-spacing: 0.22em;
+      }
+
+      .callout__label--quiet {
+        opacity: 0;
+        pointer-events: none;
+        color: rgba(233, 230, 240, 0.7);
+      }
+
+      .callout__label:hover,
+      .callout__label:focus-visible {
         border-color: currentColor;
         outline: none;
       }
 
-      .corner {
+      /* 开场加载画面「校准星图」：和跃迁后的网格加载画面是两种主题，
+         这边是观测站开机校准，那边是穿越之后的数据流 */
+      .boot {
         position: fixed;
+        inset: 0;
+        z-index: 2147483600;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.9rem;
+        /* 几圈很淡的同心圆，像射电望远镜的扫描环 */
+        background:
+          repeating-radial-gradient(circle at center, transparent 0 119px, rgba(143, 212, 255, 0.05) 119px 120px),
+          radial-gradient(ellipse at center, #0a0f20 0%, #020308 70%);
+        transition: opacity 700ms ease;
+      }
+
+      .boot__frame {
+        position: absolute;
+        inset: 0;
         pointer-events: none;
+        font-family: var(--door-din);
+        font-size: 0.6rem;
+        letter-spacing: 0.32em;
+        color: rgba(233, 230, 240, 0.45);
+      }
+
+      .boot__corner {
+        position: absolute;
+        width: 1.4rem;
+        height: 1.4rem;
+        border: 0 solid rgba(233, 230, 240, 0.4);
+      }
+
+      .boot__corner--tl { left: 1.25rem; top: 1.25rem; border-left-width: 1px; border-top-width: 1px; }
+      .boot__corner--tr { right: 1.25rem; top: 1.25rem; border-right-width: 1px; border-top-width: 1px; }
+      .boot__corner--bl { left: 1.25rem; bottom: 1.25rem; border-left-width: 1px; border-bottom-width: 1px; }
+      .boot__corner--br { right: 1.25rem; bottom: 1.25rem; border-right-width: 1px; border-bottom-width: 1px; }
+
+      /* 刻度带：长短刻度交替，两头渐隐 */
+      .boot__tape {
+        position: absolute;
+        background-repeat: repeat;
+      }
+
+      .boot__tape--top {
+        left: 50%;
+        top: 1.25rem;
+        width: min(28rem, 60vw);
+        height: 0.7rem;
+        transform: translateX(-50%);
+        background-image:
+          linear-gradient(to right, rgba(233, 230, 240, 0.4) 1px, transparent 1px),
+          linear-gradient(to right, rgba(233, 230, 240, 0.18) 1px, transparent 1px);
+        background-size:
+          40px 100%,
+          8px 45%;
+        background-repeat: repeat-x;
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 20%, #000 80%, transparent);
+        mask-image: linear-gradient(to right, transparent, #000 20%, #000 80%, transparent);
+      }
+
+      .boot__tape--left {
+        left: 1.25rem;
+        top: 50%;
+        width: 0.7rem;
+        height: min(20rem, 40vh);
+        transform: translateY(-50%);
+        background-image:
+          linear-gradient(to bottom, rgba(233, 230, 240, 0.4) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(233, 230, 240, 0.18) 1px, transparent 1px);
+        background-size:
+          100% 40px,
+          45% 8px;
+        background-repeat: repeat-y;
+        -webkit-mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent);
+        mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent);
+      }
+
+      .boot__tag {
+        position: absolute;
+        white-space: nowrap;
+      }
+
+      .boot__tag--tl { left: 3.25rem; top: 1.45rem; color: rgba(143, 212, 255, 0.7); }
+      .boot__tag--tr { right: 3.25rem; top: 1.45rem; }
+      .boot__tag--bl { left: 3.25rem; bottom: 1.4rem; font-family: var(--door-mono); letter-spacing: 0.12em; color: rgba(255, 196, 120, 0.55); }
+      .boot__tag--br { right: 3.25rem; bottom: 1.4rem; }
+
+      @media (max-width: 40rem) {
+        .boot__tape--left,
+        .boot__tag--bl {
+          display: none;
+        }
+      }
+
+      .boot[data-state='done'] {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .boot p {
+        margin: 0;
+      }
+
+      .boot__chart {
+        width: min(24rem, 78vw);
+        height: auto;
+        overflow: visible;
+      }
+
+      .boot__lines {
+        fill: none;
+        stroke: rgba(143, 212, 255, 0.35);
+        stroke-width: 1;
+      }
+
+      .boot__star {
+        fill: rgba(233, 230, 240, 0.18);
+        transition:
+          fill 400ms ease,
+          filter 400ms ease;
+      }
+
+      .boot__star.on {
+        fill: #f2efe6;
+        filter: drop-shadow(0 0 4px rgba(255, 230, 190, 0.9));
+      }
+
+      .boot__dial {
+        fill: none;
+        stroke: rgba(233, 230, 240, 0.14);
+        stroke-width: 1;
+      }
+
+      /* 60 格刻度：用虚线画在一圈圆上 */
+      .boot__ticks {
+        fill: none;
+        stroke: rgba(233, 230, 240, 0.32);
+        stroke-width: 5;
+        stroke-dasharray: 0.8 7.79;
+      }
+
+      .boot__arc {
+        fill: none;
+        stroke: #ffc27a;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        filter: drop-shadow(0 0 3px rgba(255, 194, 122, 0.8));
+      }
+
+      .boot__glow {
+        fill: none;
+        stroke: rgba(255, 214, 160, 0.35);
+        stroke-width: 6;
+        filter: blur(4px);
+      }
+
+      .boot__horizon {
+        fill: #000;
+        stroke: rgba(255, 228, 190, 0.85);
+        stroke-width: 1;
+      }
+
+      .boot__label {
+        font-size: 0.85rem;
+        letter-spacing: 0.32em;
+        color: rgba(233, 230, 240, 0.85);
+      }
+
+      .boot__label span {
+        font-family: var(--door-mono);
+        letter-spacing: 0.12em;
+        color: #ffc27a;
+      }
+
+      .boot__sub {
+        font-family: var(--door-din);
+        font-size: 0.6rem;
+        letter-spacing: 0.5em;
+        color: rgba(143, 212, 255, 0.6);
+      }
+
+      /* 加载画面：底、地面、四角和进度槽在 warp.css；这里只管进度条本身和上下两行字 */
+      .warp {
+        --warp-track: rgba(233, 230, 240, 0.15);
+        position: fixed;
+        inset: 0;
+        z-index: 2147483640;
+        opacity: 0;
+        transition: opacity var(--door-dur);
+      }
+
+      .warp[data-state] {
+        opacity: 1;
+      }
+
+      .warp__fill {
+        position: fixed;
+        z-index: 2147483647;
+        left: 50%;
+        top: 50%;
+        width: min(18rem, 60vw);
+        height: 2px;
+        margin: -1px 0 0 calc(min(18rem, 60vw) / -2);
+        background: rgba(233, 230, 240, 0.9);
+        transform-origin: left center;
+        transform: scaleX(0);
+      }
+
+      .warp__label,
+      .warp__pct {
+        position: fixed;
+        z-index: 2147483647;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-family: var(--door-mono);
+        letter-spacing: 0.24em;
+        transition: opacity var(--door-dur);
+      }
+
+      .warp__label {
+        bottom: calc(50% + 1.1rem);
+        font-size: 0.72rem;
+        color: rgba(233, 230, 240, 0.8);
+      }
+
+      .warp__pct {
+        top: calc(50% + 1rem);
+        font-size: 0.66rem;
+        color: rgba(143, 212, 255, 0.8);
+      }
+
+      .warp[data-state='done'] .warp__label,
+      .warp[data-state='done'] .warp__pct {
+        opacity: 0;
+      }
+
+      /* 探测器终端：停靠后从左侧（探测器那边）展开 */
+      .terminal {
+        position: fixed;
+        z-index: 2;
+        right: clamp(1.5rem, 6vw, 6rem);
+        top: 50%;
+        width: min(31rem, 42vw);
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+        padding: 1rem 1.2rem 1.1rem;
+        box-sizing: border-box;
+        color: var(--door-ink);
+        text-decoration: none;
+        border: 1px solid rgba(143, 212, 255, 0.45);
+        background:
+          repeating-linear-gradient(to bottom, rgba(143, 212, 255, 0.045) 0 1px, transparent 1px 3px),
+          rgba(4, 10, 20, 0.78);
+        transform-origin: left center;
+        transform: translateY(-50%) perspective(1400px) rotateY(-10deg) scaleX(0.04);
+        opacity: 0;
+        cursor: pointer;
+        transition:
+          transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          opacity 320ms,
+          border-color var(--door-dur);
+      }
+
+      .terminal[data-state='open'] {
+        opacity: 1;
+        transform: translateY(-50%) perspective(1400px) rotateY(-10deg) scaleX(1);
+      }
+
+      .terminal[data-state='open']:hover {
+        border-color: rgba(143, 212, 255, 0.85);
+      }
+
+      .terminal__bar {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        font-family: var(--door-mono);
+        font-size: 0.62rem;
+        letter-spacing: 0.16em;
+        color: rgba(143, 212, 255, 0.85);
+        padding-bottom: 0.6rem;
+        border-bottom: 1px solid rgba(143, 212, 255, 0.25);
+      }
+
+      /* 分类名靠左，介绍靠右 */
+      .terminal__head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.9rem;
+      }
+
+      .terminal__title {
+        font-size: 1.5rem;
+        letter-spacing: 0.12em;
+      }
+
+      .terminal__desc {
+        font-size: 0.78rem;
+        text-align: right;
         opacity: 0.6;
       }
 
-      .corner--tl {
-        left: 1.5rem;
-        top: 1.5rem;
-        width: 1.5rem;
-        height: 1.5rem;
-        border-left: 1px solid currentColor;
-        border-top: 1px solid currentColor;
-      }
-
-      .corner--bl {
-        left: 1.5rem;
-        bottom: 1.75rem;
-        width: 1.75rem;
-        border-top: 1px solid currentColor;
-      }
-
-      .ticks {
-        position: fixed;
-        right: 1.5rem;
-        bottom: 1.75rem;
-        width: 9rem;
+      .terminal__list {
         display: flex;
-        justify-content: flex-end;
-        gap: 0.9rem;
-        padding-right: 1.5rem;
-        border-bottom: 1px solid rgba(233, 231, 242, 0.35);
+        flex-direction: column;
+      }
+
+      /* 每篇一条：左边封面，右边标题和日期一行、简介在下面最多两行 */
+      .terminal__item {
+        display: grid;
+        grid-template-columns: 5.2rem 1fr;
+        gap: 0.85rem;
+        align-items: center;
+        padding: 0.6rem 0;
+        border-top: 1px solid rgba(233, 230, 240, 0.12);
+      }
+
+      .terminal__cover {
+        width: 5.2rem;
+        height: 3.3rem;
+        object-fit: cover;
+        background: rgba(143, 212, 255, 0.08);
+      }
+
+      .terminal__meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        min-width: 0;
+      }
+
+      .terminal__row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        min-width: 0;
+      }
+
+      .terminal__name {
+        min-width: 0;
+        font-size: 0.88rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .terminal__date {
+        flex: none;
+        font-family: var(--door-mono);
+        font-size: 0.62rem;
+        letter-spacing: 0.08em;
+        opacity: 0.55;
+      }
+
+      .terminal__summary {
+        font-size: 0.74rem;
+        line-height: 1.6;
+        opacity: 0.62;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .terminal__empty {
+        font-size: 0.8rem;
+        opacity: 0.5;
+      }
+
+      .terminal__go {
+        font-family: var(--door-mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.18em;
+        color: rgba(255, 196, 120, 0.95);
+        text-align: center;
+      }
+
+      /* 四周装饰 */
+      .hud {
+        position: fixed;
+        inset: 0;
         pointer-events: none;
+        font-family: var(--door-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.14em;
       }
 
-      .ticks__tick {
-        width: 1px;
-        height: 0.45rem;
-        background: currentColor;
-        opacity: 0.35;
-        transition: opacity var(--door-dur), height var(--door-dur);
+      .hud__corner {
+        position: absolute;
+        width: 1.4rem;
+        height: 1.4rem;
+        border: 0 solid var(--door-line);
       }
 
-      .ticks__tick[data-active] {
+      .hud__corner--tl {
+        left: 1.25rem;
+        top: 1.25rem;
+        border-left-width: 1px;
+        border-top-width: 1px;
+      }
+
+      .hud__corner--tr {
+        right: 1.25rem;
+        top: 1.25rem;
+        border-right-width: 1px;
+        border-top-width: 1px;
+      }
+
+      .hud__corner--bl {
+        left: 1.25rem;
+        bottom: 1.25rem;
+        border-left-width: 1px;
+        border-bottom-width: 1px;
+      }
+
+      .hud__corner--br {
+        right: 1.25rem;
+        bottom: 1.25rem;
+        border-right-width: 1px;
+        border-bottom-width: 1px;
+      }
+
+      /* 方位刻度带：长短刻度交替，背景位置跟着镜头方位滑动 */
+      .hud__tape--heading {
+        position: absolute;
+        left: 50%;
+        top: 1.25rem;
+        width: min(28rem, 60vw);
+        height: 0.7rem;
+        transform: translateX(-50%);
+        background-image:
+          linear-gradient(to right, var(--door-line) 1px, transparent 1px),
+          linear-gradient(to right, rgba(233, 230, 240, 0.18) 1px, transparent 1px);
+        background-size:
+          40px 100%,
+          8px 45%;
+        background-repeat: repeat-x;
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 20%, #000 80%, transparent);
+        mask-image: linear-gradient(to right, transparent, #000 20%, #000 80%, transparent);
+      }
+
+      .hud__caret {
+        position: absolute;
+        left: 50%;
+        top: 2.3rem;
+        width: 0;
+        height: 0.5rem;
+        border-left: 1px solid var(--door-ink);
+      }
+
+      /* 俯仰刻度：贴着左边 */
+      .hud__tape--pitch {
+        position: absolute;
+        left: 1.25rem;
+        top: 50%;
+        width: 0.7rem;
+        height: min(20rem, 40vh);
+        transform: translateY(-50%);
+        background-image:
+          linear-gradient(to bottom, var(--door-line) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(233, 230, 240, 0.18) 1px, transparent 1px);
+        background-size:
+          100% 40px,
+          45% 8px;
+        background-repeat: repeat-y;
+        -webkit-mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent);
+        mask-image: linear-gradient(to bottom, transparent, #000 25%, #000 75%, transparent);
+      }
+
+      .hud__read {
+        position: absolute;
+        opacity: 0.6;
+        white-space: nowrap;
+      }
+
+      .hud__read--tr {
+        right: 3.25rem;
+        top: 1.45rem;
+      }
+
+      .hud__read--bl {
+        left: 3.25rem;
+        bottom: 1.4rem;
+      }
+
+      .hud__read--br {
+        right: 3.25rem;
+        bottom: 1.4rem;
+      }
+
+      .hud__read--hint {
+        left: 50%;
+        bottom: 1.4rem;
+        transform: translateX(-50%);
+        opacity: 0.4;
+      }
+
+      /* 不支持 WebGL2：没有场景，黑洞引线的文字原地变成进入链接 */
+      :global(.flat) .callout__label--hole {
         opacity: 1;
-        height: 0.8rem;
+        transform: translate(clamp(1.5rem, 6vw, 6rem), 60vh);
       }
 
-      /* 不支持 WebGL2：没有场景可看，提示改成直接进入 */
-      :global(.flat) .copy {
-        pointer-events: auto;
+      :global(.flat) .hud__read--hint {
+        display: none;
       }
 
       @media (max-width: 40rem) {
+        .hud__read--hint,
+        .hud__tape--pitch {
+          display: none;
+        }
+
+        .hud__read--br {
+          bottom: 3rem;
+        }
+
         .copy {
-          top: auto;
-          bottom: 5.5rem;
-          transform: none;
-          left: 1.5rem;
+          top: 4.5rem;
           right: 1.5rem;
         }
 
         .copy__title {
-          font-size: 1.7rem;
+          letter-spacing: 0.1em;
         }
 
-        .copy__line {
-          margin-top: 1rem;
-          letter-spacing: 0.18em;
+        .copy__eyebrow {
+          gap: 0.6rem;
+          letter-spacing: 0.28em;
         }
 
-        .copy__hint {
-          margin-top: 1.5rem;
+        .copy__eyebrow i,
+        .copy__rule i:first-child {
+          width: 1.5rem;
+        }
+
+        .copy__rule {
+          gap: 0.7rem;
+          letter-spacing: 0.22em;
+        }
+
+        .copy__rule i:last-child {
+          width: 2.5rem;
+        }
+
+        .copy__en,
+        .copy__coord {
+          display: none;
+        }
+
+        /* 手机上终端从底部展开，占满宽度 */
+        .terminal {
+          left: 1rem;
+          right: 1rem;
+          top: auto;
+          bottom: 4rem;
+          width: auto;
+          transform-origin: center bottom;
+          transform: scaleY(0.04);
+        }
+
+        .terminal[data-state='open'] {
+          transform: none;
+        }
+
+        .terminal__desc {
+          display: none;
         }
       }
     </style>
@@ -219,24 +1090,59 @@ const stops = 3;
     <script>
       import { mountDoor, supportsWebGL2 } from '../door/scene';
 
-      const canvas = document.querySelector<HTMLCanvasElement>('[data-stage]')!;
-      const veil = document.querySelector<HTMLElement>('[data-veil]')!;
-      const hint = document.querySelector<HTMLElement>('[data-hint]')!;
-      const copy = document.querySelector<HTMLElement>('[data-copy]')!;
-      const ticks = [...document.querySelectorAll<HTMLElement>('[data-tick]')];
+      // 开场加载画面的进度（定义在页面开头的内联脚本里）。
+      // 跑到这里说明 three.js 和场景脚本已经下载并执行了
+      type Boot = { reach: (value: number, nextCap?: number) => void; done: () => void };
+      const boot = (window as unknown as { __boot?: Boot }).__boot;
+      boot?.reach(0.5, 0.75);
+
+      const pick = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
+      const tag = (id: string) => ({
+        line: pick<SVGPolylineElement>(`[data-tag-line="${id}"]`),
+        dot: pick<SVGCircleElement>(`[data-tag-dot="${id}"]`),
+        label: pick<HTMLElement>(`[data-tag-label="${id}"]`),
+      });
+      // 顺序要和 scene.ts 里的 PROBE_ORBITS 对应：由近到远
+      const probes = ['project', 'tool', 'explore', 'daily', 'xiaomeng'].map((key) => ({
+        key,
+        label: pick<HTMLElement>(`[data-terminal="${key}"] .terminal__title`).textContent ?? key,
+        href: `/${key}/`,
+        tag: tag(key),
+        terminal: pick<HTMLElement>(`[data-terminal="${key}"]`),
+      }));
 
       if (supportsWebGL2()) {
         mountDoor({
-          canvas,
+          canvas: pick<HTMLCanvasElement>('[data-stage]'),
           target: '/',
-          ticks,
-          veil,
-          copy,
-          onDive: () => (hint.textContent = '正在穿过视界…'),
+          veil: pick<HTMLElement>('[data-veil]'),
+          copy: pick<HTMLElement>('[data-copy]'),
+          hole: tag('hole'),
+          base: tag('base'),
+          probes,
+          loader: {
+            root: pick<HTMLElement>('[data-warp]'),
+            floor: pick<HTMLElement>('[data-warp-floor]'),
+            fill: pick<HTMLElement>('[data-warp-fill]'),
+            label: pick<HTMLElement>('[data-warp-label]'),
+            pct: pick<HTMLElement>('[data-warp-pct]'),
+          },
+          hud: {
+            distance: pick<HTMLElement>('[data-distance]'),
+            heading: pick<HTMLElement>('[data-heading]'),
+            view: pick<HTMLElement>('[data-view]'),
+            headingTape: pick<HTMLElement>('[data-heading-tape]'),
+            pitchTape: pick<HTMLElement>('[data-pitch-tape]'),
+          },
+          // 着色器编译完、第一帧画出来，加载画面收起
+          onReady: () => boot?.done(),
         });
+        // 场景已经搭好，剩下的是着色器编译
+        boot?.reach(0.8, 0.96);
       } else {
+        // 不支持 WebGL2：没有场景，引线文字原地变成进入链接
         document.documentElement.classList.add('flat');
-        hint.innerHTML = '<a href="/" style="color:inherit">进入 →</a>';
+        boot?.done();
       }
     </script>
   </body>

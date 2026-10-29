@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { profile, branches, BRANCH_LEAF_LIMIT } from '../config/site';
+import { profile, branches, BRANCH_LEAF_LIMIT, site } from '../config/site';
 import {
   getPublished,
   formatDate,
@@ -20,6 +20,17 @@ type Leaf = {
   cover?: string;
   tags: string[];
 };
+
+// 背景插画：有图就作为 CSS 变量交给背景层，没有就是 none，背景层退回 CSS 画的占位。
+// 竖屏图没给就沿用横屏那张
+const bg = site.homeBackdrop;
+const toUrl = (u: string) => (u ? `url("${u}")` : 'none');
+const backdropVars = [
+  `--bd-day: ${toUrl(bg.light)}`,
+  `--bd-night: ${toUrl(bg.dark)}`,
+  `--bd-day-tall: ${toUrl(bg.lightPortrait || bg.light)}`,
+  `--bd-night-tall: ${toUrl(bg.darkPortrait || bg.dark)}`,
+].join('; ');
 
 // 每条分支挂最新的若干篇；条数由 BRANCH_LEAF_LIMIT 统一控制
 // 首页的封面全部走 OSS 缩略图样式：展开五条分支就是十几张图，拉原图太费流量
@@ -54,7 +65,13 @@ for (const branch of branches) {
 
 <BaseLayout variant="canvas">
   <div class="canvas" data-canvas>
-    <div class="dots" aria-hidden="true"></div>
+    <!-- 背景插画：白天、夜里各一层，跟着主题交叉淡入；拖动导图时反方向轻轻挪一点（视差） -->
+    <div class:list={['backdrop', { 'backdrop--illustrated': Boolean(bg.light && bg.dark) }]} aria-hidden="true" style={backdropVars}>
+      <div class="backdrop__layer backdrop__layer--day"></div>
+      <div class="backdrop__layer backdrop__layer--night"></div>
+    </div>
+    <!-- 深浅两套插画齐全时不叠加点阵，避免网点覆盖人物与色块。 -->
+    {!(bg.light && bg.dark) && <div class="dots" aria-hidden="true"></div>}
 
     <div class="zoombar" data-zoombar hidden>
       <button class="zoombar__btn" type="button" data-zoom="out" aria-label="缩小">
@@ -237,7 +254,79 @@ for (const branch of branches) {
     overflow: hidden;
   }
 
-  /* 点阵底：只用一个 token 色，深浅两套主题都成立 */
+  /* ---------- 背景插画 ----------
+     白天：小萌在房间里写字（左下角书桌，右上角窗户，左上角花枝）
+     夜里：小萌坐在空间站甲板边上看黑洞（左下角人物，右上角黑洞，右下角行星弧光）
+     图片地址来自 site.ts 的 homeBackdrop；没给图时用下面这组渐变画一个同构图的占位，
+     换上真图以后位置关系不变。比画布大一圈，视差挪动时边缘不会露出来 */
+  .backdrop {
+    position: absolute;
+    inset: -3%;
+    z-index: 0;
+    pointer-events: none;
+    transform: translate3d(calc(var(--pan-x, 0px) * -0.03), calc(var(--pan-y, 0px) * -0.03), 0);
+    transition: transform var(--dur-view) var(--ease-out);
+  }
+
+  .canvas[data-dragging='1'] .backdrop { transition: none; }
+
+  .backdrop__layer {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    /* 靠左（人物在左边），上下居中：画布比图更扁时上下各裁一点，
+       贴底对齐的话多出来的全从顶上裁，右上角的黑洞会被顶栏切掉 */
+    background-position: left center;
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+
+  .backdrop__layer--day {
+    background-image:
+      var(--bd-day),
+      /* 左上角花枝的粉色光晕 */
+      radial-gradient(circle at 7% 8%, rgba(255, 182, 206, 0.55), transparent 16%),
+      /* 右上角窗户透进来的天光 */
+      radial-gradient(ellipse 22% 34% at 94% 14%, rgba(176, 216, 255, 0.7), transparent 72%),
+      /* 左下角书桌那一团暖紫 */
+      radial-gradient(ellipse 30% 28% at 14% 86%, rgba(198, 176, 240, 0.4), transparent 70%),
+      /* 地板 */
+      linear-gradient(to top, #e4daf3 0 7%, rgba(200, 186, 236, 0.6) 7% 7.2%, transparent 7.2%),
+      linear-gradient(#faf6fc, #f4eefa);
+  }
+
+  .backdrop__layer--night {
+    opacity: 0;
+    background-image:
+      var(--bd-night),
+      /* 右上角的小黑洞：黑色阴影、一圈亮边、斜着的吸积盘 */
+      radial-gradient(circle at 89% 17%, #05060c 0 2.6vw, rgba(255, 228, 176, 0.95) 2.75vw, rgba(255, 206, 140, 0.25) 3.4vw, transparent 5vw),
+      radial-gradient(ellipse 8.5vw 1.5vw at 89% 18%, transparent 55%, rgba(255, 222, 168, 0.75) 66%, transparent 80%),
+      /* 右下角行星的弧光 */
+      radial-gradient(circle at 104% 118%, #2a4fc2 0 26vw, rgba(110, 160, 255, 0.85) 26.2vw, rgba(110, 160, 255, 0.18) 27.5vw, transparent 31vw),
+      /* 几颗星 */
+      radial-gradient(circle at 9% 8%, #fff 0 1.5px, transparent 2.5px),
+      radial-gradient(circle at 53% 5%, #fff 0 1.5px, transparent 2.5px),
+      radial-gradient(circle at 76% 7%, #fff 0 1.2px, transparent 2px),
+      radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.7) 0 1px, transparent 2px),
+      radial-gradient(circle at 64% 30%, rgba(255, 255, 255, 0.6) 0 1px, transparent 2px),
+      /* 甲板 */
+      linear-gradient(to top, #283152 0 9%, rgba(150, 170, 235, 0.7) 9% 9.25%, transparent 9.25%),
+      linear-gradient(#0a0f20, #0d1328);
+  }
+
+  :global(:root[data-theme='dark']) .backdrop__layer--day { opacity: 0; }
+  :global(:root[data-theme='dark']) .backdrop__layer--night { opacity: 1; }
+
+  /* 插画上盖一层底色遮罩，透明度给高一点：插画退到后面当氛围，不和卡片抢眼，
+     卡片、连线和标签在上面也读得清 */
+  .backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--bg) 32%, transparent);
+  }
+
+  /* 点阵底：只用一个 token 色，深浅两套主题都成立。叠在插画上，调成淡淡一层纹理 */
   .dots {
     position: absolute;
     inset: 0;
@@ -245,9 +334,10 @@ for (const branch of branches) {
     pointer-events: none;
     background-image: radial-gradient(var(--line-strong) 1px, transparent 1px);
     background-size: 22px 22px;
-    opacity: 0.55;
+    opacity: 0.32;
     mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
   }
+
 
   /* ---------- 右下角缩放条 ---------- */
 
@@ -259,8 +349,9 @@ for (const branch of branches) {
     display: flex;
     align-items: stretch;
     border: var(--hair) solid var(--line);
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter: blur(8px);
+    /* 微透明，和顶栏一样隐约透出底下的插画 */
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+    backdrop-filter: blur(10px);
   }
 
   .zoombar__btn,
@@ -807,6 +898,36 @@ for (const branch of branches) {
       height: auto;
     }
 
+    /* 插画同样固定铺满视口，不跟着页面滚；竖屏有单独的图就用竖屏的。
+       卡片会压在插画上，底色罩得重一点 */
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      transform: none;
+    }
+
+    /* 手机视口比例各异，完整显示竖屏插画，避免裁掉边缘的小黑洞与道具。 */
+    .backdrop__layer {
+      background-size: contain;
+      background-position: center bottom;
+      background-repeat: no-repeat;
+    }
+
+    .backdrop__layer--day { background-image: var(--bd-day-tall), radial-gradient(circle at 10% 6%, rgba(255, 182, 206, 0.5), transparent 22%), radial-gradient(ellipse 40% 26% at 92% 10%, rgba(176, 216, 255, 0.6), transparent 72%), linear-gradient(to top, #e4daf3 0 6%, transparent 6%), linear-gradient(#faf6fc, #f4eefa); }
+    .backdrop__layer--night { background-image: var(--bd-night-tall), radial-gradient(circle at 82% 12%, #05060c 0 7vw, rgba(255, 228, 176, 0.95) 7.4vw, rgba(255, 206, 140, 0.25) 9vw, transparent 13vw), radial-gradient(circle at 115% 108%, #2a4fc2 0 46vw, rgba(110, 160, 255, 0.8) 46.4vw, transparent 50vw), radial-gradient(circle at 20% 20%, #fff 0 1.5px, transparent 2.5px), radial-gradient(circle at 60% 30%, #fff 0 1.2px, transparent 2px), linear-gradient(to top, #283152 0 6%, transparent 6%), linear-gradient(#0a0f20, #0d1328); }
+
+    /* 完整显示插画后，空余区域仅延续底色，不露出占位图中的重复天体。 */
+    .backdrop--illustrated .backdrop__layer--day {
+      background-image: var(--bd-day-tall);
+      background-color: #fcfbfd;
+    }
+    .backdrop--illustrated .backdrop__layer--night {
+      background-image: var(--bd-night-tall);
+      background-color: #080f1e;
+    }
+
+    .backdrop::after { background: color-mix(in srgb, var(--bg) 48%, transparent); }
+
     .map {
       /* 每往下一层缩进这么多，正好留出左侧那条主干线的位置 */
       --indent: 1.5rem;
@@ -1306,6 +1427,9 @@ for (const branch of branches) {
 
       function apply() {
         scene.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0)';
+        // 背景插画按平移量反方向挪一点点，做出纵深
+        canvas.style.setProperty('--pan-x', tx + 'px');
+        canvas.style.setProperty('--pan-y', ty + 'px');
       }
 
       // 展开的卡片多到一屏放不下时，整张图按比例缩小，最多缩到 55%

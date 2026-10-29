@@ -1,0 +1,64 @@
+/* ============================================================
+   跃迁加载画面：门户页穿过视界之后、目标页刚打开时用的同一张画面
+   深色底 + 平铺细网格 + 透视网格地面 + 四角线框 + 正中进度条
+
+   两边用的是同一组规则：
+   - 门户页（door.astro）是真实元素 .warp__base / .warp__floor，进度条是可以伸缩的 .warp__fill
+   - 目标页（BaseLayout 打上 html[data-arrive]）是 html 的两个伪元素，进度条画满
+   门户页加载到 100% 时文字和百分比先淡掉，剩下的画面和目标页第一帧完全一样，跳过去看不出接缝
+   ============================================================ */
+
+.warp__base,
+html[data-arrive]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+  background:
+    /* 四角线框：每个角一横一竖 */
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) left 1.25rem top 1.25rem / 1.4rem 1px no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) left 1.25rem top 1.25rem / 1px 1.4rem no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) right 1.25rem top 1.25rem / 1.4rem 1px no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) right 1.25rem top 1.25rem / 1px 1.4rem no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) left 1.25rem bottom 1.25rem / 1.4rem 1px no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) left 1.25rem bottom 1.25rem / 1px 1.4rem no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) right 1.25rem bottom 1.25rem / 1.4rem 1px no-repeat,
+    linear-gradient(rgba(233, 230, 240, 0.4), rgba(233, 230, 240, 0.4)) right 1.25rem bottom 1.25rem / 1px 1.4rem no-repeat,
+    /* 进度条的槽：门户页上被 .warp__fill 盖住，目标页上直接画满 */
+    linear-gradient(var(--warp-track, rgba(233, 230, 240, 0.9)), var(--warp-track, rgba(233, 230, 240, 0.9))) center / min(18rem, 60vw) 2px no-repeat,
+    /* 平铺细网格，中间亮、四周暗 */
+    radial-gradient(ellipse at center, transparent 30%, #020308 85%),
+    linear-gradient(rgba(233, 230, 240, 0.05) 1px, transparent 1px) center / 48px 48px,
+    linear-gradient(90deg, rgba(233, 230, 240, 0.05) 1px, transparent 1px) center / 48px 48px,
+    #020308;
+}
+
+/* 透视网格地面：画面下半截一片往远处延伸的格子 */
+.warp__floor,
+html[data-arrive]::before {
+  content: '';
+  position: fixed;
+  left: -50%;
+  right: -50%;
+  bottom: -20%;
+  height: 75%;
+  z-index: 2147483647;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(143, 212, 255, 0.24) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(143, 212, 255, 0.24) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center 0;
+  transform: perspective(520px) rotateX(64deg);
+  transform-origin: center top;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%);
+  mask-image: linear-gradient(to bottom, transparent, #000 45%);
+}
+
+/* 目标页：先盖着，页面就绪后整张画面渐隐 */
+html[data-arrive='out']::before,
+html[data-arrive='out']::after {
+  opacity: 0;
+  transition: opacity calc(var(--dur-3, 520ms) * 1.6) ease;
+}
