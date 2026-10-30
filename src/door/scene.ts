@@ -4,6 +4,7 @@ import { holeVertex, holeFragment, dustVertex, dustFragment } from './shaders';
 import { buildStation } from './station';
 import { buildProbe, orbitFrame, orbitPath, orbitPosition, type Orbit } from './orbits';
 import { travel, type LoaderUI } from './loader';
+import { buildRocks } from './rocks';
 
 // 屏幕上的一组标注：引线、端点圈、文字
 interface Tag {
@@ -315,6 +316,10 @@ export function mountDoor(options: DoorOptions): () => void {
   }
   placeStation();
   lastQuat.copy(station.quaternion);
+
+  // ---- 外围的小行星带和两颗岩质行星：按开场时空间站的方向摆，从甲板一眼就能看见 ----
+  const rocks = buildRocks(lite, stationPos.clone().normalize());
+  scene.add(rocks.group);
 
   // 甲板上的默认朝向：正对黑洞
   const deckLook = (out = new THREE.Vector3()) => out.copy(eye).add(offsetTmp.copy(ORIGIN).sub(eye).setLength(0.05));
@@ -748,6 +753,7 @@ export function mountDoor(options: DoorOptions): () => void {
       p.group.visible = !behindHole(p.group.position);
       p.beacon.color.copy(p.tint).multiplyScalar(0.4 + 0.6 * Math.max(0, Math.sin(simTime * 3 + p.phase)));
     }
+    rocks.update(simTime, behindHole);
 
     let beta = 0;
 
@@ -999,6 +1005,7 @@ export function mountDoor(options: DoorOptions): () => void {
     });
     window.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVisible);
+    rocks.dispose();
     renderer.dispose();
   };
 }

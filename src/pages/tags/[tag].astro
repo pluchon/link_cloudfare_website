@@ -2,7 +2,9 @@
 import type { GetStaticPaths } from 'astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import EntryRow from '../../components/EntryRow.astro';
-import PixelBackdrop from '../../components/PixelBackdrop.astro';
+import PageBackdrop from '../../components/PageBackdrop.astro';
+import { pageBackdrops } from '../../config/site';
+import KindIcon from '../../components/KindIcon.astro';
 import { getAllPublished, tagCounts, type ContentKind, type AnyEntry } from '../../lib/content';
 
 export const getStaticPaths: GetStaticPaths = async () => {
@@ -23,11 +25,11 @@ const { tag, items } = Astro.props as {
 ---
 
 <BaseLayout title={`标签：${tag}`} description={`标记为「${tag}」的全部内容。`}>
-  <PixelBackdrop />
+  <PageBackdrop art={pageBackdrops.tagDetail} />
 
   <section class="wrap head">
     <div class="head__row" data-reveal>
-      <h1 class="head__title">{tag}</h1>
+      <h1 class="head__title"><KindIcon name="tags" class="head__icon" />{tag}</h1>
       <p class="head__meta">
         共 {items.length} 篇 · <a class="text-link" href="/tags/">全部标签</a>
       </p>
@@ -64,12 +66,20 @@ const { tag, items } = Astro.props as {
   }
 
   .head__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
     font-family: var(--font-serif);
     font-size: clamp(1.75rem, 5vw, 2.5rem);
     font-weight: 600;
     margin: 0;
     letter-spacing: 0.02em;
     white-space: nowrap;
+  }
+
+  .head__title :global(.head__icon) {
+    font-size: 0.8em;
+    color: var(--fg-muted);
   }
 
   .head__meta {

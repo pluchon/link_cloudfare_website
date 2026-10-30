@@ -32,14 +32,14 @@ export const site = {
     'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404.webp',
 } as const;
 
-// 顶栏导航（/tags/ 页面保留，只是不进导航）
+// 顶栏导航（/tags/ 页面保留，只是不进导航）。icon 对应 KindIcon.astro 里的图标名
 export const nav = [
-  { label: '项目', href: '/project/' },
-  { label: '工具', href: '/tool/' },
-  { label: '探究', href: '/explore/' },
-  { label: '日常', href: '/daily/' },
-  { label: '小萌', href: '/xiaomeng/' },
-  { label: '关于', href: '/about/' },
+  { label: '项目', href: '/project/', icon: 'project' },
+  { label: '工具', href: '/tool/', icon: 'tool' },
+  { label: '探究', href: '/explore/', icon: 'explore' },
+  { label: '日常', href: '/daily/', icon: 'daily' },
+  { label: '小萌', href: '/xiaomeng/', icon: 'xiaomeng' },
+  { label: '关于', href: '/about/', icon: 'about' },
 ] as const;
 
 // 首页思维导图的根节点，也是关于页的名片
@@ -139,6 +139,8 @@ export const pageBackdrops = {
   daily: pageBackdrop('daily'),
   xiaomeng: pageBackdrop('xiaomeng'),
   about: pageBackdrop('about'),
+  tags: pageBackdrop('tags'),
+  tagDetail: pageBackdrop('tag-detail'),
 } as const;
 
 // 每条分支在首页最多展示几篇

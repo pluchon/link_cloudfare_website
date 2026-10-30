@@ -1,84 +1,141 @@
 ---
-// 标签总览。一页 48 个，超出翻页；标签名过长时截断，不让格子被撑变形
+// 标签总览：做成一本按字母查的索引。左边是热度榜（最常用的几个，带一根按篇数伸缩的细线），
+// 右边按首字母分组，中文按拼音首字母归进同一套 A–Z，顶上一排字母可以直接跳过去。
+// 标签一共几十个，一页放得下，所以不再分页（老的 /tags/page/N/ 由中间件 301 回来）
 import BaseLayout from './BaseLayout.astro';
-import DotBackdrop from '../components/DotBackdrop.astro';
-import { TAGS_PAGE_SIZE } from '../lib/content';
+import PageBackdrop from '../components/PageBackdrop.astro';
+import { pageBackdrops } from '../config/site';
+import KindIcon from '../components/KindIcon.astro';
 
 interface Props {
   tags: { tag: string; count: number }[];
-  totalTags: number;
   totalEntries: number;
-  page?: number;
-  totalPages?: number;
 }
 
-const { tags, totalTags, totalEntries, page = 1, totalPages = 1 } = Astro.props;
+const { tags, totalEntries } = Astro.props;
 
-function pageHref(target: number): string {
-  return target <= 1 ? '/tags/' : `/tags/page/${target}/`;
+// 拼音首字母：拼音排序规则下，每个字母取一个最靠前的汉字当分界（I、U、V 没有汉字打头），
+// 一个字落在哪两个分界之间，首字母就是哪个。Node 自带完整 ICU，构建时算好
+const collator = new Intl.Collator('zh-Hans-CN-u-co-pinyin');
+const BOUNDS = '阿八嚓哒妸发旮哈讥咔垃妈拏噢妑七呥扨它穵夕丫帀';
+const BOUND_LETTERS = 'ABCDEFGHJKLMNOPQRSTWXYZ';
+
+function initial(tag: string): string {
+  const ch = tag.trim().charAt(0);
+  if (/[a-z]/i.test(ch)) return ch.toUpperCase();
+  if (!/[一-鿿]/.test(ch)) return '#';
+  let letter = '#';
+  for (let i = 0; i < BOUNDS.length; i++) {
+    if (collator.compare(BOUNDS[i], ch) > 0) break;
+    letter = BOUND_LETTERS[i];
+  }
+  return letter;
 }
 
-// 分页时把栅格补满一页的格数：列数随视口宽度变，行数也跟着变，
-// 光靠 CSS 的 min-height 猜不出该留多高。补空格子最直接，
-// 任何宽度下每一页的栅格几何都一样，翻页器自然停在同一个位置
-const fillers = totalPages > 1 ? Math.max(0, TAGS_PAGE_SIZE - tags.length) : 0;
+const LETTERS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '#'];
+const groups = LETTERS.map((letter) => ({
+  letter,
+  items: tags.filter((t) => initial(t.tag) === letter).sort((a, b) => collator.compare(a.tag, b.tag)),
+})).filter((group) => group.items.length > 0);
+const present = new Set(groups.map((group) => group.letter));
 
-const prevUrl = page > 1 ? pageHref(page - 1) : undefined;
-const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
+// 热度榜：最常用的 8 个；细线长度按篇数占第一名的比例
+const top = tags.slice(0, 8);
+const topMax = top[0]?.count ?? 1;
+
+const tagHref = (tag: string) => `/tags/${encodeURIComponent(tag)}/`;
+const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter}`);
 ---
 
-<BaseLayout
-  title={page > 1 ? `标签 · 第 ${page} 页` : '标签'}
-  description="按话题浏览全部内容。"
-  prevUrl={prevUrl}
-  nextUrl={nextUrl}
->
-  <DotBackdrop />
+<BaseLayout title="标签" description="按话题浏览全部内容。">
+  <PageBackdrop art={pageBackdrops.tags} />
 
   <section class="wrap head">
     <div class="head__row" data-reveal>
-      <h1 class="head__title">标签</h1>
-      <p class="head__meta">共 {totalTags} 个话题，{totalEntries} 篇内容</p>
+      <h1 class="head__title"><KindIcon name="tags" class="head__icon" />标签</h1>
+      <p class="head__meta">共 {tags.length} 个话题，{totalEntries} 篇内容</p>
     </div>
   </section>
 
-  <section class="wrap body" data-reserve={totalPages > 1 ? '1' : undefined}>
-    {
-      tags.length > 0 ? (
-        <ul class="tag-index">
-          {tags.map(({ tag, count }) => (
-            <li class="tag-index__item">
-              <a href={`/tags/${encodeURIComponent(tag)}/`} title={tag}>
-                <span class="tag-index__name">{tag}</span>
-                <span class="tag-index__count">{String(count).padStart(2, '0')}</span>
-              </a>
-            </li>
-          ))}
-          {Array.from({ length: fillers }).map(() => (
-            <li class="tag-index__filler" aria-hidden="true" />
-          ))}
-        </ul>
-      ) : (
-        <p class="empty-state">这里还空着...</p>
-      )
-    }
+  {
+    tags.length > 0 ? (
+      <section class="wrap body" data-tag-index>
+        <aside class="hot" data-reveal style="--reveal-i: 1">
+          <h2 class="eyebrow hot__title">常用 · TOP {top.length}</h2>
+          <ol class="hot__list">
+            {top.map(({ tag, count }, i) => (
+              <li>
+                <a class="hot__item" href={tagHref(tag)} title={tag}>
+                  <span class="hot__rank">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="hot__name">{tag}</span>
+                  <span class="hot__count">{count}</span>
+                  <span class="hot__bar" style={`--w: ${((count / topMax) * 100).toFixed(1)}%`} aria-hidden="true" />
+                </a>
+              </li>
+            ))}
+          </ol>
+        </aside>
 
-    {
-      totalPages > 1 && (
-        <nav class="pagination" aria-label="分页">
-          <a class="pagination__step" href={pageHref(page - 1)} aria-disabled={page <= 1 ? 'true' : undefined}>
-            ← 上一页
-          </a>
-          <span class="pagination__count">
-            {String(page).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
-          </span>
-          <a class="pagination__step" href={pageHref(page + 1)} aria-disabled={page >= totalPages ? 'true' : undefined}>
-            下一页 →
-          </a>
-        </nav>
-      )
-    }
-  </section>
+        <div class="dict">
+          <div class="dict__tools" data-reveal style="--reveal-i: 2">
+            <label class="filter">
+              <svg class="filter__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="M20 20l-3.5-3.5" stroke-linecap="round"></path>
+              </svg>
+              <input
+                class="filter__input"
+                type="search"
+                placeholder="筛选标签"
+                aria-label="筛选标签"
+                autocomplete="off"
+                data-tag-filter
+              />
+              <span class="filter__count" data-tag-count aria-live="polite"></span>
+            </label>
+
+            <nav class="letters" aria-label="按首字母跳转">
+              {LETTERS.map((letter) =>
+                present.has(letter) ? (
+                  <a class="letters__key" href={`#${anchor(letter)}`} data-letter={letter}>
+                    {letter}
+                  </a>
+                ) : (
+                  <span class="letters__key letters__key--off" aria-hidden="true">
+                    {letter}
+                  </span>
+                ),
+              )}
+            </nav>
+          </div>
+
+          <div class="dict__groups">
+          {groups.map((group, i) => (
+            <section class="dict__group" id={anchor(group.letter)} data-group={group.letter} data-reveal style={`--reveal-i: ${Math.min(i + 3, 9)}`}>
+              <h2 class="dict__letter">{group.letter}</h2>
+              <ul class="dict__tags">
+                {group.items.map(({ tag, count }) => (
+                  <li data-tag={tag.toLowerCase()}>
+                    <a class="chip" href={tagHref(tag)}>
+                      <span class="chip__name">{tag}</span>
+                      <span class="chip__count">{count}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          </div>
+
+          <p class="empty" data-tag-empty hidden>没有匹配的标签。</p>
+        </div>
+      </section>
+    ) : (
+      <section class="wrap body">
+        <p class="empty-state">这里还空着...</p>
+      </section>
+    )
+  }
 </BaseLayout>
 
 <style>
@@ -104,12 +161,20 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
   }
 
   .head__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
     font-family: var(--font-serif);
     font-size: clamp(1.75rem, 5vw, 2.5rem);
     font-weight: 600;
     margin: 0;
     letter-spacing: 0.02em;
     white-space: nowrap;
+  }
+
+  .head__title :global(.head__icon) {
+    font-size: 0.8em;
+    color: var(--fg-muted);
   }
 
   .head__meta {
@@ -119,7 +184,12 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     text-align: right;
   }
 
+  /* 左栏热度榜、右栏字母索引；热度榜滚动时钉在顶栏下面 */
   .body {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    align-items: start;
+    gap: clamp(2rem, 4vw, 3.5rem);
     padding-bottom: 4rem;
   }
 
@@ -132,94 +202,229 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     font-size: 0.9375rem;
   }
 
-  /* 补位用的空格子：不画边框，只占一格 */
-  .tag-index__filler {
-    border: 0;
+  /* ---------- 热度榜 ---------- */
+
+  .hot {
+    position: sticky;
+    top: 5rem;
   }
 
-  .tag-index {
-    /* 每格都是单行（名字过长会截断），所以行高可以钉死。
-       实测一格 64px；钉死之后补进来的空格子才能稳定占位，
-       两页的行数和行高就一致了 */
-    grid-auto-rows: 4rem;
+  .hot__title {
+    margin: 0 0 0.75rem;
+  }
+
+  .hot__list {
     list-style: none;
     margin: 0;
     padding: 0;
+    border-top: var(--hair) solid var(--line);
+  }
+
+  .hot__item {
+    position: relative;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  }
-
-  /* 四条边都画在格子自己身上，靠负外边距让相邻的两条边重叠成一条。
-     以前上/左两条画在 <ul> 上，而 <ul> 的高度含补位格，
-     左边线就会一路拖到空白区里去，看着像一条莫名的竖线 */
-  .tag-index__item {
-    border: var(--hair) solid var(--line);
-    margin: 0 calc(-1 * var(--hair)) calc(-1 * var(--hair)) 0;
-    /* 网格项默认 min-width:auto，内容撑得开就会把整列顶宽，
-       格子形状就变了。归零才能让下面的截断生效 */
-    min-width: 0;
-  }
-
-  .tag-index__item a {
-    display: flex;
+    grid-template-columns: 1.75rem minmax(0, 1fr) auto;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1.1rem 1.25rem;
-    transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+    gap: 0.5rem;
+    padding: 0.7rem 0 0.8rem;
+    border-bottom: var(--hair) solid var(--line);
+    transition: color var(--dur-1) var(--ease-out);
   }
 
-  .tag-index__item a:hover {
-    background: var(--accent-wash);
-    color: var(--accent);
+  .hot__rank,
+  .hot__count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--fg-faint);
   }
 
-  /* 标签名过长时截断，而不是把格子撑变形。完整名字留在 title 里 */
-  .tag-index__name {
-    min-width: 0;
+  .hot__name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-serif);
-    font-size: 1rem;
+    font-size: 0.9375rem;
   }
 
-  .tag-index__count {
-    flex: none;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--fg-faint);
+  /* 篇数条：贴在这一格的底边上，长度按篇数占第一名的比例 */
+  .hot__bar {
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: var(--w);
+    height: 1px;
+    background: var(--fg-muted);
+    transform-origin: left;
+    transition: background var(--dur-1) var(--ease-out);
   }
 
-  .pagination {
+  .hot__item:hover { color: var(--accent); }
+  .hot__item:hover .hot__bar { background: var(--accent); }
+
+  /* ---------- 字母索引 ---------- */
+
+  .dict__tools {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .filter {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-top: 2.5rem;
-    padding-top: 1.5rem;
+    gap: 0.65rem;
+    padding: 0.55rem 0.85rem;
+    border: var(--hair) solid var(--line);
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .filter:focus-within { border-color: var(--line-strong); }
+
+  .filter__icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    color: var(--fg-faint);
+  }
+
+  .filter__input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    outline: none;
+  }
+
+  .filter__input::placeholder { color: var(--fg-faint); }
+
+  .filter__count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  /* 一排字母：有标签的可以点，没有的淡掉 */
+  .letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem;
+  }
+
+  .letters__key {
+    display: grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
     font-family: var(--font-mono);
     font-size: 0.75rem;
-    letter-spacing: 0.08em;
     color: var(--fg-muted);
+    border: var(--hair) solid transparent;
+    transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
   }
 
-  .pagination__step {
-    transition: color var(--dur-1) var(--ease-out);
-  }
-
-  .pagination__step:hover {
+  a.letters__key:hover {
     color: var(--accent);
+    border-color: var(--accent);
   }
 
-  .pagination__step[aria-disabled='true'] {
-    color: var(--fg-faint);
-    opacity: 0.4;
+  .letters__key--off,
+  .letters__key[data-dim='1'] {
+    color: var(--line-strong);
     pointer-events: none;
   }
 
-  .pagination__count {
+  /* 字母组排成两栏，每组不跨栏 */
+  .dict__groups {
+    columns: 2;
+    column-gap: clamp(1.5rem, 3vw, 2.5rem);
+  }
+
+  /* 每组：左边一个大字母，右边一串标签；组与组之间一道发丝线 */
+  .dict__group {
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    gap: 1rem;
+    padding-block: 1.1rem;
+    border-top: var(--hair) solid var(--line);
+    break-inside: avoid;
+    /* 跳到锚点时别被顶栏盖住 */
+    scroll-margin-top: 5rem;
+  }
+
+  .dict__letter {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 400;
+    line-height: 2rem;
     color: var(--fg-faint);
+  }
+
+  .dict__tags {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    max-width: 100%;
+    padding: 0.35rem 0.7rem;
+    border: var(--hair) solid var(--line);
+    transition: border-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+
+  .chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .chip__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-serif);
+    font-size: 0.9375rem;
+  }
+
+  .chip__count {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    color: var(--fg-faint);
+  }
+
+  .chip:hover .chip__count { color: var(--accent); }
+
+  .empty {
+    margin: 2rem 0 0;
+    color: var(--fg-faint);
+    font-size: 0.9375rem;
+  }
+
+  @media (max-width: 56rem) {
+    /* 窄了就上下排：热度榜在上面，横着两列 */
+    .body { grid-template-columns: minmax(0, 1fr); }
+    .dict__groups { columns: 1; }
+    .hot { position: static; }
+
+    .hot__list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 1.5rem;
+    }
   }
 
   @media (max-width: 44rem) {
@@ -231,5 +436,52 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 
     .head__title { white-space: normal; }
     .head__meta { text-align: left; }
+
+    .hot__list { column-gap: 1rem; }
+    .dict__group { grid-template-columns: 2rem minmax(0, 1fr); gap: 0.6rem; }
   }
 </style>
+
+<script is:inline>
+  (function () {
+    // 边输边筛：标签名里包含输入的字就留下，组里一个不剩就整组藏起来，字母条上对应的字母也淡掉
+    function init() {
+      var root = document.querySelector('[data-tag-index]');
+      if (!root) return;
+      var input = root.querySelector('[data-tag-filter]');
+      var counter = root.querySelector('[data-tag-count]');
+      var empty = root.querySelector('[data-tag-empty]');
+      var items = root.querySelectorAll('[data-tag]');
+      var groups = root.querySelectorAll('[data-group]');
+      if (!input) return;
+
+      function fold(text) {
+        return String(text || '').normalize('NFKC').toLowerCase().trim();
+      }
+
+      input.addEventListener('input', function () {
+        var q = fold(input.value);
+        var shown = 0;
+        items.forEach(function (li) {
+          var hit = !q || fold(li.getAttribute('data-tag')).indexOf(q) !== -1;
+          li.hidden = !hit;
+          if (hit) shown += 1;
+        });
+        groups.forEach(function (group) {
+          var any = group.querySelector('[data-tag]:not([hidden])');
+          group.hidden = !any;
+          var key = root.querySelector('[data-letter="' + group.getAttribute('data-group') + '"]');
+          if (key) key.dataset.dim = any ? '' : '1';
+        });
+        if (counter) counter.textContent = q ? shown + ' / ' + items.length : '';
+        if (empty) empty.hidden = shown > 0;
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+</script>

@@ -3,6 +3,7 @@ import BaseLayout from './BaseLayout.astro';
 import EntryRow from '../components/EntryRow.astro';
 import PixelBackdrop from '../components/PixelBackdrop.astro';
 import PageBackdrop from '../components/PageBackdrop.astro';
+import KindIcon from '../components/KindIcon.astro';
 import { pageBackdrops } from '../config/site';
 import type { AnyEntry, ContentKind } from '../lib/content';
 import { getPublished, entryHref, formatDate, searchText, entryCover } from '../lib/content';
@@ -40,6 +41,7 @@ const index = all.map((entry) => ({
   p: entry.data.publishedAt.toISOString(),
   h: entryHref(kind, entry.data.slug),
   c: entryCover(entry) ?? '',
+  g: [...entry.data.tags],
   q: searchText(entry),
 }));
 
@@ -75,7 +77,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 
     <div class="list-head__text">
       <div class="list-head__row" data-reveal style="--reveal-i: 1">
-        <h1 class="list-title">{title}</h1>
+        <h1 class="list-title"><KindIcon name={kind} class="list-title__icon" />{title}</h1>
         <p class="list-desc">{description}</p>
       </div>
 
@@ -142,7 +144,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     }
   </section>
 
-  <script type="application/json" data-search-index set:html={JSON.stringify(index)} />
+  <script type="application/json" data-search-index data-full={`/search/${kind}.json`} set:html={JSON.stringify(index)} />
 </BaseLayout>
 
 <style>
@@ -196,6 +198,18 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     white-space: nowrap;
   }
 
+  /* 标题前的分类图标：和顶栏同一枚，放大到标题的一半出头 */
+  .list-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .list-title :global(.list-title__icon) {
+    font-size: 0.8em;
+    color: var(--fg-muted);
+  }
+
   .list-desc {
     max-width: 28em;
     margin: 0;
@@ -240,6 +254,15 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
   .search__input::placeholder { color: var(--fg-faint); }
 
   .search__input::-webkit-search-cancel-button { filter: grayscale(1) opacity(0.5); }
+
+  /* 搜索结果里命中的词：朱红字 + 下划线，不铺底色 */
+  .list-body :global(mark) {
+    background: none;
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
 
   .search__count {
     font-family: var(--font-mono);
@@ -359,8 +382,85 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
   (function () {
     function teardown() {
       if (!window.__nnSearch) return;
-      window.__nnSearch.input.removeEventListener('input', window.__nnSearch.onInput);
+      var m = window.__nnSearch;
+      m.input.removeEventListener('input', m.onInput);
+      m.input.removeEventListener('focus', m.loadFull);
+      m.input.removeEventListener('keydown', m.onKey);
       window.__nnSearch = null;
+    }
+
+    // 检索前统一折叠：全角转半角（ＡＢＣ、１２３）、大写转小写。索引和查询走同一个函数，两边才对得上。
+    // 逐字折叠、折完长度变了的字保持原样：整段 NFKC 会把「…」展开成三个点，
+    // 下标和原文对不上，高亮就标歪了
+    function fold(text) {
+      var out = '';
+      for (var ch of String(text || '')) {
+        var f = ch.normalize('NFKC').toLowerCase();
+        if (f.length !== ch.length) f = ch.toLowerCase();
+        out += f.length === ch.length ? f : ch;
+      }
+      return out;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // 把命中的词包成 <mark>。位置在折叠后的文本里找，再按同样的下标切原文（fold 保证长度不变）
+    function highlight(raw, terms) {
+      var folded = fold(raw);
+      var ranges = [];
+      terms.forEach(function (term) {
+        var from = 0;
+        var at;
+        while ((at = folded.indexOf(term, from)) !== -1) {
+          ranges.push([at, at + term.length]);
+          from = at + term.length;
+        }
+      });
+      if (!ranges.length) return escapeHtml(raw);
+      ranges.sort(function (a, b) {
+        return a[0] - b[0];
+      });
+      var html = '';
+      var cursor = 0;
+      ranges.forEach(function (r) {
+        if (r[1] <= cursor) return;
+        var begin = Math.max(r[0], cursor);
+        html += escapeHtml(raw.slice(cursor, begin)) + '<mark>' + escapeHtml(raw.slice(begin, r[1])) + '</mark>';
+        cursor = r[1];
+      });
+      return html + escapeHtml(raw.slice(cursor));
+    }
+
+    // 只在正文里命中时，摘要换成命中处前后的一小段，让人看到为什么搜出了这篇
+    function snippet(raw, terms) {
+      var folded = fold(raw);
+      var at = -1;
+      terms.forEach(function (term) {
+        var i = folded.indexOf(term);
+        if (i !== -1 && (at === -1 || i < at)) at = i;
+      });
+      if (at === -1) return '';
+      var begin = Math.max(0, at - 36);
+      var end = Math.min(raw.length, at + 84);
+      return (begin > 0 ? '…' : '') + raw.slice(begin, end) + (end < raw.length ? '…' : '');
+    }
+
+    // 一个词在正文里出现几次，数到 5 为止：出现得多说明这篇更相关，但不让长文靠篇幅压过标题命中
+    function count(haystack, term) {
+      var n = 0;
+      var from = 0;
+      var at;
+      while (n < 5 && (at = haystack.indexOf(term, from)) !== -1) {
+        n += 1;
+        from = at + term.length;
+      }
+      return n;
     }
 
     function init() {
@@ -371,7 +471,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
       var list = document.querySelector('[data-entry-list]');
       var results = document.querySelector('[data-search-results]');
       var empty = document.querySelector('[data-search-empty]');
-      var count = document.querySelector('[data-search-count]');
+      var counter = document.querySelector('[data-search-count]');
       var pagination = document.querySelector('[data-pagination]');
       if (!input || !source || !results) return;
 
@@ -382,7 +482,71 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
         return;
       }
 
-      function card(item) {
+      index.forEach(function (item) {
+        item.ft = fold(item.t);
+        item.fs = fold(item.s);
+        item.fg = (item.g || []).map(fold);
+        item.fq = fold(item.q);
+      });
+
+      // 全文：链接 → { 原文, 折叠后 }。没拉到之前退回内嵌的正文前段
+      var full = null;
+      var loading = false;
+
+      function loadFull() {
+        if (full || loading || !source.dataset.full) return;
+        loading = true;
+        fetch(source.dataset.full)
+          .then(function (res) {
+            if (!res.ok) throw new Error(String(res.status));
+            return res.json();
+          })
+          .then(function (rows) {
+            full = {};
+            rows.forEach(function (row) {
+              full[row.h] = { raw: row.b, folded: fold(row.b) };
+            });
+            // 全文到了以后，正在输入的那次查询按全文重搜一遍
+            if (input.value.trim()) onInput();
+          })
+          .catch(function () {
+            loading = false;
+          });
+      }
+
+      // 每个词都要命中（与搜索），按命中位置给分：标题 > 标签 > 摘要 > 正文，同分按时间新的在前
+      function search(terms) {
+        var hits = [];
+        index.forEach(function (item) {
+          var body = full && full[item.h] ? full[item.h].folded : item.fq;
+          var score = 0;
+          var inBody = false;
+          for (var i = 0; i < terms.length; i++) {
+            var term = terms[i];
+            var gain = 0;
+            var at = item.ft.indexOf(term);
+            if (at !== -1) gain += at === 0 ? 12 : 8;
+            if (item.fg.indexOf(term) !== -1) gain += 6;
+            else if (item.fg.some(function (tag) { return tag.indexOf(term) !== -1; })) gain += 4;
+            if (item.fs.indexOf(term) !== -1) gain += 3;
+            var n = count(body, term);
+            if (n) {
+              gain += 1 + n * 0.3;
+              inBody = true;
+            }
+            if (!gain) return;
+            score += gain;
+          }
+          hits.push({ item: item, score: score, inBody: inBody });
+        });
+        hits.sort(function (a, b) {
+          return b.score - a.score || (a.item.p < b.item.p ? 1 : -1);
+        });
+        return hits;
+      }
+
+      function card(hit, terms) {
+        var item = hit.item;
         var a = document.createElement('article');
         a.className = 'entry';
         a.innerHTML =
@@ -415,19 +579,30 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
         a.querySelector('.new-badge').setAttribute('data-new-since', item.p);
         if (window.nnMarkNew) window.nnMarkNew(a);
         var link = a.querySelector('.entry__title a');
-        link.textContent = item.t;
+        link.innerHTML = highlight(item.t, terms);
         link.href = item.h;
-        a.querySelector('.entry__summary').textContent = item.s;
-        var hit = a.querySelector('.entry__hit');
-        hit.href = item.h;
-        hit.setAttribute('aria-label', item.t);
+
+        // 摘要里没有命中、正文里有，就把摘要换成正文里命中的那一段
+        var summary = item.s;
+        var inSummary = terms.some(function (term) {
+          return item.fs.indexOf(term) !== -1;
+        });
+        if (!inSummary && hit.inBody) {
+          var raw = full && full[item.h] ? full[item.h].raw : '';
+          summary = snippet(raw, terms) || item.s;
+        }
+        a.querySelector('.entry__summary').innerHTML = highlight(summary, terms);
+
+        var cover = a.querySelector('.entry__hit');
+        cover.href = item.h;
+        cover.setAttribute('aria-label', item.t);
         return a;
       }
 
       function onInput() {
-        var q = input.value.trim().toLowerCase();
+        var terms = fold(input.value).split(/\s+/).filter(Boolean);
 
-        if (!q) {
+        if (!terms.length) {
           results.hidden = true;
           results.innerHTML = '';
           if (empty) empty.hidden = true;
@@ -436,24 +611,23 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
           if (list && list.parentElement && pagination) {
             list.parentElement.dataset.reserve = '1';
           }
-          if (count) count.textContent = '';
+          if (counter) counter.textContent = '';
           return;
         }
 
-        var hits = index.filter(function (item) {
-          return item.q.indexOf(q) !== -1;
-        });
+        loadFull();
+        var hits = search(terms);
 
         // 搜索期间分页没有意义，索引本来就跨全部页
         if (list) list.hidden = true;
         if (pagination) pagination.hidden = true;
         // 搜索结果不分页，预留的固定高度要撤掉
         if (list && list.parentElement) list.parentElement.dataset.reserve = '';
-        if (count) count.textContent = hits.length + ' / ' + index.length;
+        if (counter) counter.textContent = hits.length + ' / ' + index.length;
 
         results.innerHTML = '';
-        hits.forEach(function (item, i) {
-          var node = card(item);
+        hits.forEach(function (hit, i) {
+          var node = card(hit, terms);
           node.style.setProperty('--reveal-i', Math.min(i, 7));
           node.classList.add('is-in');
           node.setAttribute('data-reveal', '');
@@ -464,8 +638,17 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
         if (empty) empty.hidden = hits.length > 0;
       }
 
+      // Esc 清空搜索、回到分页列表
+      function onKey(event) {
+        if (event.key !== 'Escape' || !input.value) return;
+        input.value = '';
+        onInput();
+      }
+
       input.addEventListener('input', onInput);
-      window.__nnSearch = { input: input, onInput: onInput };
+      input.addEventListener('focus', loadFull);
+      input.addEventListener('keydown', onKey);
+      window.__nnSearch = { input: input, onInput: onInput, loadFull: loadFull, onKey: onKey };
     }
 
     document.addEventListener('astro:page-load', init);

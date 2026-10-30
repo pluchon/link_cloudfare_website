@@ -23,7 +23,11 @@ const RENAMED: ReadonlyArray<readonly [string, string]> = [
   ],
 ];
 
+// 标签总览以前分页，现在一页放下了，老的分页地址统一回到总览
+const RETIRED_TAG_PAGES = /^\/tags\/page\/\d+\/?$/;
+
 function renamedTarget(pathname: string): string | null {
+  if (RETIRED_TAG_PAGES.test(pathname)) return '/tags/';
   for (const [from, to] of RENAMED) {
     if (pathname === from || pathname === `${from}/`) return `${to}/`;
     if (pathname.startsWith(`${from}/`)) return to + pathname.slice(from.length);

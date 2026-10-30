@@ -106,9 +106,6 @@ export function relatedEntries<T extends { id: string; data: { tags: string[] } 
 // 列表分页大小
 export const PAGE_SIZE = 5;
 
-// 标签总览一页放多少个。48 是按栅格排下来正好铺满的数
-export const TAGS_PAGE_SIZE = 48;
-
 // 构建期分页：返回每一页的条目切片
 export function paginateEntries<T>(entries: T[], size = PAGE_SIZE): T[][] {
   if (entries.length === 0) return [[]];
@@ -119,19 +116,27 @@ export function paginateEntries<T>(entries: T[], size = PAGE_SIZE): T[][] {
   return pages;
 }
 
-// 列表页检索用的纯文本：标题 + 摘要 + 分类 + 标签 + 正文前段
-// 正文截断是为了不让每页 HTML 无限膨胀；全文检索以后交给 Pagefind
+// 正文转成检索用的纯文本：去掉 Markdown 记号、图片和 HTML，链接只留文字；
+// 代码块只去掉围栏那一行，代码本身也能被搜到（找命令、找类名时有用）
+export function plainText(body = ''): string {
+  return body
+    .replace(/^\s*```.*$/gm, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+\.)\s+/gm, '')
+    .replace(/[*_`~|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 列表页内嵌的检索文本：标题 + 摘要 + 分类 + 标签 + 正文前段，页面一打开就能搜。
+// 全文在 /search/<分类>.json，搜索框第一次获得焦点时再拉，不让每页 HTML 跟着文章变长
 export function searchText(entry: {
   body?: string;
   data: { title: string; summary: string; category: string; tags: string[] };
 }): string {
-  const body = (entry.body ?? '')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/!?\[[^\]]*\]\([^)]*\)/g, ' ')
-    .replace(/[#>*_`~\-|]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .slice(0, 500);
-
+  const body = plainText(entry.body).slice(0, 500);
   return [entry.data.title, entry.data.summary, entry.data.category, ...entry.data.tags, body]
     .join(' ')
     .toLowerCase();

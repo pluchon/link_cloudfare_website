@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import KindIcon from '../components/KindIcon.astro';
 import { profile, branches, BRANCH_LEAF_LIMIT, site } from '../config/site';
 import {
   getPublished,
@@ -45,10 +46,13 @@ const overflow: Record<string, number> = {};
 // 每个分类最新一篇的时间，给「NEW」标记用。是否在 24 小时内要在浏览器里判断：
 // 静态站只在推送时构建，构建时算好的话，两天没推送 NEW 也会一直挂着
 const latest: Record<string, string | undefined> = {};
+// 「还有 N 篇」那张卡上顺手列出接下来的三篇标题
+const rest: Record<string, string[]> = {};
 for (const branch of branches) {
   const kind = branch.key as ContentKind;
   const entries = await getPublished(kind);
   overflow[branch.key] = Math.max(0, entries.length - BRANCH_LEAF_LIMIT);
+  rest[branch.key] = entries.slice(BRANCH_LEAF_LIMIT, BRANCH_LEAF_LIMIT + 3).map((entry) => entry.data.title);
   latest[branch.key] = entries[0]?.data.publishedAt.toISOString();
   leaves[branch.key] = entries.slice(0, BRANCH_LEAF_LIMIT).map((entry, i) => ({
     id: `l-${branch.key}-${i}`,
@@ -74,9 +78,46 @@ for (const branch of branches) {
     {!(bg.light && bg.dark) && <div class="dots" aria-hidden="true"></div>}
 
     <div class="zoombar" data-zoombar hidden>
+      <!-- 四个角上的小折角，和门户页四周的装饰同一个意思 -->
+      <span class="zoombar__corner zoombar__corner--tl" aria-hidden="true"></span>
+      <span class="zoombar__corner zoombar__corner--tr" aria-hidden="true"></span>
+      <span class="zoombar__corner zoombar__corner--bl" aria-hidden="true"></span>
+      <span class="zoombar__corner zoombar__corner--br" aria-hidden="true"></span>
+
       <button class="zoombar__btn" type="button" data-zoom="out" aria-label="缩小">
         <span class="zoombar__minus"></span>
       </button>
+
+      <!-- 刻度尺：一只小猫爪沿着尺子走，按住拖或者点哪里就缩放到哪里；那根高一点的刻度是 100% -->
+      <div
+        class="zoombar__track"
+        data-zoom-track
+        role="slider"
+        tabindex="0"
+        aria-label="缩放比例"
+        aria-valuemin="30"
+        aria-valuemax="200"
+        aria-valuenow="100"
+      >
+        <span class="zoombar__rail" aria-hidden="true"></span>
+        <span class="zoombar__fill" aria-hidden="true"></span>
+        <span class="zoombar__one" aria-hidden="true"></span>
+        <span class="zoombar__paw" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 12.6c-2.6 0-5 2.3-5 4.6 0 1.6 1.2 2.6 2.7 2.6 1 0 1.5-.5 2.3-.5s1.3.5 2.3.5c1.5 0 2.7-1 2.7-2.6 0-2.3-2.4-4.6-5-4.6z" />
+            <ellipse class="zoombar__bean" cx="6.2" cy="10.6" rx="1.7" ry="2.1" />
+            <ellipse class="zoombar__bean" cx="9.6" cy="6.9" rx="1.7" ry="2.2" />
+            <ellipse class="zoombar__bean" cx="14.4" cy="6.9" rx="1.7" ry="2.2" />
+            <ellipse class="zoombar__bean" cx="17.8" cy="10.6" rx="1.7" ry="2.1" />
+          </svg>
+        </span>
+      </div>
+
+      <button class="zoombar__btn" type="button" data-zoom="in" aria-label="放大">
+        <span class="zoombar__minus"></span>
+        <span class="zoombar__bar"></span>
+      </button>
+
       <button
         class="zoombar__level"
         type="button"
@@ -84,11 +125,10 @@ for (const branch of branches) {
         aria-label="恢复到适应屏幕"
         title="恢复到适应屏幕"
       >
-        100%
-      </button>
-      <button class="zoombar__btn" type="button" data-zoom="in" aria-label="放大">
-        <span class="zoombar__minus"></span>
-        <span class="zoombar__bar"></span>
+        <svg class="zoombar__fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+        </svg>
+        <span data-zoom-level>100%</span>
       </button>
     </div>
 
@@ -136,7 +176,10 @@ for (const branch of branches) {
                   <div class="node__body">
                     <div class="branch__head">
                       <div class="branch__name">
-                        <h2 class="branch__title">{branch.label}</h2>
+                        <h2 class="branch__title">
+                          <KindIcon name={branch.key as ContentKind} class="branch__icon" />
+                          {branch.label}
+                        </h2>
                         {latest[branch.key] && (
                           <span class="new-badge" data-new-since={latest[branch.key]} hidden>
                             NEW
@@ -165,75 +208,68 @@ for (const branch of branches) {
                 </div>
 
                 <div class="leaves" data-group={branch.key} hidden>
-                  {leaves[branch.key].map((leaf) => (
-                    <div class="leaf-row">
-                      <div class="node node--leaf" data-node={leaf.id} data-pan-item data-pop>
-                        {leaf.cover ? (
-                          <img class="leaf__cover" src={leaf.cover} alt="" loading="lazy" />
-                        ) : (
-                          <div class="leaf__cover cover-ph">封面待补</div>
-                        )}
-
-                        <div class="leaf__body">
-                          <span class="leaf__meta">
-                            {leaf.meta}
-                            <span class="new-badge" data-new-since={leaf.at} hidden>NEW</span>
-                          </span>
-                          <span class="leaf__title">{leaf.title}</span>
-                          <span class="leaf__summary">{leaf.summary}</span>
-                        </div>
-
-                        <a class="leaf__hit" href={leaf.href} aria-label={leaf.title} />
-
-                        {leaf.tags.length > 0 && (
-                          <button
-                            class="knob"
-                            type="button"
-                            data-knob={leaf.id}
-                            aria-expanded="false"
-                            aria-label="展开标签"
-                          >
-                            <span class="knob__h" />
-                            <span class="knob__v" />
-                          </button>
-                        )}
-                      </div>
-
-                      {leaf.tags.length > 0 && (
-                        <div class="tagwrap" data-group={leaf.id} hidden>
-                          <div
-                            class="node node--tags"
-                            data-node={`t-${leaf.id}`}
-                            data-pan-item
-                            data-pop
-                          >
-                            <div class="tag-row">
-                              {leaf.tags.map((tag) => (
-                                <a class="tag" href={`/tags/${encodeURIComponent(tag)}/`}>
-                                  {tag}
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {overflow[branch.key] > 0 && (
-                    <div class="leaf-row">
-                      <a
-                        class="node node--more"
-                        href={branch.href}
-                        data-node={`more-${branch.key}`}
-                        data-pan-item
-                        data-pop
-                      >
-                        <span class="more__count">还有 {overflow[branch.key]} 篇</span>
-                        <span class="more__go">查看全部</span>
+                  <div
+                    class="node node--shelf"
+                    data-node={`s-${branch.key}`}
+                    data-pan-item
+                    data-pop
+                    style={`--cols: ${Math.min(3, leaves[branch.key].length + (overflow[branch.key] > 0 ? 1 : 0))}`}
+                  >
+                    <div class="shelf__head">
+                      <span class="shelf__title">
+                        <KindIcon name={branch.key as ContentKind} class="shelf__icon" />
+                        {branch.label} · 最新 {leaves[branch.key].length} 篇
+                      </span>
+                      <a class="text-link" href={branch.href}>
+                        全部 {leaves[branch.key].length + overflow[branch.key]} 篇
                       </a>
                     </div>
-                  )}
+
+                    <div class="shelf__grid">
+                      {leaves[branch.key].map((leaf) => (
+                        <article class="node card" data-pop>
+                          {leaf.cover ? (
+                            <img class="card__cover" src={leaf.cover} alt="" loading="lazy" />
+                          ) : (
+                            <div class="card__cover cover-ph">封面待补</div>
+                          )}
+
+                          <div class="card__body">
+                            <span class="card__meta">
+                              {leaf.meta}
+                              <span class="new-badge" data-new-since={leaf.at} hidden>NEW</span>
+                            </span>
+                            <span class="card__title">{leaf.title}</span>
+                            <span class="card__summary">{leaf.summary}</span>
+                            {leaf.tags.length > 0 && (
+                              <span class="card__tags">
+                                {leaf.tags.slice(0, 3).map((tag) => (
+                                  <a class="card__tag" href={`/tags/${encodeURIComponent(tag)}/`}>
+                                    {tag}
+                                  </a>
+                                ))}
+                                {leaf.tags.length > 3 && <span class="card__tag card__tag--more">+{leaf.tags.length - 3}</span>}
+                              </span>
+                            )}
+                          </div>
+
+                          <a class="card__hit" href={leaf.href} aria-label={leaf.title} />
+                        </article>
+                      ))}
+
+                      {overflow[branch.key] > 0 && (
+                        <a class="node card card--more" href={branch.href} data-pop>
+                          <span class="more__count">还有 {overflow[branch.key]} 篇</span>
+                          <span class="more__list">
+                            {rest[branch.key].map((title) => (
+                              <span class="more__item">{title}</span>
+                            ))}
+                          </span>
+                          <span class="more__go">查看全部 →</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))
@@ -340,8 +376,11 @@ for (const branch of branches) {
 
 
   /* ---------- 右下角缩放条 ---------- */
+  /* 一把刻度尺：减号、尺子（一只小猫爪当游标）、加号，最右边是倍率和「适应屏幕」。
+     四角各一个小折角做装饰，还是发丝线，不加圆角和阴影 */
 
   .zoombar {
+    --zoom-pos: 0.635;
     position: absolute;
     right: clamp(1rem, 3vw, 2rem);
     bottom: clamp(1rem, 3vw, 2rem);
@@ -353,6 +392,22 @@ for (const branch of branches) {
     background: color-mix(in srgb, var(--bg) 62%, transparent);
     backdrop-filter: blur(10px);
   }
+
+  .zoombar__corner {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border: 0 solid var(--fg-faint);
+    pointer-events: none;
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .zoombar__corner--tl { left: -4px; top: -4px; border-left-width: 1px; border-top-width: 1px; }
+  .zoombar__corner--tr { right: -4px; top: -4px; border-right-width: 1px; border-top-width: 1px; }
+  .zoombar__corner--bl { left: -4px; bottom: -4px; border-left-width: 1px; border-bottom-width: 1px; }
+  .zoombar__corner--br { right: -4px; bottom: -4px; border-right-width: 1px; border-bottom-width: 1px; }
+
+  .zoombar:hover .zoombar__corner { border-color: var(--accent); }
 
   .zoombar__btn,
   .zoombar__level {
@@ -393,14 +448,100 @@ for (const branch of branches) {
     transform: translate(-50%, -50%);
   }
 
+  /* 尺子：一根底线 + 每 10% 一格的短刻度；走过的那一段描深 */
+  .zoombar__track {
+    position: relative;
+    width: 6.5rem;
+    margin-inline: 0.35rem;
+    cursor: pointer;
+    touch-action: none;
+    outline: none;
+  }
+
+  .zoombar__rail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 7px;
+    border-bottom: var(--hair) solid var(--line-strong);
+    background: repeating-linear-gradient(
+      to right,
+      var(--line-strong) 0 1px,
+      transparent 1px 10%
+    );
+    background-size: 100% 4px;
+    background-repeat: no-repeat;
+    background-position: left bottom;
+  }
+
+  .zoombar__fill {
+    position: absolute;
+    left: 0;
+    top: calc(50% + 6px);
+    width: calc(var(--zoom-pos) * 100%);
+    height: 1px;
+    background: var(--fg-muted);
+  }
+
+  /* 100% 那一格：高一点的刻度 */
+  .zoombar__one {
+    position: absolute;
+    left: 63.5%;
+    top: calc(50% - 3px);
+    width: 1px;
+    height: 10px;
+    background: var(--fg-muted);
+  }
+
+  .zoombar__paw {
+    position: absolute;
+    left: calc(var(--zoom-pos) * 100%);
+    top: calc(50% - 0.95rem);
+    width: 1.05rem;
+    height: 1.05rem;
+    color: var(--fg);
+    transform: translateX(-50%);
+    transition: left var(--dur-2) var(--ease-out), transform var(--dur-1) var(--ease-out);
+  }
+
+  .zoombar__paw svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .zoombar__bean {
+    fill: var(--icon-pink);
+    stroke: none;
+  }
+
+  /* 拖动时游标跟手，不要过渡 */
+  .zoombar[data-sliding='1'] .zoombar__paw { transition: none; }
+
+  .zoombar__track:hover .zoombar__paw,
+  .zoombar__track:focus-visible .zoombar__paw,
+  .zoombar[data-sliding='1'] .zoombar__paw { transform: translateX(-50%) scale(1.15) rotate(-8deg); }
+
+  .zoombar__track:focus-visible .zoombar__rail { border-bottom-color: var(--accent); }
+
   .zoombar__level {
-    min-width: 3.5rem;
-    padding-inline: 0.25rem;
-    border-inline: var(--hair) solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 4.6rem;
+    padding-inline: 0.6rem;
+    border-left: var(--hair) solid var(--line);
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     letter-spacing: 0.04em;
     font-variant-numeric: tabular-nums;
+  }
+
+  .zoombar__fit {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: none;
   }
 
   .zoombar__btn:hover,
@@ -492,8 +633,7 @@ for (const branch of branches) {
     gap: 1.25rem;
   }
 
-  .row,
-  .leaf-row {
+  .row {
     display: flex;
     align-items: center;
     gap: clamp(2.5rem, 5vw, 4.5rem);
@@ -578,9 +718,8 @@ for (const branch of branches) {
   .node__body,
   .root__cover,
   .branch__cover,
-  .leaf__cover,
-  .leaf__body,
-  .node--tags .tag-row {
+  .card__cover,
+  .card__body {
     position: relative;
     z-index: 1;
   }
@@ -663,10 +802,18 @@ for (const branch of branches) {
   }
 
   .branch__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     font-family: var(--font-serif);
     font-size: 1.125rem;
     font-weight: 600;
     margin: 0;
+  }
+
+  .branch__title :global(.branch__icon) {
+    font-size: 0.95em;
+    color: var(--fg-muted);
   }
 
   .branch__name {
@@ -682,38 +829,83 @@ for (const branch of branches) {
     line-height: 1.7;
   }
 
-  /* ---------- 帖子节点：左半封面，右半内容 ---------- */
+  /* ---------- 文章书架：展开一个分类，右边铺开一块面板 ---------- */
+  /* 以前是一列横向长卡片再往右挂标签卡，一支展开就有一屏多高、四层深，聚焦放大也装不下。
+     现在一个分类只长出一块面板：最新几篇排成三列竖卡，标签直接写在卡片底部，少了一层 */
 
-  .node--leaf {
-    display: grid;
-    grid-template-columns: 42% minmax(0, 1fr);
-    width: 29rem;
-    align-items: stretch;
+  .node--shelf {
+    --card-w: 13.5rem;
+    padding: 0.9rem 1rem 1rem;
   }
 
-  .node--leaf:hover { transform: translateX(0.35rem); }
+  .shelf__head {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.9rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
 
-  .leaf__cover {
+  .shelf__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    color: var(--fg-muted);
+  }
+
+  .shelf__title :global(.shelf__icon) { font-size: 1.35em; }
+
+  .shelf__head .text-link {
+    padding-bottom: 0;
+    line-height: 1;
+  }
+
+  .shelf__grid {
+    position: relative;
+    z-index: 1;
     display: grid;
+    grid-template-columns: repeat(var(--cols, 3), var(--card-w));
+    gap: 0.75rem;
+  }
+
+  /* 竖卡：封面在上，日期、标题、两行摘要、标签依次往下 */
+  .card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .card:hover { transform: translateY(-0.25rem); }
+
+  .card__cover {
+    display: grid;
+    place-items: center;
     width: 100%;
-    height: 100%;
-    min-height: 7.5rem;
+    aspect-ratio: 16 / 9;
     object-fit: cover;
-    border-right: var(--hair) solid var(--line);
+    border-bottom: var(--hair) solid var(--line);
     font-family: var(--font-mono);
     font-size: 0.625rem;
     letter-spacing: 0.12em;
   }
 
-  .leaf__body {
+  .card__body {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    justify-content: center;
-    padding: 0.9rem 1rem;
+    gap: 0.35rem;
+    padding: 0.7rem 0.8rem 0.8rem;
     min-width: 0;
   }
 
-  .leaf__meta {
+  .card__meta {
     display: flex;
     align-items: center;
     gap: 0.45rem;
@@ -723,46 +915,68 @@ for (const branch of branches) {
     color: var(--fg-faint);
   }
 
-  .leaf__title {
-    margin-top: 0.3rem;
+  .card__title {
     font-family: var(--font-serif);
-    font-size: 1rem;
+    font-size: 0.9375rem;
     line-height: 1.45;
-  }
-
-  .node--leaf:hover .leaf__title { color: var(--accent); }
-
-  .leaf__summary {
-    margin-top: 0.45rem;
-    font-size: 0.8125rem;
-    line-height: 1.65;
-    color: var(--fg-muted);
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
 
-  /* 整卡可点：铺一层透明链接。按钮必须留在链接外面，
-     a 里套 button 是非法结构，所以用绝对定位的覆盖层 */
-  .leaf__hit {
+  .card:hover .card__title { color: var(--accent); }
+
+  .card__summary {
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--fg-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* 标签贴在卡片底部；要能单独点，所以压在整卡链接上面 */
+  .card__tags {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: auto;
+    padding-top: 0.35rem;
+  }
+
+  .card__tag {
+    padding: 0.1rem 0.4rem;
+    border: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+  }
+
+  a.card__tag:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .card__tag--more { border-style: dashed; }
+
+  /* 整卡可点：铺一层透明链接，标签在它上面 */
+  .card__hit {
     position: absolute;
     inset: 0;
     z-index: 2;
   }
 
-  /* ---------- 「还有 N 篇」 ---------- */
-
-  /* 比文章卡片矮一档、窄一截，一眼看出它不是一篇文章而是个出口 */
-  .node--more {
-    display: flex;
-    /* 两侧字号差了 4px，基线对齐会让小字看着往下坠，改按中心对齐 */
-    align-items: center;
+  /* 「还有 N 篇」：虚线卡，顺手列出剩下几篇的标题，不只是一个数字 */
+  .card--more {
     justify-content: space-between;
-    gap: 1.5rem;
-    /* 宽度跟文章卡片对齐，不然它挂在一列的末尾会短一截 */
-    width: 29rem;
-    padding: 0.85rem 1rem;
+    gap: 0.75rem;
+    padding: 0.9rem 0.95rem;
     border-style: dashed;
   }
 
@@ -770,8 +984,28 @@ for (const branch of branches) {
     position: relative;
     z-index: 1;
     font-family: var(--font-serif);
-    font-size: 0.9375rem;
+    font-size: 1rem;
+  }
+
+  .more__list {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .more__item {
+    padding-left: 0.7rem;
+    border-left: var(--hair) solid var(--line-strong);
+    font-size: 0.75rem;
+    line-height: 1.5;
     color: var(--fg-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .more__go {
@@ -780,32 +1014,11 @@ for (const branch of branches) {
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     letter-spacing: 0.1em;
-    text-transform: uppercase;
     color: var(--fg-faint);
   }
 
-  .node--more:hover { transform: translateX(0.35rem); }
-  .node--more:hover .more__count { color: var(--accent); }
-  .node--more:hover .more__go { color: var(--accent); }
-
-  /* ---------- 标签节点 ---------- */
-
-  /* 标签卡宽度由脚本量出来：标签少就一行，多了折成两行，最多两行。
-     纯 CSS 给不了「不超过两行」这个保证，因为断行位置取决于每个标签的实际宽度 */
-  .node--tags {
-    width: max-content;
-    max-width: none;
-    padding: 0.75rem 0.9rem;
-  }
-
-  .node--tags .tag-row {
-    flex-wrap: wrap;
-  }
-
-  /* 标签自身不许断行，要断只在标签之间断 */
-  .node--tags .tag {
-    white-space: nowrap;
-  }
+  .card--more:hover .more__count,
+  .card--more:hover .more__go { color: var(--accent); }
 
   /* ---------- 展开按钮：两根线拼成的 + ---------- */
 
@@ -945,43 +1158,49 @@ for (const branch of branches) {
       gap: 0.9rem;
     }
 
-    .row,
-    .leaf-row {
+    .row {
       flex-direction: column;
       align-items: stretch;
       gap: 0.9rem;
     }
 
     .branches,
-    .leaves,
-    .tagwrap { padding-left: var(--indent); }
+    .leaves { padding-left: var(--indent); }
 
     .node--root,
     .node--branch,
-    .node--leaf,
-    .node--more,
-    .node--tags { width: auto; }
+    .node--shelf { width: auto; }
 
-    .node--more:hover { transform: none; }
+    /* 书架在窄屏改成横向小卡：左边小封面，右边日期、标题、标签，一行一篇 */
+    .node--shelf { padding: 0.75rem; }
+    .shelf__grid { grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+
+    .card {
+      display: grid;
+      grid-template-columns: 6.5rem minmax(0, 1fr);
+    }
+
+    .card:hover { transform: none; }
+
+    .card__cover {
+      height: 100%;
+      aspect-ratio: auto;
+      min-height: 5rem;
+      border-bottom: 0;
+      border-right: var(--hair) solid var(--line);
+    }
+
+    .card__summary { display: none; }
+    /* 窄屏一行放不下三个标签，只留两个，免得卡片被折行撑高 */
+    .card__tag:nth-child(n + 3) { display: none; }
+    .card__body { padding: 0.6rem 0.7rem; }
+    .card--more { display: flex; }
 
     /* 根卡片：头像不再占半幅，收窄给文字让位 */
     .node--root { grid-template-columns: 34% minmax(0, 1fr); }
     .node--root .node__body { padding: 1.1rem 1rem; }
     .root__name { font-size: 1.375rem; }
     .root__bio { margin-top: 0.6rem; font-size: 0.8125rem; }
-
-    /* 文章卡片：缩进两层之后左封面只剩百来像素，右边标题摘要会挤成一团。
-       窄屏干脆去掉封面，让文字吃满整行；封面在列表页和详情页照常显示 */
-    .node--leaf { display: block; }
-    .leaf__cover { display: none; }
-    .leaf__body { padding: 0.85rem 1rem; }
-    .node--leaf:hover { transform: none; }
-
-    /* 桌面上标签一行排开靠拖画布看，窄屏没法拖，改成换行 */
-    .node--tags .tag-row {
-      flex-wrap: wrap;
-      white-space: normal;
-    }
 
     .knob {
       right: 0.7rem;
@@ -1217,87 +1436,6 @@ for (const branch of branches) {
         });
       }
 
-      /* ---------- 标签卡宽度 ---------- */
-
-      // 标签一行排开会拉出很长一条（十几个标签就上千像素）。
-      // 量出所有标签铺平的总宽，标签少就保持一行，多了把卡片收窄到大约一半，
-      // 折成两行。加上最宽那一枚做余量，保证不会溢出到第三行
-      // 一行排开不超过这个宽度就保持一行。定在 760 是因为文章卡片宽 464，
-      // 标签卡到 760 还算克制；再宽（比如十几个标签那种上千像素）才值得折行
-      var TAG_ONE_LINE_MAX = 760;
-
-      // 标签实际占了几行：按 offsetTop 去重
-      function tagLines(row) {
-        var tops = {};
-        var lines = 0;
-        row.querySelectorAll('.tag').forEach(function (tag) {
-          var key = Math.round(tag.offsetTop);
-          if (!tops[key]) {
-            tops[key] = 1;
-            lines += 1;
-          }
-        });
-        return lines;
-      }
-
-      function fitTags() {
-        if (!wide) return;
-
-        map.querySelectorAll('.node--tags').forEach(function (card) {
-          var row = card.querySelector('.tag-row');
-          if (!row) return;
-
-          var tags = row.querySelectorAll('.tag');
-          if (!tags.length) return;
-
-          var gap = parseFloat(getComputedStyle(row).gap) || 0;
-          var widths = [];
-          var total = 0;
-          // 用 rect 而不是 offsetWidth：后者取整，十几个标签累积起来
-          // 足以把最后一枚挤到第三行。但 rect 是算过 map 那层 scale() 的，
-          // 而 style.width 设的是未缩放的布局宽度，必须先除回去
-          var s = scale || 1;
-          tags.forEach(function (tag) {
-            var w = tag.getBoundingClientRect().width / s;
-            widths.push(w);
-            total += w;
-          });
-          // 隐藏时量不到宽度，跳过这一轮，等展开后再量
-          if (!total) return;
-          total += gap * (widths.length - 1);
-
-          var content = total;
-
-          if (total > TAG_ONE_LINE_MAX && widths.length > 1) {
-            // 枚举断点，取「两行里较宽那行」最窄的那个分法。
-            // flex 是贪心换行：宽度给到这个值，第一行至少装得下前 k 个，
-            // 剩下的只会更少，所以一定落在两行之内
-            var best = Infinity;
-            for (var k = 1; k < widths.length; k++) {
-              var a = -gap;
-              var b = -gap;
-              for (var i = 0; i < widths.length; i++) {
-                if (i < k) a += widths[i] + gap;
-                else b += widths[i] + gap;
-              }
-              best = Math.min(best, Math.max(a, b));
-            }
-            content = best;
-          }
-
-          var pad = card.offsetWidth - row.offsetWidth;
-          // 留 2px 余量：宽度算得刚好等于标签总宽时，亚像素误差会让最后一枚换行
-          card.style.width = Math.ceil(content + pad + 2) + 'px';
-
-          // 算出来的宽度是理论最优，实际断行还受字距、缩放的影响。
-          // 实测一下，超过两行就放宽重试，宁可宽一点也不能出第三行
-          for (var attempt = 0; attempt < 6 && tagLines(row) > 2; attempt++) {
-            content = content * 1.06 + 4;
-            card.style.width = Math.ceil(content + pad + 2) + 'px';
-          }
-        });
-      }
-
       /* ---------- 展开 / 收起 ---------- */
 
       function pop(group, show) {
@@ -1339,6 +1477,29 @@ for (const branch of branches) {
         });
       }
 
+      // 同一层只开一支：展开新的那支之前，把已经开着的兄弟分支直接收掉（不播退场，视线马上要移走）。
+      // 它存着的「展开前视图」转交给新的这支，最后收起时还是回到最初的样子
+      function closeSiblings(knob, group) {
+        var level = knob.parentElement.closest('[data-group]');
+        if (!level) return;
+        level.querySelectorAll('[data-knob][aria-expanded="true"]').forEach(function (other) {
+          if (other === knob || other.parentElement.closest('[data-group]') !== level) return;
+          other.setAttribute('aria-expanded', 'false');
+          var sub = map.querySelector('[data-group="' + other.getAttribute('data-knob') + '"]');
+          if (!sub) return;
+          collapseBelow(sub);
+          if (sub.__view && !group.__view) group.__view = sub.__view;
+          sub.__view = null;
+          clearTimeout(sub.__viewTimer);
+          clearTimeout(sub.__popTimer);
+          sub.querySelectorAll('[data-pop]').forEach(function (el) {
+            el.classList.remove('is-pop');
+          });
+          sub.hidden = true;
+          sub.removeAttribute('data-closing');
+        });
+      }
+
       // 收起某个节点时，它下面已经展开的层级要一起收，不然会留下悬空的卡片
       function collapseBelow(group) {
         group.querySelectorAll('[data-knob][aria-expanded="true"]').forEach(function (knob) {
@@ -1374,6 +1535,7 @@ for (const branch of branches) {
         // 展开前先把当前视图存下来，收起时原样还原。
         // 必须抢在下面那帧的 fit() 之前——fit() 会按新布局重算 scale，
         // 等到 focusOn 里再存就已经是被覆盖过的值了
+        closeSiblings(knob, group);
         if (!group.__view) {
           group.__view = { userZoom: userZoom, scale: scale, tx: tx, ty: ty };
         }
@@ -1381,8 +1543,6 @@ for (const branch of branches) {
         pop(group, true);
 
         requestAnimationFrame(function () {
-          // 先定标签卡的宽度，线要按最终位置画
-          fitTags();
           fit();
           drawWires(true);
           measure();
@@ -1405,6 +1565,8 @@ for (const branch of branches) {
 
       function glow(event) {
         var card = event.target.closest ? event.target.closest('.node') : null;
+        // 整块书架面板太大，亮一圈辉光很晃眼，只让里面的卡片亮
+        if (card && card.classList.contains('node--shelf')) card = null;
         if (card !== litCard) clearGlow(litCard);
         litCard = card;
         if (!card) return;
@@ -1442,13 +1604,26 @@ for (const branch of branches) {
         return Math.max(0.55, s);
       }
 
+      // 尺子按对数刻度：30% → 0，200% → 1，每放大同样的倍数游标走同样的距离
+      function zoomPos(value) {
+        return (Math.log(value) - Math.log(ZOOM_MIN)) / (Math.log(ZOOM_MAX) - Math.log(ZOOM_MIN));
+      }
+
+      function zoomAt(pos) {
+        pos = Math.min(1, Math.max(0, pos));
+        return Math.exp(Math.log(ZOOM_MIN) + pos * (Math.log(ZOOM_MAX) - Math.log(ZOOM_MIN)));
+      }
+
       function updateZoomUI() {
         if (!zoombar) return;
         zoombar.hidden = !wide;
         if (!wide) return;
         zoombar.dataset.manual = userZoom === null ? '' : '1';
-        var level = zoombar.querySelector('[data-zoom="reset"]');
+        var level = zoombar.querySelector('[data-zoom-level]');
         if (level) level.textContent = Math.round(scale * 100) + '%';
+        zoombar.style.setProperty('--zoom-pos', zoomPos(scale).toFixed(4));
+        var track = zoombar.querySelector('[data-zoom-track]');
+        if (track) track.setAttribute('aria-valuenow', String(Math.round(scale * 100)));
         var out = zoombar.querySelector('[data-zoom="out"]');
         var zin = zoombar.querySelector('[data-zoom="in"]');
         if (out) out.disabled = scale <= ZOOM_MIN + 0.001;
@@ -1552,7 +1727,7 @@ for (const branch of branches) {
         // 为它重新居中 + 缩放，整张图会毫无必要地动一大下。
         // 这里只做两件事：把上一帧 fit() 改掉的倍率还原，
         // 然后只在它露到视口外时推一下，刚好让它进来；本来看得见就完全不动
-        if (!deeper) {
+        if (!deeper && !group.querySelector('.node--shelf')) {
           var keep = group.__view;
           if (keep && userZoom === null && keep.scale !== scale) {
             scale = keep.scale;
@@ -1619,7 +1794,6 @@ for (const branch of branches) {
         group.__view = null;
         map.dataset.instant = '';
         scene.dataset.eased = '1';
-        fitTags();
         if (v) {
           userZoom = v.userZoom;
           tx = v.tx;
@@ -1690,7 +1864,7 @@ for (const branch of branches) {
 
       function onDown(event) {
         if (!wide || event.button !== 0) return;
-        if (event.target.closest('button, input, textarea, select')) return;
+        if (event.target.closest('button, input, textarea, select, [data-zoombar]')) return;
         dragging = true;
         moved = 0;
         startX = event.clientX;
@@ -1823,16 +1997,10 @@ for (const branch of branches) {
           canvas.dataset.pannable = '';
           userZoom = null;
           updateZoomUI();
-          // 宽屏量出来的标签卡宽度是内联样式，会压过窄屏的 width: auto，
-          // 从宽屏拖窄时必须清掉
-          map.querySelectorAll('.node--tags').forEach(function (card) {
-            card.style.width = '';
-          });
           // 竖版树的线也要跟着重新量，横竖屏切换时几何整个换了一套
           drawWires(false);
           return;
         }
-        fitTags();
         fit();
         drawWires(false);
         measure();
@@ -1842,6 +2010,38 @@ for (const branch of branches) {
       canvas.addEventListener('click', onClick, true);
       canvas.addEventListener('wheel', onWheel, { passive: false });
       if (zoombar) zoombar.addEventListener('click', onZoomClick);
+
+      // 尺子：按下就跳到那个位置，按住拖动连续缩放；键盘左右键一格 10%
+      var track = zoombar ? zoombar.querySelector('[data-zoom-track]') : null;
+      if (track) {
+        var slide = function (event) {
+          var box = track.getBoundingClientRect();
+          zoomTo(zoomAt((event.clientX - box.left) / box.width));
+        };
+        track.addEventListener('pointerdown', function (event) {
+          if (event.button !== 0) return;
+          // 捕获指针，拖出尺子范围也继续跟手；个别情况下捕获会抛错，不影响点一下就跳
+          try {
+            track.setPointerCapture(event.pointerId);
+          } catch (e) {}
+          zoombar.dataset.sliding = '1';
+          slide(event);
+        });
+        track.addEventListener('pointermove', function (event) {
+          if (zoombar.dataset.sliding === '1') slide(event);
+        });
+        var stop = function () {
+          zoombar.dataset.sliding = '';
+        };
+        track.addEventListener('pointerup', stop);
+        track.addEventListener('pointercancel', stop);
+        track.addEventListener('keydown', function (event) {
+          if (event.key === 'ArrowRight' || event.key === 'ArrowUp') zoomTo(scale * 1.1);
+          else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') zoomTo(scale / 1.1);
+          else return;
+          event.preventDefault();
+        });
+      }
       window.addEventListener('keydown', onKey);
       canvas.addEventListener('dragstart', onDragStart);
       canvas.addEventListener('pointerleave', onLeave);

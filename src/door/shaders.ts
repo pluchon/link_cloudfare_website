@@ -123,20 +123,32 @@ export const holeFragment = /* glsl */ `
     return (hot * wisps * 0.16 + cool * knots * 0.1) * mask;
   }
 
-  // 远处的旋涡星系：在 dir 方向上一小块，倾斜的对数螺旋臂加一个亮核
-  vec3 galaxy(vec3 d, vec3 dir) {
+  // 远处的旋涡星系：在 dir 方向上一小块，对数螺旋臂加一个亮核。
+  // size 是角大小，roll 是盘面在天上的转角，squash 越大越接近侧视（侧视时中线压一道暗尘带）
+  vec3 galaxy(vec3 d, vec3 dir, float size, float roll, float squash, float gain) {
     float c = dot(d, dir);
-    if (c < 0.995) return vec3(0.0);
+    if (c < 1.0 - size * size * 11.0) return vec3(0.0);
     vec3 u = normalize(cross(dir, vec3(0.0, 1.0, 0.0)));
     vec3 v = cross(dir, u);
-    vec2 p = vec2(dot(d, u), dot(d, v)) / 0.022;
-    p = mat2(0.8, -0.6, 0.6, 0.8) * p;
-    p.y *= 2.6;
+    vec2 p = vec2(dot(d, u), dot(d, v)) / size;
+    float cs = cos(roll);
+    float sn = sin(roll);
+    p = mat2(cs, -sn, sn, cs) * p;
+    p.y *= squash;
     float r = length(p);
     float arm = 0.5 + 0.5 * cos(2.0 * atan(p.y, p.x) - 5.0 * log(r + 0.08));
     float disc = exp(-r * 1.6) * (0.35 + 0.65 * arm);
     float bulge = exp(-r * r * 9.0) * 1.6;
-    return mix(vec3(0.55, 0.65, 1.0), vec3(1.0, 0.86, 0.68), smoothstep(0.0, 1.5, bulge)) * (disc + bulge) * 0.22;
+    float lane = 1.0 - 0.65 * smoothstep(3.0, 6.0, squash) * exp(-p.y * p.y * 4.0) * smoothstep(0.15, 0.4, r);
+    return mix(vec3(0.55, 0.65, 1.0), vec3(1.0, 0.86, 0.68), smoothstep(0.0, 1.5, bulge)) * (disc + bulge) * lane * gain;
+  }
+
+  // 整片天上极淡的两团色光（一团偏品红、一团偏青），给大片空白的深空一点冷暖起伏。
+  // 只是两个点积的幂，几乎不花钱
+  vec3 airglow(vec3 d) {
+    float a = pow(max(dot(d, normalize(vec3(-0.6, 0.45, 0.66))), 0.0), 3.0);
+    float b = pow(max(dot(d, normalize(vec3(0.7, -0.3, -0.64))), 0.0), 3.0);
+    return vec3(0.010, 0.003, 0.012) * a + vec3(0.002, 0.008, 0.011) * b;
   }
 
   vec3 sky(vec3 d) {
@@ -159,7 +171,14 @@ export const holeFragment = /* glsl */ `
     col += nebula(d, normalize(vec3(-0.7, 0.35, -0.6)), vec3(0.95, 0.25, 0.35), vec3(0.3, 0.75, 0.9), 3.0);
     col += nebula(d, normalize(vec3(0.75, -0.2, -0.65)), vec3(0.25, 0.55, 0.95), vec3(0.95, 0.5, 0.3), 11.0);
     col += nebula(d, normalize(vec3(0.1, 0.6, 0.8)), vec3(0.75, 0.3, 0.8), vec3(0.4, 0.8, 0.7), 23.0);
-    col += galaxy(d, normalize(vec3(-0.45, 0.28, -0.85)));
+    #ifndef LITE
+    col += nebula(d, normalize(vec3(-0.3, -0.25, 0.92)), vec3(0.95, 0.55, 0.25), vec3(0.5, 0.35, 0.95), 31.0);
+    #endif
+    col += galaxy(d, normalize(vec3(-0.45, 0.28, -0.85)), 0.022, 0.6435, 2.6, 0.22);
+    // 一个大一点、几乎侧对着我们的星系，和一个很小的正面旋涡
+    col += galaxy(d, normalize(vec3(0.62, 0.12, 0.78)), 0.05, -0.35, 6.5, 0.2);
+    col += galaxy(d, normalize(vec3(-0.2, -0.55, 0.81)), 0.016, 1.2, 1.15, 0.26);
+    col += airglow(d);
 
     // 星点：银河带里更密
     float boost = 1.0 + band * 2.5;

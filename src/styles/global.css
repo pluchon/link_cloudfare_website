@@ -36,6 +36,8 @@
   --line-strong: #c9c6be;
   --accent: #c6462f;
   --accent-wash: rgba(198, 70, 47, 0.07);
+  /* 图标里那一点粉：和站标猫尾巴上的蝴蝶结同色系，只做点缀，不当交互色 */
+  --icon-pink: #f3a3bd;
 
   color-scheme: light;
 }
@@ -51,6 +53,7 @@
   --line-strong: #3a3b42;
   --accent: #e0674f;
   --accent-wash: rgba(224, 103, 79, 0.1);
+  --icon-pink: #e58eaa;
 
   color-scheme: dark;
 }
@@ -372,6 +375,9 @@ body.is-canvas > main {
 
 .site-nav a {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   /* 导航项自身绝不折行：宁可整条挤，也不要「文/章」劈成两行 */
   white-space: nowrap;
   padding: 0.4rem 0.75rem;
@@ -392,6 +398,14 @@ body.is-canvas > main {
   transform-origin: left;
   transition: transform var(--dur-1) var(--ease-out);
 }
+
+/* 图标比文字略大一点才和汉字等重；悬浮时轻轻歪一下头 */
+.site-nav__icon {
+  font-size: 1.125em;
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.site-nav a:hover .site-nav__icon { transform: rotate(-8deg) scale(1.08); }
 
 .site-nav a:hover { color: var(--fg); }
 .site-nav a:hover::after,

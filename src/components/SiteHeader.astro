@@ -1,5 +1,6 @@
 ---
 import { site, nav, palettes } from '../config/site';
+import KindIcon from './KindIcon.astro';
 
 const path = Astro.url.pathname;
 
@@ -22,6 +23,7 @@ function isActive(href: string): boolean {
       {
         nav.map((item) => (
           <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>
+            <KindIcon name={item.icon} class="site-nav__icon" />
             {item.label}
           </a>
         ))

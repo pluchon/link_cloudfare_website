@@ -1,16 +1,9 @@
 ---
 import TagListLayout from '../../layouts/TagListLayout.astro';
-import { getAllPublished, tagCounts, paginateEntries, TAGS_PAGE_SIZE } from '../../lib/content';
+import { getAllPublished, tagCounts } from '../../lib/content';
 
 const all = await getAllPublished();
 const tags = tagCounts(all.map((item) => item.entry));
-const pages = paginateEntries(tags, TAGS_PAGE_SIZE);
 ---
 
-<TagListLayout
-  tags={pages[0]}
-  totalTags={tags.length}
-  totalEntries={all.length}
-  page={1}
-  totalPages={pages.length}
-/>
+<TagListLayout tags={tags} totalEntries={all.length} />
