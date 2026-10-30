@@ -111,6 +111,36 @@ export const palettes = [
 
 export type PaletteKey = (typeof palettes)[number]['key'];
 
+// 五个分类列表页和关于页的背景插画：白天 / 夜里各一套，横屏 / 竖屏各一张，都在同一个 OSS 目录下按名字取。
+// 换图时上传到新日期的目录，改 PAGE_BACKDROP_DIR 即可（新目录名顺带绕开 CDN 缓存）
+const PAGE_BACKDROP_DIR =
+  'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261030';
+
+export interface PageBackdrop {
+  light: string;
+  dark: string;
+  lightPortrait: string;
+  darkPortrait: string;
+}
+
+function pageBackdrop(name: string): PageBackdrop {
+  return {
+    light: `${PAGE_BACKDROP_DIR}/${name}-landscape.webp`,
+    dark: `${PAGE_BACKDROP_DIR}/night/${name}-landscape.webp`,
+    lightPortrait: `${PAGE_BACKDROP_DIR}/${name}-portrait.webp`,
+    darkPortrait: `${PAGE_BACKDROP_DIR}/night/${name}-portrait.webp`,
+  };
+}
+
+export const pageBackdrops = {
+  project: pageBackdrop('project'),
+  tool: pageBackdrop('tool'),
+  explore: pageBackdrop('explore'),
+  daily: pageBackdrop('daily'),
+  xiaomeng: pageBackdrop('xiaomeng'),
+  about: pageBackdrop('about'),
+} as const;
+
 // 每条分支在首页最多展示几篇
 export const BRANCH_LEAF_LIMIT = 5;
 

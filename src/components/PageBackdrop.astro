@@ -1,0 +1,88 @@
+---
+// 分类列表页和关于页的背景插画：钉在视口上，垫在所有内容下面，跟着深浅主题交叉淡入。
+// 只靠降低插画本身的不透明度让位给正文，不加模糊、不叠遮罩（用户要求插画要看得清）。
+// 原图是无损 WebP，一张 800KB 上下；这里走 OSS 实时压缩，q85 约 40KB，压在半透明底下看不出差别
+import type { PageBackdrop } from '../config/site';
+
+interface Props {
+  art: PageBackdrop;
+  // 正文是大段文字、整页都压在人物上的页面（关于页）再淡一档
+  quiet?: boolean;
+}
+
+const { art, quiet = false } = Astro.props;
+
+const QUALITY = '?x-oss-process=image/quality,q_85';
+const vars = [
+  `--pb-day: url('${art.light}${QUALITY}')`,
+  `--pb-night: url('${art.dark}${QUALITY}')`,
+  `--pb-day-tall: url('${art.lightPortrait}${QUALITY}')`,
+  `--pb-night-tall: url('${art.darkPortrait}${QUALITY}')`,
+].join('; ');
+---
+
+<div class:list={['page-bd', { 'page-bd--quiet': quiet }]} aria-hidden="true" style={vars}>
+  <div class="page-bd__layer page-bd__layer--day"></div>
+  <div class="page-bd__layer page-bd__layer--night"></div>
+</div>
+
+<style>
+  /* z-index 负数：只压在页面底色之上，正文、封面、列表页的像素噪声都在它上面 */
+  .page-bd {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* 人物都在左下角、中间留白，按底边对齐裁切，人物和桌面不会被裁掉 */
+  .page-bd__layer {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center bottom;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+
+  /* 夜图底色本来就接近页面深色，人物偏亮，透明度要比白天再低一点 */
+  .page-bd {
+    --pb-day-alpha: 0.5;
+    --pb-night-alpha: 0.42;
+  }
+
+  .page-bd--quiet {
+    --pb-day-alpha: 0.4;
+    --pb-night-alpha: 0.32;
+  }
+
+  /* 窄屏正文铺满整宽，人物一定压在文字底下，再淡一点 */
+  @media (max-width: 44rem) {
+    .page-bd {
+      --pb-day-alpha: 0.4;
+      --pb-night-alpha: 0.32;
+    }
+
+    .page-bd--quiet {
+      --pb-day-alpha: 0.32;
+      --pb-night-alpha: 0.26;
+    }
+  }
+
+  .page-bd__layer--day {
+    background-image: var(--pb-day);
+    opacity: var(--pb-day-alpha);
+  }
+
+  .page-bd__layer--night { background-image: var(--pb-night); }
+
+  :global(:root[data-theme='dark']) .page-bd__layer--day { opacity: 0; }
+  :global(:root[data-theme='dark']) .page-bd__layer--night { opacity: var(--pb-night-alpha); }
+
+  /* 竖屏换竖图 */
+  @media (max-aspect-ratio: 4 / 5) {
+    .page-bd__layer--day { background-image: var(--pb-day-tall); }
+    .page-bd__layer--night { background-image: var(--pb-night-tall); }
+  }
+</style>

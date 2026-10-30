@@ -2,6 +2,8 @@
 import BaseLayout from './BaseLayout.astro';
 import EntryRow from '../components/EntryRow.astro';
 import PixelBackdrop from '../components/PixelBackdrop.astro';
+import PageBackdrop from '../components/PageBackdrop.astro';
+import { pageBackdrops } from '../config/site';
 import type { AnyEntry, ContentKind } from '../lib/content';
 import { getPublished, entryHref, formatDate, searchText, entryCover } from '../lib/content';
 
@@ -57,6 +59,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 ---
 
 <BaseLayout title={pageTitle} description={description} prevUrl={prevUrl} nextUrl={nextUrl}>
+  <PageBackdrop art={pageBackdrops[kind]} />
   <PixelBackdrop />
 
   <section class="wrap list-head">

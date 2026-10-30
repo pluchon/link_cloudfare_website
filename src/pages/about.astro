@@ -1,9 +1,10 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PaletteDecor from '../components/PaletteDecor.astro';
+import PageBackdrop from '../components/PageBackdrop.astro';
 import '../styles/prose.css';
 import { getCollection, render } from 'astro:content';
-import { site, profile } from '../config/site';
+import { site, profile, pageBackdrops } from '../config/site';
 
 // 正文与仓库同步：内容来自 src/content/profile/，改完推送即上线
 const docs = await getCollection('profile');
@@ -14,6 +15,7 @@ const skills = doc?.data.skills ?? [];
 ---
 
 <BaseLayout title="关于" description={`关于 ${site.name}`}>
+  <PageBackdrop art={pageBackdrops.about} quiet />
   <PaletteDecor />
 
   <section class="wrap card-wrap">

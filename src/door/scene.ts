@@ -711,6 +711,7 @@ export function mountDoor(options: DoorOptions): () => void {
   let ceiling = maxRatio;
   let raf = 0;
   const lookNow = new THREE.Vector3();
+  const lookDir = new THREE.Vector3();
   const shake = new THREE.Vector3();
   const c1 = new THREE.Vector3();
   const c2 = new THREE.Vector3();
@@ -782,14 +783,22 @@ export function mountDoor(options: DoorOptions): () => void {
       c1.copy(from.pos).addScaledVector(stationUp, from.pos.distanceTo(eye) * 0.25);
       c2.copy(eye).addScaledVector(back, 14).addScaledVector(stationUp, 7);
       bezier(from.pos, c1, c2, eye, e, camera.position);
-      // 视线：前半程看着黑洞，最后一段转成甲板上的默认朝向
+      // 视线：前半程看着黑洞，最后一段转成甲板上的默认朝向。插值的是视线方向、不是注视点：
+      // 注视点从远处收到眼前 0.05 的话，镜头离终点只差几厘米时方向会被这点残差带着甩一下，落地前视角就抽一下
       goalLook.lerpVectors(from.target, ORIGIN, smooth(clamp01(k / 0.5)));
-      controls.target.lerpVectors(goalLook, deckLook(lookNow), smooth(clamp01((k - 0.75) / 0.25)));
+      lookNow.copy(goalLook).sub(camera.position).normalize();
+      lookDir.copy(ORIGIN).sub(eye).normalize();
+      lookNow.lerp(lookDir, smooth(clamp01((k - 0.75) / 0.25))).normalize();
+      controls.target.copy(camera.position).addScaledVector(lookNow, 0.05);
       if (k >= 1) {
         camera.position.copy(eye);
         controls.target.copy(deckLook());
         controls.enableZoom = false;
         controls.enablePan = false;
+        // 自由视角把最近距离设成了 6，甲板上视线目标只在眼前 0.05：不还原的话第一次 update 会把镜头往后弹出 6，
+        // 下一帧又被拉回眼睛的位置，落地那一下就是闪一下、卡一下
+        controls.minDistance = 0;
+        controls.maxDistance = Infinity;
         controls.enabled = true;
         setMode('deck');
       }
