@@ -32,14 +32,16 @@ export const site = {
     'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404.webp',
 } as const;
 
-// 顶栏导航（/tags/ 页面保留，只是不进导航）。icon 对应 KindIcon.astro 里的图标名
+// 顶栏导航。icon 对应 KindIcon.astro 里的图标名；sep 表示在这一项左边画一道竖线，
+// 把前面五个内容分类和后面的标签、关于分开
 export const nav = [
-  { label: '项目', href: '/project/', icon: 'project' },
-  { label: '工具', href: '/tool/', icon: 'tool' },
-  { label: '探究', href: '/explore/', icon: 'explore' },
-  { label: '日常', href: '/daily/', icon: 'daily' },
-  { label: '小萌', href: '/xiaomeng/', icon: 'xiaomeng' },
-  { label: '关于', href: '/about/', icon: 'about' },
+  { label: '项目', href: '/project/', icon: 'project', sep: false },
+  { label: '工具', href: '/tool/', icon: 'tool', sep: false },
+  { label: '探究', href: '/explore/', icon: 'explore', sep: false },
+  { label: '日常', href: '/daily/', icon: 'daily', sep: false },
+  { label: '小萌', href: '/xiaomeng/', icon: 'xiaomeng', sep: false },
+  { label: '标签', href: '/tags/', icon: 'tags', sep: true },
+  { label: '关于', href: '/about/', icon: 'about', sep: false },
 ] as const;
 
 // 首页思维导图的根节点，也是关于页的名片

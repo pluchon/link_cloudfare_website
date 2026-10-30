@@ -22,10 +22,13 @@ function isActive(href: string): boolean {
     <nav class="site-nav" aria-label="主导航">
       {
         nav.map((item) => (
-          <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>
-            <KindIcon name={item.icon} class="site-nav__icon" />
-            {item.label}
-          </a>
+          <>
+            {item.sep && <span class="site-nav__sep" aria-hidden="true" />}
+            <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>
+              <KindIcon name={item.icon} class="site-nav__icon" />
+              {item.label}
+            </a>
+          </>
         ))
       }
     </nav>

@@ -1,12 +1,10 @@
 ---
 import type { GetStaticPaths } from 'astro';
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import EntryRow from '../../components/EntryRow.astro';
-import PageBackdrop from '../../components/PageBackdrop.astro';
+import ListLayout from '../../layouts/ListLayout.astro';
 import { pageBackdrops } from '../../config/site';
-import KindIcon from '../../components/KindIcon.astro';
-import { getAllPublished, tagCounts, type ContentKind, type AnyEntry } from '../../lib/content';
+import { getAllPublished, tagCounts, paginateEntries, type ContentKind, type AnyEntry } from '../../lib/content';
 
+// 单个标签的聚合页：和分类页同一套布局（标题行、搜索框、列表、翻页），只是条目跨分类、没有封面位
 export const getStaticPaths: GetStaticPaths = async () => {
   const all = await getAllPublished();
   return tagCounts(all.map((item) => item.entry)).map(({ tag }) => ({
@@ -22,95 +20,19 @@ const { tag, items } = Astro.props as {
   tag: string;
   items: { kind: ContentKind; entry: AnyEntry }[];
 };
+const pages = paginateEntries(items);
 ---
 
-<BaseLayout title={`标签：${tag}`} description={`标记为「${tag}」的全部内容。`}>
-  <PageBackdrop art={pageBackdrops.tagDetail} />
-
-  <section class="wrap head">
-    <div class="head__row" data-reveal>
-      <h1 class="head__title"><KindIcon name="tags" class="head__icon" />{tag}</h1>
-      <p class="head__meta">
-        共 {items.length} 篇 · <a class="text-link" href="/tags/">全部标签</a>
-      </p>
-    </div>
-  </section>
-
-  <section class="wrap body">
-    <div class="entry-list">
-      {items.map(({ kind, entry }) => <EntryRow kind={kind} entry={entry} />)}
-    </div>
-  </section>
-</BaseLayout>
-
-<style>
-  /* 背景是 fixed 的，内容层要抬上来 */
-  .head,
-  .body {
-    position: relative;
-    z-index: 1;
-  }
-
-  .head {
-    padding-block: 2rem 1.5rem;
-  }
-
-  /* 标题在左，篇数和入口贴到同一行的最右侧 */
-  .head__row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: clamp(1.5rem, 4vw, 3rem);
-    padding-bottom: 1.25rem;
-    border-bottom: var(--hair) solid var(--line);
-  }
-
-  .head__title {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-family: var(--font-serif);
-    font-size: clamp(1.75rem, 5vw, 2.5rem);
-    font-weight: 600;
-    margin: 0;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-  }
-
-  .head__title :global(.head__icon) {
-    font-size: 0.8em;
-    color: var(--fg-muted);
-  }
-
-  .head__meta {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin: 0;
-    color: var(--fg-muted);
-    font-size: 0.9375rem;
-    white-space: nowrap;
-  }
-
-  /* 基线对齐在这里反而看着歪：链接比篇数小 3 个字号，
-     又多带 2.4px 内边距和 1px 下划线，整个盒子往下坠。
-     去掉内边距让两个盒子等高，再按中心对齐。首页的分类标题行同理 */
-  .head__meta .text-link {
-    padding-bottom: 0;
-    line-height: 1;
-  }
-
-  .body {
-    padding-bottom: 4rem;
-  }
-
-  @media (max-width: 44rem) {
-    .head__row {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.6rem;
-    }
-
-    .head__title { white-space: normal; }
-  }
-</style>
+<ListLayout
+  title={tag}
+  docTitle={`标签：${tag}`}
+  description={`标记为「${tag}」的内容，共 ${items.length} 篇`}
+  icon="tags"
+  backdrop={pageBackdrops.tagDetail}
+  cover={null}
+  items={pages[0]}
+  allItems={items}
+  page={1}
+  totalPages={pages.length}
+  basePath={`/tags/${encodeURIComponent(tag)}/`}
+/>

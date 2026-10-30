@@ -3,17 +3,28 @@ import BaseLayout from './BaseLayout.astro';
 import EntryRow from '../components/EntryRow.astro';
 import PixelBackdrop from '../components/PixelBackdrop.astro';
 import PageBackdrop from '../components/PageBackdrop.astro';
-import KindIcon from '../components/KindIcon.astro';
-import { pageBackdrops } from '../config/site';
+import KindIcon, { type IconName } from '../components/KindIcon.astro';
+import { pageBackdrops, type PageBackdrop as BackdropArt } from '../config/site';
 import type { AnyEntry, ContentKind } from '../lib/content';
 import { getPublished, entryHref, formatDate, searchText, entryCover } from '../lib/content';
 
+type Item = { kind: ContentKind; entry: AnyEntry };
+
+// 两种用法：分类页给 kind + entries（这一页的条目）；
+// 单个标签页的条目跨分类，给 items（这一页）+ allItems（全部，检索用），图标、背景、封面各自指定
 interface Props {
-  kind: ContentKind;
+  kind?: ContentKind;
+  entries?: AnyEntry[];
+  items?: Item[];
+  allItems?: Item[];
+  icon?: IconName;
+  backdrop?: BackdropArt;
   title: string;
+  // 浏览器标签页上的标题，不给就用 title（标签页写成「标签：xx」）
+  docTitle?: string;
   description: string;
-  cover?: string;
-  entries: AnyEntry[];
+  // null 表示这一页没有封面位（标签页），undefined 是分类还没配封面、显示占位框
+  cover?: string | null;
   page?: number;
   totalPages?: number;
   basePath: string;
@@ -22,35 +33,46 @@ interface Props {
 
 const {
   kind,
+  entries = [],
+  items,
+  allItems,
+  icon,
+  backdrop,
   title,
+  docTitle,
   description,
   cover,
-  entries,
   page = 1,
   totalPages = 1,
   basePath,
   emptyText = '这里还没有内容。',
 } = Astro.props;
 
-// 检索索引覆盖该分类的全部条目，不只是当前这一页
-const all = await getPublished(kind);
-const index = all.map((entry) => ({
+const rows: Item[] = items ?? (kind ? entries.map((entry) => ({ kind, entry })) : []);
+
+// 检索索引覆盖全部条目，不只是当前这一页
+const all: Item[] = allItems ?? (kind ? (await getPublished(kind)).map((entry) => ({ kind, entry })) : []);
+const index = all.map(({ kind: itemKind, entry }) => ({
   t: entry.data.title,
   s: entry.data.summary,
   d: formatDate(entry.data.publishedAt),
   p: entry.data.publishedAt.toISOString(),
-  h: entryHref(kind, entry.data.slug),
+  h: entryHref(itemKind, entry.data.slug),
   c: entryCover(entry) ?? '',
   g: [...entry.data.tags],
   q: searchText(entry),
 }));
+// 全文索引按分类分文件，标签页的条目来自哪几个分类就拉哪几份
+const fullIndex = [...new Set(all.map((item) => item.kind))].map((k) => `/search/${k}.json`).join(',');
+const headIcon: IconName = icon ?? kind ?? 'tags';
+const art = backdrop ?? (kind ? pageBackdrops[kind] : pageBackdrops.tags);
 
 // 第一页回到列表根路径，其余走 /page/N/
 function pageHref(target: number): string {
   return target <= 1 ? basePath : `${basePath}page/${target}/`;
 }
 
-const pageTitle = page > 1 ? `${title} · 第 ${page} 页` : title;
+const pageTitle = page > 1 ? `${docTitle ?? title} · 第 ${page} 页` : (docTitle ?? title);
 
 // 满 5 篇才出翻页器；不足 5 篇时列表也不撑高，免得底下一大片空白
 const showPager = all.length >= 5;
@@ -61,14 +83,14 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 ---
 
 <BaseLayout title={pageTitle} description={description} prevUrl={prevUrl} nextUrl={nextUrl}>
-  <PageBackdrop art={pageBackdrops[kind]} />
+  <PageBackdrop art={art} />
   <PixelBackdrop />
 
   <section class="wrap list-head">
     {
       cover ? (
         <img class="list-cover" src={cover} alt="" data-reveal />
-      ) : (
+      ) : cover === null ? null : (
         <div class="list-cover cover-ph" data-reveal>
           封面待补
         </div>
@@ -77,7 +99,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 
     <div class="list-head__text">
       <div class="list-head__row" data-reveal style="--reveal-i: 1">
-        <h1 class="list-title"><KindIcon name={kind} class="list-title__icon" />{title}</h1>
+        <h1 class="list-title"><KindIcon name={headIcon} class="list-title__icon" />{title}</h1>
         <p class="list-desc">{description}</p>
       </div>
 
@@ -105,10 +127,10 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 
   <section class="wrap list-body" data-reserve={showPager ? '1' : undefined}>
     {
-      entries.length > 0 ? (
+      rows.length > 0 ? (
         <div class="entry-list" data-entry-list>
-          {entries.map((entry) => (
-            <EntryRow kind={kind} entry={entry} />
+          {rows.map((row) => (
+            <EntryRow kind={row.kind} entry={row.entry} />
           ))}
         </div>
       ) : (
@@ -144,7 +166,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     }
   </section>
 
-  <script type="application/json" data-search-index data-full={`/search/${kind}.json`} set:html={JSON.stringify(index)} />
+  <script type="application/json" data-search-index data-full={fullIndex} set:html={JSON.stringify(index)} />
 </BaseLayout>
 
 <style>
@@ -493,18 +515,24 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
       var full = null;
       var loading = false;
 
+      // 全文可能分在几份文件里（标签页跨分类），一起拉，全部到了才换上
       function loadFull() {
         if (full || loading || !source.dataset.full) return;
         loading = true;
-        fetch(source.dataset.full)
-          .then(function (res) {
-            if (!res.ok) throw new Error(String(res.status));
-            return res.json();
-          })
-          .then(function (rows) {
+        Promise.all(
+          source.dataset.full.split(',').map(function (url) {
+            return fetch(url).then(function (res) {
+              if (!res.ok) throw new Error(String(res.status));
+              return res.json();
+            });
+          }),
+        )
+          .then(function (parts) {
             full = {};
-            rows.forEach(function (row) {
-              full[row.h] = { raw: row.b, folded: fold(row.b) };
+            parts.forEach(function (rows) {
+              rows.forEach(function (row) {
+                full[row.h] = { raw: row.b, folded: fold(row.b) };
+              });
             });
             // 全文到了以后，正在输入的那次查询按全文重搜一遍
             if (input.value.trim()) onInput();

@@ -1,0 +1,41 @@
+---
+import type { GetStaticPaths } from 'astro';
+import ListLayout from '../../../../layouts/ListLayout.astro';
+import { pageBackdrops } from '../../../../config/site';
+import { getAllPublished, tagCounts, paginateEntries, type ContentKind, type AnyEntry } from '../../../../lib/content';
+
+// 单个标签超过一页（5 篇）时的第 2 页起
+export const getStaticPaths: GetStaticPaths = async () => {
+  const all = await getAllPublished();
+  return tagCounts(all.map((item) => item.entry)).flatMap(({ tag }) => {
+    const items = all.filter((item) => item.entry.data.tags.includes(tag));
+    const pages = paginateEntries(items);
+    return pages.slice(1).map((slice, index) => ({
+      params: { tag, page: String(index + 2) },
+      props: { tag, items, slice, page: index + 2, totalPages: pages.length },
+    }));
+  });
+};
+
+const { tag, items, slice, page, totalPages } = Astro.props as {
+  tag: string;
+  items: { kind: ContentKind; entry: AnyEntry }[];
+  slice: { kind: ContentKind; entry: AnyEntry }[];
+  page: number;
+  totalPages: number;
+};
+---
+
+<ListLayout
+  title={tag}
+  docTitle={`标签：${tag}`}
+  description={`标记为「${tag}」的内容，共 ${items.length} 篇`}
+  icon="tags"
+  backdrop={pageBackdrops.tagDetail}
+  cover={null}
+  items={slice}
+  allItems={items}
+  page={page}
+  totalPages={totalPages}
+  basePath={`/tags/${encodeURIComponent(tag)}/`}
+/>

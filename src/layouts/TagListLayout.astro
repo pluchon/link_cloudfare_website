@@ -1,6 +1,6 @@
 ---
 // 标签总览：做成一本按字母查的索引。左边是热度榜（最常用的几个，带一根按篇数伸缩的细线），
-// 右边按首字母分组，中文按拼音首字母归进同一套 A–Z，顶上一排字母可以直接跳过去。
+// 右边按首字母分组（每组一行、单列往下排），中文按拼音首字母归进同一套 A–Z。
 // 标签一共几十个，一页放得下，所以不再分页（老的 /tags/page/N/ 由中间件 301 回来）
 import BaseLayout from './BaseLayout.astro';
 import PageBackdrop from '../components/PageBackdrop.astro';
@@ -37,10 +37,9 @@ const groups = LETTERS.map((letter) => ({
   letter,
   items: tags.filter((t) => initial(t.tag) === letter).sort((a, b) => collator.compare(a.tag, b.tag)),
 })).filter((group) => group.items.length > 0);
-const present = new Set(groups.map((group) => group.letter));
 
-// 热度榜：最常用的 8 个；细线长度按篇数占第一名的比例
-const top = tags.slice(0, 8);
+// 热度榜：最常用的 10 个；细线长度按篇数占第一名的比例
+const top = tags.slice(0, 10);
 const topMax = top[0]?.count ?? 1;
 
 const tagHref = (tag: string) => `/tags/${encodeURIComponent(tag)}/`;
@@ -48,7 +47,8 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
 ---
 
 <BaseLayout title="标签" description="按话题浏览全部内容。">
-  <PageBackdrop art={pageBackdrops.tags} />
+  <!-- 插画里的人物正好压在左栏热度榜下面，淡一档 -->
+  <PageBackdrop art={pageBackdrops.tags} quiet />
 
   <section class="wrap head">
     <div class="head__row" data-reveal>
@@ -61,7 +61,7 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
     tags.length > 0 ? (
       <section class="wrap body" data-tag-index>
         <aside class="hot" data-reveal style="--reveal-i: 1">
-          <h2 class="eyebrow hot__title">常用 · TOP {top.length}</h2>
+          <h2 class="hot__title"><KindIcon name="hot" class="hot__icon" />常用 Top{top.length}</h2>
           <ol class="hot__list">
             {top.map(({ tag, count }, i) => (
               <li>
@@ -94,19 +94,6 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
               <span class="filter__count" data-tag-count aria-live="polite"></span>
             </label>
 
-            <nav class="letters" aria-label="按首字母跳转">
-              {LETTERS.map((letter) =>
-                present.has(letter) ? (
-                  <a class="letters__key" href={`#${anchor(letter)}`} data-letter={letter}>
-                    {letter}
-                  </a>
-                ) : (
-                  <span class="letters__key letters__key--off" aria-hidden="true">
-                    {letter}
-                  </span>
-                ),
-              )}
-            </nav>
           </div>
 
           <div class="dict__groups">
@@ -122,6 +109,9 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
                     </a>
                   </li>
                 ))}
+                <li data-more hidden>
+                  <button class="chip chip--more" type="button">更多...</button>
+                </li>
               </ul>
             </section>
           ))}
@@ -210,7 +200,18 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
   }
 
   .hot__title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     margin: 0 0 0.75rem;
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .hot__title :global(.hot__icon) {
+    font-size: 1.15em;
+    color: var(--fg-muted);
   }
 
   .hot__list {
@@ -309,42 +310,6 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
     white-space: nowrap;
   }
 
-  /* 一排字母：有标签的可以点，没有的淡掉 */
-  .letters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.15rem;
-  }
-
-  .letters__key {
-    display: grid;
-    place-items: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--fg-muted);
-    border: var(--hair) solid transparent;
-    transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
-  }
-
-  a.letters__key:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  .letters__key--off,
-  .letters__key[data-dim='1'] {
-    color: var(--line-strong);
-    pointer-events: none;
-  }
-
-  /* 字母组排成两栏，每组不跨栏 */
-  .dict__groups {
-    columns: 2;
-    column-gap: clamp(1.5rem, 3vw, 2.5rem);
-  }
-
   /* 每组：左边一个大字母，右边一串标签；组与组之间一道发丝线 */
   .dict__group {
     display: grid;
@@ -408,6 +373,16 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
 
   .chip:hover .chip__count { color: var(--accent); }
 
+  /* 「更多...」：虚线框，和标签同高 */
+  .chip--more {
+    border-style: dashed;
+    background: none;
+    color: var(--fg-muted);
+    font-family: var(--font-serif);
+    font-size: 0.9375rem;
+    cursor: pointer;
+  }
+
   .empty {
     margin: 2rem 0 0;
     color: var(--fg-faint);
@@ -417,7 +392,6 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
   @media (max-width: 56rem) {
     /* 窄了就上下排：热度榜在上面，横着两列 */
     .body { grid-template-columns: minmax(0, 1fr); }
-    .dict__groups { columns: 1; }
     .hot { position: static; }
 
     .hot__list {
@@ -444,7 +418,11 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
 
 <script is:inline>
   (function () {
-    // 边输边筛：标签名里包含输入的字就留下，组里一个不剩就整组藏起来，字母条上对应的字母也淡掉
+    // 每组标签平时最多三行，超出时第三行末尾换成「更多...」，每点一次多放两行；
+    // 筛选框有内容时不收，只按名字过滤，组里一个不剩就整组藏起来
+    var FIRST = 3;
+    var STEP = 2;
+
     function init() {
       var root = document.querySelector('[data-tag-index]');
       if (!root) return;
@@ -459,22 +437,85 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
         return String(text || '').normalize('NFKC').toLowerCase().trim();
       }
 
+      // 一组标签实际排了几行：按每个可见项的 offsetTop 去重
+      function lines(list) {
+        var tops = {};
+        var n = 0;
+        for (var i = 0; i < list.children.length; i++) {
+          var li = list.children[i];
+          if (li.hidden) continue;
+          var key = Math.round(li.offsetTop);
+          if (!tops[key]) {
+            tops[key] = 1;
+            n += 1;
+          }
+        }
+        return n;
+      }
+
+      function clamp(group) {
+        var list = group.querySelector('.dict__tags');
+        var tags = group.querySelectorAll('[data-tag]');
+        var more = group.querySelector('[data-more]');
+        if (!list || !more) return;
+        var max = group.__lines || FIRST;
+        tags.forEach(function (li) {
+          li.hidden = false;
+        });
+        more.hidden = true;
+        if (lines(list) <= max) return;
+        // 从最后一个往前藏，直到连同「更多...」一起回到 max 行以内
+        more.hidden = false;
+        for (var k = tags.length - 1; k > 0; k--) {
+          tags[k].hidden = true;
+          if (lines(list) <= max) break;
+        }
+      }
+
+      function clampAll() {
+        if (fold(input.value)) return;
+        groups.forEach(clamp);
+      }
+
+      root.addEventListener('click', function (event) {
+        var btn = event.target.closest ? event.target.closest('[data-more]') : null;
+        if (!btn) return;
+        var group = btn.closest('[data-group]');
+        group.__lines = (group.__lines || FIRST) + STEP;
+        clamp(group);
+      });
+
       input.addEventListener('input', function () {
         var q = fold(input.value);
+        if (!q) {
+          groups.forEach(function (group) {
+            group.hidden = false;
+          });
+          clampAll();
+          if (counter) counter.textContent = '';
+          if (empty) empty.hidden = true;
+          return;
+        }
         var shown = 0;
         items.forEach(function (li) {
-          var hit = !q || fold(li.getAttribute('data-tag')).indexOf(q) !== -1;
+          var hit = fold(li.getAttribute('data-tag')).indexOf(q) !== -1;
           li.hidden = !hit;
           if (hit) shown += 1;
         });
         groups.forEach(function (group) {
-          var any = group.querySelector('[data-tag]:not([hidden])');
-          group.hidden = !any;
-          var key = root.querySelector('[data-letter="' + group.getAttribute('data-group') + '"]');
-          if (key) key.dataset.dim = any ? '' : '1';
+          var more = group.querySelector('[data-more]');
+          if (more) more.hidden = true;
+          group.hidden = !group.querySelector('[data-tag]:not([hidden])');
         });
-        if (counter) counter.textContent = q ? shown + ' / ' + items.length : '';
+        if (counter) counter.textContent = shown + ' / ' + items.length;
         if (empty) empty.hidden = shown > 0;
+      });
+
+      clampAll();
+      var timer = 0;
+      window.addEventListener('resize', function () {
+        clearTimeout(timer);
+        timer = setTimeout(clampAll, 120);
       });
     }
 

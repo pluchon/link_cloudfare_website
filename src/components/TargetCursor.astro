@@ -1,0 +1,264 @@
+---
+// 首页导图的瞄准光标：平时是一个慢慢旋转的四角准星，指到卡片、按钮、标签上，四个角飞过去贴住它的四个边角；
+// 导图拖动、缩放时跟着目标走。思路来自 Vue Bits 的 TargetCursor，但没有引 gsap
+// （站点运行时依赖只有 astro 和 three），用 requestAnimationFrame 按经过时间做指数逼近。
+// 颜色就是 --accent：跟着四套主题色、深浅模式一起变。只对鼠标生效，触屏设备不出现；
+// 减少动态效果时不转，贴边一步到位
+interface Props {
+  // 哪些元素会被「瞄准」；最里层命中的那个优先（卡片里的标签比卡片优先）
+  targets?: string;
+  // 准星转一圈的秒数
+  spin?: number;
+}
+
+const {
+  targets = '.node:not(.node--shelf), .knob, .zoombar__btn, .zoombar__level, .zoombar__track, .card__tag, .shelf__all, .text-link',
+  spin = 3,
+} = Astro.props;
+---
+
+<div class="tcursor" data-target-cursor data-targets={targets} data-spin={spin} aria-hidden="true">
+  <span class="tcursor__dot"></span>
+  <span class="tcursor__corner tcursor__corner--tl"></span>
+  <span class="tcursor__corner tcursor__corner--tr"></span>
+  <span class="tcursor__corner tcursor__corner--br"></span>
+  <span class="tcursor__corner tcursor__corner--bl"></span>
+</div>
+
+<style>
+  .tcursor {
+    --s: 11px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 9999;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    opacity: 0;
+    color: var(--accent);
+    /* 一圈底色的细光晕：插画、封面、深色卡片上都看得清 */
+    filter: drop-shadow(0 0 1px var(--bg)) drop-shadow(0 0 1px var(--bg));
+    transition: opacity var(--dur-1) var(--ease-out);
+    will-change: transform;
+  }
+
+  .tcursor[data-on='1'] { opacity: 1; }
+
+  .tcursor__dot,
+  .tcursor__corner {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  .tcursor__dot {
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
+    border-radius: 50%;
+    background: currentColor;
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+
+  .tcursor[data-press='1'] .tcursor__dot { transform: scale(0.6); }
+
+  /* 每个角是一个只画两条边的小方框，位置由脚本给（以方框中心为准） */
+  .tcursor__corner {
+    width: var(--s);
+    height: var(--s);
+    margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+    border: 2px solid currentColor;
+  }
+
+  .tcursor__corner--tl { border-right: 0; border-bottom: 0; }
+  .tcursor__corner--tr { border-left: 0; border-bottom: 0; }
+  .tcursor__corner--br { border-left: 0; border-top: 0; }
+  .tcursor__corner--bl { border-right: 0; border-top: 0; }
+
+  /* 光标接管期间藏起系统光标（包括导图自绘的抓手） */
+  :global(html[data-target-cursor='1'] .canvas),
+  :global(html[data-target-cursor='1'] .canvas *) {
+    cursor: none !important;
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    function teardown() {
+      if (!window.__nnCursor) return;
+      window.__nnCursor();
+      window.__nnCursor = null;
+    }
+
+    function init() {
+      teardown();
+      var el = document.querySelector('[data-target-cursor]');
+      var area = document.querySelector('[data-canvas]');
+      if (!el || !area) return;
+      // 只给有悬停能力的精确指针（鼠标、触控板）；手机、平板上什么都不做
+      if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+      var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var selector = el.getAttribute('data-targets');
+      var spinSec = parseFloat(el.getAttribute('data-spin')) || 3;
+      var dot = el.querySelector('.tcursor__dot');
+      var corners = Array.prototype.slice.call(el.querySelectorAll('.tcursor__corner'));
+      var S = 11;
+      // 平时四个角围着中心点：左上、右上、右下、左下（顺时针，和 DOM 顺序一致）
+      var IDLE = [[-S, -S], [S, -S], [S, S], [-S, S]];
+      // 贴边时角在目标外面留出的空隙
+      var PAD = 5;
+
+      var mx = 0;
+      var my = 0;
+      var x = 0;
+      var y = 0;
+      var angle = 0;
+      var target = null;
+      var pressX = 0;
+      var pressY = 0;
+      var inside = false;
+      var raf = 0;
+      var last = 0;
+      var cur = IDLE.map(function (p) {
+        return [p[0], p[1]];
+      });
+
+      document.documentElement.dataset.targetCursor = '1';
+
+      function ease(rate, dt) {
+        return reduced ? 1 : 1 - Math.exp(-rate * dt);
+      }
+
+      function frame(now) {
+        var dt = Math.min((now - (last || now)) / 1000, 0.05);
+        last = now;
+
+        var k = ease(32, dt);
+        x += (mx - x) * k;
+        y += (my - y) * k;
+
+        // 目标被收起、换页或者正在拖画布，就松开
+        if (target && (!target.isConnected || !target.offsetParent || panning())) target = null;
+
+        var turns = 0;
+        if (target) {
+          // 锁定时转到最近的直角上停住；方框四向对称，停在哪个直角都一样，只是每个角要换个位置去贴
+          var snap = Math.round(angle / 90) * 90;
+          angle += (snap - angle) * ease(18, dt);
+          turns = ((Math.round(angle / 90) % 4) + 4) % 4;
+        } else if (!reduced) {
+          angle = (angle + (dt * 360) / spinSec) % 360;
+        }
+
+        var rad = (-angle * Math.PI) / 180;
+        var cos = Math.cos(rad);
+        var sin = Math.sin(rad);
+        var r = target ? target.getBoundingClientRect() : null;
+        var h = S / 2;
+        var spots = r
+          ? [
+              [r.left - PAD + h, r.top - PAD + h],
+              [r.right + PAD - h, r.top - PAD + h],
+              [r.right + PAD - h, r.bottom + PAD - h],
+              [r.left - PAD + h, r.bottom + PAD - h],
+            ]
+          : null;
+
+        var kc = ease(target ? 20 : 14, dt);
+        for (var i = 0; i < 4; i++) {
+          var want = IDLE[i];
+          if (spots) {
+            // 第 i 个角转了 turns 个直角以后，长得像第 (i + turns) 个角，就去贴那个位置；
+            // 屏幕坐标换回准星自己（转过 angle）的坐标系
+            var spot = spots[(i + turns) % 4];
+            var dx = spot[0] - x;
+            var dy = spot[1] - y;
+            want = [dx * cos - dy * sin, dx * sin + dy * cos];
+          }
+          cur[i][0] += (want[0] - cur[i][0]) * kc;
+          cur[i][1] += (want[1] - cur[i][1]) * kc;
+          corners[i].style.transform = 'translate(' + cur[i][0].toFixed(2) + 'px,' + cur[i][1].toFixed(2) + 'px)';
+        }
+
+        el.style.transform =
+          'translate(' + x.toFixed(2) + 'px,' + y.toFixed(2) + 'px) rotate(' + angle.toFixed(2) + 'deg)' +
+          (el.dataset.press === '1' ? ' scale(0.9)' : '');
+
+        raf = inside ? requestAnimationFrame(frame) : 0;
+      }
+
+      function start() {
+        if (raf) return;
+        last = 0;
+        raf = requestAnimationFrame(frame);
+      }
+
+      // 导图在按下鼠标时就标记 dragging，真拖出去几像素才算在拖；只是点一下的话准星继续锁着
+      function panning() {
+        return area.dataset.dragging === '1' && Math.abs(mx - pressX) + Math.abs(my - pressY) > 6;
+      }
+
+      function pick(node) {
+        var hit = node && node.closest ? node.closest(selector) : null;
+        return hit && area.contains(hit) ? hit : null;
+      }
+
+      function onMove(event) {
+        mx = event.clientX;
+        my = event.clientY;
+        if (!inside) {
+          // 第一次进来直接落在指针上，不要从左上角飞过来
+          inside = true;
+          x = mx;
+          y = my;
+          el.dataset.on = '1';
+          start();
+        }
+        target = panning() ? null : pick(event.target);
+      }
+
+      function onLeave() {
+        inside = false;
+        target = null;
+        el.dataset.on = '';
+      }
+
+      function onDown(event) {
+        pressX = event.clientX;
+        pressY = event.clientY;
+        el.dataset.press = '1';
+      }
+
+      function onUp() {
+        el.dataset.press = '';
+      }
+
+      area.addEventListener('pointermove', onMove, { passive: true });
+      area.addEventListener('pointerleave', onLeave);
+      window.addEventListener('pointerdown', onDown);
+      window.addEventListener('pointerup', onUp);
+
+      window.__nnCursor = function () {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        area.removeEventListener('pointermove', onMove);
+        area.removeEventListener('pointerleave', onLeave);
+        window.removeEventListener('pointerdown', onDown);
+        window.removeEventListener('pointerup', onUp);
+        delete document.documentElement.dataset.targetCursor;
+      };
+    }
+
+    document.addEventListener('astro:page-load', init);
+    document.addEventListener('astro:before-swap', teardown);
+    if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    }
+  })();
+</script>

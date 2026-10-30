@@ -399,6 +399,15 @@ body.is-canvas > main {
   transition: transform var(--dur-1) var(--ease-out);
 }
 
+/* 内容分类和「标签、关于」之间的一道竖线 */
+.site-nav__sep {
+  flex: none;
+  width: var(--hair);
+  height: 0.95rem;
+  margin-inline: 0.35rem;
+  background: var(--line-strong);
+}
+
 /* 图标比文字略大一点才和汉字等重；悬浮时轻轻歪一下头 */
 .site-nav__icon {
   font-size: 1.125em;
@@ -563,13 +572,18 @@ body.is-canvas > main {
     border-top: var(--hair) solid var(--line);
   }
 
-  .site-nav a { padding: 0.45rem 0.35rem; font-size: 0.8125rem; }
+  /* 七项加一道竖线，375 宽要挤得下：内边距、图标和字距都收一点 */
+  .site-nav a { gap: 0.15rem; padding: 0.45rem 0.12rem; font-size: 0.78125rem; }
+  .site-nav__icon { font-size: 1em; }
+  .site-nav__sep { margin-inline: 0.1rem; }
   /* 下划线要跟着改后的内边距收，否则会伸到文字外面 */
-  .site-nav a::after { left: 0.35rem; right: 0.35rem; }
+  .site-nav a::after { left: 0.12rem; right: 0.12rem; }
 }
 
+/* 再窄（320 一档）连图标也放不下了，只留文字 */
 @media (max-width: 22.5rem) {
-  .site-nav a { padding: 0.45rem 0.2rem; font-size: 0.78125rem; }
+  .site-nav__icon { display: none; }
+  .site-nav a { padding: 0.45rem 0.2rem; }
   .site-nav a::after { left: 0.2rem; right: 0.2rem; }
   .icon-btn { width: 2rem; }
 }

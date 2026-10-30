@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import KindIcon from '../components/KindIcon.astro';
+import TargetCursor from '../components/TargetCursor.astro';
 import { profile, branches, BRANCH_LEAF_LIMIT, site } from '../config/site';
 import {
   getPublished,
@@ -68,6 +69,7 @@ for (const branch of branches) {
 ---
 
 <BaseLayout variant="canvas">
+  <TargetCursor />
   <div class="canvas" data-canvas>
     <!-- 背景插画：白天、夜里各一层，跟着主题交叉淡入；拖动导图时反方向轻轻挪一点（视差） -->
     <div class:list={['backdrop', { 'backdrop--illustrated': Boolean(bg.light && bg.dark) }]} aria-hidden="true" style={backdropVars}>
@@ -218,10 +220,10 @@ for (const branch of branches) {
                     <div class="shelf__head">
                       <span class="shelf__title">
                         <KindIcon name={branch.key as ContentKind} class="shelf__icon" />
-                        {branch.label} · 最新 {leaves[branch.key].length} 篇
+                        {branch.label}
                       </span>
-                      <a class="text-link" href={branch.href}>
-                        全部 {leaves[branch.key].length + overflow[branch.key]} 篇
+                      <a class="shelf__all" href={branch.href}>
+                        {`全部 ${leaves[branch.key].length + overflow[branch.key]} 篇`}
                       </a>
                     </div>
 
@@ -242,13 +244,13 @@ for (const branch of branches) {
                             <span class="card__title">{leaf.title}</span>
                             <span class="card__summary">{leaf.summary}</span>
                             {leaf.tags.length > 0 && (
-                              <span class="card__tags">
-                                {leaf.tags.slice(0, 3).map((tag) => (
-                                  <a class="card__tag" href={`/tags/${encodeURIComponent(tag)}/`}>
+                              <span class="card__tags" data-tag-clamp>
+                                {leaf.tags.map((tag) => (
+                                  <a class="card__tag" href={`/tags/${encodeURIComponent(tag)}/`} title={tag}>
                                     {tag}
                                   </a>
                                 ))}
-                                {leaf.tags.length > 3 && <span class="card__tag card__tag--more">+{leaf.tags.length - 3}</span>}
+                                <span class="card__tag card__tag--more" hidden />
                               </span>
                             )}
                           </div>
@@ -854,18 +856,29 @@ for (const branch of branches) {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.12em;
+    font-family: var(--font-serif);
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  .shelf__title :global(.shelf__icon) {
+    font-size: 1.05em;
     color: var(--fg-muted);
   }
 
-  .shelf__title :global(.shelf__icon) { font-size: 1.35em; }
-
-  .shelf__head .text-link {
-    padding-bottom: 0;
+  /* 「全部 N 篇」：汉字和数字用同一套字体。以前套的是 .text-link（等宽 + 字距 + 大写），
+     数字落在等宽字体、汉字退回别的字体，看上去大小不一 */
+  .shelf__all {
+    font-size: 0.8125rem;
     line-height: 1;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    border-bottom: var(--hair) solid var(--line-strong);
+    padding-bottom: 0.2rem;
+    transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
   }
+
+  .shelf__all:hover { color: var(--accent); border-color: var(--accent); }
 
   .shelf__grid {
     position: relative;
@@ -948,7 +961,12 @@ for (const branch of branches) {
     padding-top: 0.35rem;
   }
 
+  /* 最多两行，由脚本按实际排版收（clampTags）；单个标签比一行还长就在标签里截断加省略号 */
   .card__tag {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 0.1rem 0.4rem;
     border: var(--hair) solid var(--line);
     font-family: var(--font-mono);
@@ -1191,8 +1209,6 @@ for (const branch of branches) {
     }
 
     .card__summary { display: none; }
-    /* 窄屏一行放不下三个标签，只留两个，免得卡片被折行撑高 */
-    .card__tag:nth-child(n + 3) { display: none; }
     .card__body { padding: 0.6rem 0.7rem; }
     .card--more { display: flex; }
 
@@ -1477,6 +1493,43 @@ for (const branch of branches) {
         });
       }
 
+      // 卡片底部的标签最多两行：先全部摆出来，超过两行就从最后一个开始藏，
+      // 末尾补一枚「+N」（N 是藏掉的个数），直到连同「+N」一起回到两行以内。
+      // 只能在分组可见时量（隐藏时没有排版），所以展开那一帧和窗口变化时各跑一次
+      function tagLines(row) {
+        var tops = {};
+        var lines = 0;
+        for (var i = 0; i < row.children.length; i++) {
+          var child = row.children[i];
+          if (child.hidden) continue;
+          var key = Math.round(child.offsetTop);
+          if (!tops[key]) {
+            tops[key] = 1;
+            lines += 1;
+          }
+        }
+        return lines;
+      }
+
+      function clampTags(scope) {
+        scope.querySelectorAll('[data-tag-clamp]').forEach(function (row) {
+          if (!row.offsetParent) return;
+          var tags = row.querySelectorAll('a.card__tag');
+          var more = row.querySelector('.card__tag--more');
+          tags.forEach(function (tag) {
+            tag.hidden = false;
+          });
+          if (more) more.hidden = true;
+          if (!more || tagLines(row) <= 2) return;
+          more.hidden = false;
+          for (var k = tags.length - 1; k > 0; k--) {
+            tags[k].hidden = true;
+            more.textContent = '+' + (tags.length - k);
+            if (tagLines(row) <= 2) break;
+          }
+        });
+      }
+
       // 同一层只开一支：展开新的那支之前，把已经开着的兄弟分支直接收掉（不播退场，视线马上要移走）。
       // 它存着的「展开前视图」转交给新的这支，最后收起时还是回到最初的样子
       function closeSiblings(knob, group) {
@@ -1543,6 +1596,7 @@ for (const branch of branches) {
         pop(group, true);
 
         requestAnimationFrame(function () {
+          clampTags(group);
           fit();
           drawWires(true);
           measure();
@@ -1594,14 +1648,21 @@ for (const branch of branches) {
         canvas.style.setProperty('--pan-y', ty + 'px');
       }
 
-      // 展开的卡片多到一屏放不下时，整张图按比例缩小，最多缩到 55%
+      // 展开的卡片多到一屏放不下时，整张图按比例缩小，最多缩到 45%（五个分类全展开在 900 高的屏上要 0.55 左右）
       function autoScale() {
         var s = Math.min(
           1,
           (canvas.clientWidth - 32) / map.offsetWidth,
-          (canvas.clientHeight - 32) / map.offsetHeight,
+          (scene.clientHeight - 32) / map.offsetHeight,
         );
-        return Math.max(0.55, s);
+        return Math.max(0.45, s);
+      }
+
+      // 宽屏的顶栏是浮在画布上的（半透明），导图要在顶栏以下的那块区域里居中、缩放，
+      // 不然展开五个分类时第一张卡的上沿正好压在顶栏底下。窄屏是正常文档流，不需要
+      function syncInset() {
+        var header = document.querySelector('.site-header');
+        scene.style.top = wide && header ? Math.round(header.getBoundingClientRect().bottom) + 'px' : '';
       }
 
       // 尺子按对数刻度：30% → 0，200% → 1，每放大同样的倍数游标走同样的距离
@@ -1741,7 +1802,7 @@ for (const branch of branches) {
           var screenBottom =
             map.offsetTop + ty + mh / 2 + (bottom - mh / 2) * scale;
           var screenTop = map.offsetTop + ty + mh / 2 + (top - mh / 2) * scale;
-          var overBottom = screenBottom - (canvas.clientHeight - PAD);
+          var overBottom = screenBottom - (scene.clientHeight - PAD);
 
           var dx = overRight > 0 ? -overRight : 0;
           // 往上推之前先确认别把这张卡的顶端顶出视口
@@ -1761,7 +1822,7 @@ for (const branch of branches) {
         if (userZoom === null) {
           var want = Math.min(
             (canvas.clientWidth - 96) / bw,
-            (canvas.clientHeight - 96) / bh,
+            (scene.clientHeight - 96) / bh,
           );
           // 只往自动适应之上够，且不越过 100%——放太大反而看不到上下文
           scale = Math.max(autoScale(), Math.min(1, want));
@@ -1782,7 +1843,7 @@ for (const branch of branches) {
         } else {
           tx = canvas.clientWidth / 2 - map.offsetLeft - px * scale;
         }
-        ty = canvas.clientHeight / 2 - map.offsetTop - h / 2 - (py - h / 2) * scale;
+        ty = scene.clientHeight / 2 - map.offsetTop - h / 2 - (py - h / 2) * scale;
         measure();
       }
 
@@ -1850,10 +1911,10 @@ for (const branch of branches) {
 
         // 四周各留一屏七成的余量，随便怎么拖都够
         var slackX = canvas.clientWidth * 0.7;
-        var slackY = canvas.clientHeight * 0.7;
+        var slackY = scene.clientHeight * 0.7;
         minX = Math.min(0, canvas.clientWidth - right) - slackX;
         maxX = Math.max(0, -left) + slackX;
-        minY = Math.min(0, canvas.clientHeight - bottom) - slackY;
+        minY = Math.min(0, scene.clientHeight - bottom) - slackY;
         maxY = Math.max(0, -top) + slackY;
 
         tx = Math.min(maxX, Math.max(minX, tx));
@@ -1992,15 +2053,19 @@ for (const branch of branches) {
           tx = 0;
           ty = 0;
           scene.style.transform = '';
+          syncInset();
           map.style.transform = '';
           scale = 1;
           canvas.dataset.pannable = '';
           userZoom = null;
           updateZoomUI();
+          clampTags(map);
           // 竖版树的线也要跟着重新量，横竖屏切换时几何整个换了一套
           drawWires(false);
           return;
         }
+        syncInset();
+        clampTags(map);
         fit();
         drawWires(false);
         measure();
@@ -2062,6 +2127,7 @@ for (const branch of branches) {
         onKey: onKey,
       };
 
+      syncInset();
       fit();
       measure();
 
