@@ -14,11 +14,9 @@
 
 > github: https://github.com/pluchon/link_cloudfare_website
 
-[访问网站](https://www.nuonuoya.cn) · [开发约定](https://github.com/pluchon/link_cloudfare_website/blob/main/AGENTS.md)
+## 站里有什么
 
 ![门户页：站在观测甲板上望向黑洞](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/personal_website/door.png)
-
-## 站里有什么
 
 进站先到门户页 `/door/`：站在绕黑洞公转的空间站甲板上，按住拖动可以离开甲板、绕着黑洞自由观察，五个分类是五个绕黑洞运行的探测器。点探测器会飞过去对接，旁边展开一块终端，显示这个分类最新的几篇文章；点黑洞或终端屏幕，就穿过视界进入站点。
 
