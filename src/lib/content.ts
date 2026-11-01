@@ -84,25 +84,6 @@ export function tagCounts(entries: { data: { tags: string[] } }[]) {
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
-// 同标签相关阅读：按共同标签数排序，取前 N 条
-export function relatedEntries<T extends { id: string; data: { tags: string[] } }>(
-  current: T,
-  pool: T[],
-  limit = 3,
-): T[] {
-  const tags = new Set(current.data.tags);
-  return pool
-    .filter((item) => item.id !== current.id)
-    .map((item) => ({
-      item,
-      score: item.data.tags.filter((tag) => tags.has(tag)).length,
-    }))
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ item }) => item);
-}
-
 // 列表分页大小
 export const PAGE_SIZE = 5;
 

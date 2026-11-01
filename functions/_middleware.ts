@@ -21,6 +21,10 @@ const RENAMED: ReadonlyArray<readonly [string, string]> = [
     encodeURI('/daily/日常随笔-在算法的荒原上，做一只看月亮的鸟'),
     encodeURI('/explore/在算法的荒原上，做一只看月亮的鸟'),
   ],
+  [
+    encodeURI('/project/硅基计划-个人项目介绍-萌部落社区-AI全栈+AI角色中台'),
+    encodeURI('/project/硅基计划-个人项目介绍-萌部落社区-AI全栈+奶糖助手'),
+  ],
 ];
 
 // 标签总览以前分页，现在一页放下了，老的分页地址统一回到总览

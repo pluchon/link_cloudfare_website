@@ -12,10 +12,9 @@ interface Props {
   headings: MarkdownHeading[];
   prev?: AnyEntry;
   next?: AnyEntry;
-  related?: AnyEntry[];
 }
 
-const { kind, entry, headings, prev, next, related = [] } = Astro.props;
+const { kind, entry, headings, prev, next } = Astro.props;
 const { data } = entry;
 const body = entry.body ?? '';
 const words = countWords(body);
@@ -167,22 +166,6 @@ for (const h of headings) {
             )}
           </div>
         </nav>
-      )
-    }
-
-    {
-      related.length > 0 && (
-        <section class="related">
-          <p class="eyebrow">相关阅读</p>
-          <ul class="related__list">
-            {related.map((item) => (
-              <li>
-                <a href={entryHref(kind, item.data.slug)}>{item.data.title}</a>
-                <span class="related__date">{formatDate(item.data.publishedAt)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
       )
     }
   </article>
@@ -440,39 +423,6 @@ for (const h of headings) {
   }
 
   /* ---------- 页尾区块 ---------- */
-
-  .related {
-    margin-top: 3rem;
-    padding-top: 1.25rem;
-    border-top: var(--hair) solid var(--line);
-  }
-
-  .related__list {
-    list-style: none;
-    margin: 0.9rem 0 0;
-    padding: 0;
-  }
-
-  .related__list li {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: baseline;
-    padding: 0.7rem 0;
-    border-bottom: var(--hair) solid var(--line);
-    font-size: 0.9375rem;
-  }
-
-  .related__list a:hover {
-    color: var(--accent);
-  }
-
-  .related__date {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    color: var(--fg-faint);
-    white-space: nowrap;
-  }
 
   .pager {
     display: grid;
