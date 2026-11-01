@@ -5,6 +5,7 @@ import { buildStation } from './station';
 import { buildProbe, orbitFrame, orbitPath, orbitPosition, type Orbit } from './orbits';
 import { travel, type LoaderUI } from './loader';
 import { buildRocks } from './rocks';
+import { lensPoint, warpBeta, warpImage, warpMaterial, warpObject } from './warp';
 
 // 屏幕上的一组标注：引线、端点圈、文字
 interface Tag {
@@ -48,6 +49,7 @@ interface DoorOptions {
     view: HTMLElement;
     headingTape: HTMLElement;
     pitchTape: HTMLElement;
+    guide: HTMLElement;
   };
 }
 
@@ -89,6 +91,8 @@ const UNDOCK_MS = 2600;
 // 点屏幕后，屏幕收起要这么久，收完才开始俯冲
 const FOLD_MS = 650;
 const DIVE_MS = 4600;
+// 要画次像的物体和灯光额外放在这一层
+const IMAGE_LAYER = 1;
 
 const ORIGIN = new THREE.Vector3();
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -147,6 +151,7 @@ export function mountDoor(options: DoorOptions): () => void {
     uHoleNdc: { value: new THREE.Vector2() },
     uStreak: { value: 0 },
     uAspect: { value: 1 },
+    uProjZ: { value: new THREE.Vector2() },
   };
   const defines: Record<string, number | string> = { STEPS: lite ? 100 : 170 };
   if (lite) defines.LITE = '';
@@ -157,8 +162,8 @@ export function mountDoor(options: DoorOptions): () => void {
       fragmentShader: holeFragment,
       uniforms: holeUniforms,
       defines,
-      depthTest: false,
-      depthWrite: false,
+      // 深度由片元着色器按光线算出来写入，所以不做比较、只写
+      depthFunc: THREE.AlwaysDepth,
     }),
   );
   hole.frustumCulled = false;
@@ -171,20 +176,26 @@ export function mountDoor(options: DoorOptions): () => void {
   const stationFrame = orbitFrame(STATION_ORBIT);
   const stationUp = new THREE.Vector3(0, 1, 0).applyQuaternion(stationFrame);
   station.up.copy(stationUp);
+  warpObject(station, true);
   const stationBeacon = station.userData.beacon as THREE.MeshBasicMaterial;
   const holo = station.userData.holo as THREE.Object3D;
   const deckLight = new THREE.PointLight(0xffd2a0, 0.6, 4, 2);
   deckLight.position.set(0, 0.25, 0);
   station.add(deckLight);
+  deckLight.layers.enable(IMAGE_LAYER);
 
   // 光从吸积盘那边来：暖色平行光勾边，冷色环境光很弱，暗面要够暗才有深空感
-  scene.add(new THREE.HemisphereLight(0x4a5a80, 0x05070d, 0.35));
+  const skyLight = new THREE.HemisphereLight(0x4a5a80, 0x05070d, 0.35);
+  skyLight.layers.enable(IMAGE_LAYER);
+  scene.add(skyLight);
   const diskLight = new THREE.DirectionalLight(0xffc690, 2.4);
   diskLight.target = station;
+  diskLight.layers.enable(IMAGE_LAYER);
   scene.add(diskLight);
 
   // ---- 轨迹线：甲板上看很淡，离开甲板才清楚；空间站自己的虚线轨道只在自由视角显示 ----
   const trackMaterial = new THREE.LineBasicMaterial({ color: 0xe9e6f0, transparent: true, opacity: 0.06, depthWrite: false });
+  warpMaterial(trackMaterial);
   for (const orbit of PROBE_ORBITS) scene.add(new THREE.LineLoop(orbitPath(orbit), trackMaterial));
   const stationTrackMaterial = new THREE.LineDashedMaterial({
     color: 0xe9e6f0,
@@ -194,6 +205,7 @@ export function mountDoor(options: DoorOptions): () => void {
     gapSize: 1.2,
     depthWrite: false,
   });
+  warpMaterial(stationTrackMaterial);
   const stationTrack = new THREE.LineLoop(orbitPath(STATION_ORBIT), stationTrackMaterial);
   stationTrack.computeLineDistances();
   scene.add(stationTrack);
@@ -202,6 +214,7 @@ export function mountDoor(options: DoorOptions): () => void {
   const probes = options.probes.map((spec, i) => {
     const tint = new THREE.Color(PROBE_BEACONS[i]);
     const { group, beacon } = buildProbe(PROBE_BEACONS[i]);
+    warpObject(group, false);
     scene.add(group);
     return { ...spec, orbit: PROBE_ORBITS[i], frame: orbitFrame(PROBE_ORBITS[i]), group, beacon, tint, phase: i * 1.3 };
   });
@@ -235,6 +248,7 @@ export function mountDoor(options: DoorOptions): () => void {
     uDiskN: { value: DISK_N },
     uDiskU: { value: DISK_U },
     uDiskV: { value: DISK_V },
+    uWarpBeta: warpBeta,
   };
   const dust = new THREE.Points(
     dustGeometry,
@@ -320,6 +334,9 @@ export function mountDoor(options: DoorOptions): () => void {
   // ---- 外围的小行星带和两颗岩质行星：按开场时空间站的方向摆，从甲板一眼就能看见 ----
   const rocks = buildRocks(lite, stationPos.clone().normalize());
   scene.add(rocks.group);
+  for (const root of [station, rocks.group, ...probes.map((p) => p.group)]) {
+    root.traverse((object) => object.layers.enable(IMAGE_LAYER));
+  }
 
   // 甲板上的默认朝向：正对黑洞
   const deckLook = (out = new THREE.Vector3()) => out.copy(eye).add(offsetTmp.copy(ORIGIN).sub(eye).setLength(0.05));
@@ -391,6 +408,7 @@ export function mountDoor(options: DoorOptions): () => void {
     from.fov = camera.fov;
     leavePhi = spherical.setFromVector3(offset.copy(camera.position).sub(controls.target)).phi;
     hud.view.textContent = viewNames[next];
+    hud.guide.dataset.mode = next;
   }
 
   // 甲板上一拖动，就开始慢慢退出空间站。只认拖动期间和松手后 0.4 秒：
@@ -431,7 +449,7 @@ export function mountDoor(options: DoorOptions): () => void {
     let bestD = 20;
     for (const p of probes) {
       if (!p.group.visible) continue;
-      const v = offsetTmp.copy(p.group.position).project(camera);
+      const v = lensPoint(p.group.position, camera.position, offsetTmp).project(camera);
       if (v.z > 1) continue;
       const sx = rect.left + (v.x * 0.5 + 0.5) * rect.width;
       const sy = rect.top + (-v.y * 0.5 + 0.5) * rect.height;
@@ -627,7 +645,9 @@ export function mountDoor(options: DoorOptions): () => void {
   }
 
   // 把一个世界坐标点投到屏幕上；在镜头后面或出了画面就返回 null
-  function toScreen(p: THREE.Vector3) {
+  function toScreen(point: THREE.Vector3) {
+    // 标注要贴着画面上的像，不是物体的真实位置
+    const p = lensPoint(point, camera.position, lensedTmp);
     projected.copy(p).project(camera);
     camera.getWorldDirection(forward);
     if (forward.dot(offset.copy(p).sub(camera.position)) <= 0) return null;
@@ -687,11 +707,13 @@ export function mountDoor(options: DoorOptions): () => void {
     return true;
   }
 
-  // 一个点是否被黑洞挡住：比黑洞远，视线又穿过阴影
-  function behindHole(p: THREE.Vector3) {
-    offset.copy(p).sub(camera.position);
-    if (offset.lengthSq() < camera.position.lengthSq()) return false;
-    return offset.normalize().cross(camera.position).length() < 2.8;
+  // 物体是否几乎正对黑洞背后。透镜会把黑洞背后的东西弯到阴影外面，所以不用再藏；
+  // 只有物体横跨在视线轴上时不行：它两边的顶点被甩到黑洞两侧，三角形会横穿阴影
+  function behindHole(p: THREE.Vector3, radius = 1) {
+    offset.copy(camera.position).normalize();
+    const along = -p.dot(offset);
+    if (along <= 0) return false;
+    return Math.sqrt(Math.max(p.lengthSq() - along * along, 0)) < radius * 1.3;
   }
 
   function placeTag(tag: Tag, p: THREE.Vector3, on: boolean) {
@@ -717,11 +739,54 @@ export function mountDoor(options: DoorOptions): () => void {
   let raf = 0;
   const lookNow = new THREE.Vector3();
   const lookDir = new THREE.Vector3();
-  const shake = new THREE.Vector3();
+  const lensedTmp = new THREE.Vector3();
+  let shakePhase = 0;
   const c1 = new THREE.Vector3();
   const c2 = new THREE.Vector3();
   const goalPos = new THREE.Vector3();
   const goalLook = new THREE.Vector3();
+
+  // 俯冲时的抖动：转镜头而不是挪位置，离得再远也看得出来。
+  // 强度来自引力梯度（1/r³，越近涨得越猛）和速度，平方之后小的时候几乎不抖、快到视界才真正剧烈。
+  // 用几个正弦叠出来的连续噪声，每帧纯随机看着是电视雪花式的高频闪动，不像被甩动
+  function shakeCamera(beta: number, dt: number) {
+    // 尺度取 12 是看画面定的：r 不到 5 时黑场已经盖上来了，峰值要赶在那之前
+    const tide = Math.min((12 / camera.position.length()) ** 3, 1);
+    const trauma = Math.min(0.45 * (beta / 0.82) + 0.9 * tide, 1);
+    shakePhase += dt * Math.PI * 2 * (3 + 6 * trauma);
+    const noise = (t: number) => (Math.sin(t) + 0.6 * Math.sin(2.17 * t + 1.3) + 0.35 * Math.sin(4.31 * t + 2.7)) / 1.95;
+    const amount = trauma * trauma;
+    camera.rotateX(noise(shakePhase) * amount * 0.022);
+    camera.rotateY(noise(shakePhase + 37) * amount * 0.022);
+    camera.rotateZ(noise(shakePhase + 91) * amount * 0.035);
+  }
+
+  // 第二遍只画几何体，走透镜方程的另一个解（次像）。材质、矩阵、灯光都和第一遍共用，不用维护一份克隆。
+  // 次像是翻转的，三角形绕向也反了，这一遍要反过来算正面，否则看到的是物体的背面。
+  // 在黑洞前面的物体没有次像，直接跳过省绘制调用。手机上不画：次像很小，看不出来
+  const gl = renderer.getContext();
+  function isBehind(p: THREE.Vector3) {
+    return p.dot(offset.copy(camera.position)) < 0;
+  }
+  function renderSecondaryImages() {
+    if (lite) return;
+    const stationShown = station.visible;
+    station.visible = stationShown && isBehind(stationPos);
+    const probesShown = probes.map((p) => p.group.visible);
+    for (const p of probes) p.group.visible = p.group.visible && isBehind(p.group.position);
+    camera.layers.set(IMAGE_LAYER);
+    warpImage.value = 1;
+    renderer.autoClear = false;
+    renderer.state.setFlipSided(false);
+    gl.frontFace(gl.CW);
+    renderer.render(scene, camera);
+    gl.frontFace(gl.CCW);
+    renderer.autoClear = true;
+    warpImage.value = 0;
+    camera.layers.set(0);
+    station.visible = stationShown;
+    probes.forEach((p, i) => (p.group.visible = probesShown[i]));
+  }
 
   function frame() {
     raf = requestAnimationFrame(frame);
@@ -744,7 +809,7 @@ export function mountDoor(options: DoorOptions): () => void {
 
     // 空间站和探测器按各自轨道走；被黑洞挡住的不画（黑洞画在背景上，不藏的话会盖在阴影前面）
     placeStation();
-    station.visible = !behindHole(stationPos);
+    station.visible = !behindHole(stationPos, 2);
     stationQuat.copy(station.quaternion);
     for (const p of probes) {
       orbitPosition(p.orbit, p.frame, simTime, p.group.position);
@@ -864,9 +929,6 @@ export function mountDoor(options: DoorOptions): () => void {
       beta = 0.82 * Math.pow(Math.sin(Math.PI * clamp01((rush - 0.08) / 0.86)), 1.3);
       holeUniforms.uDive.value = rush;
       dustUniforms.uDive.value = rush;
-      // 越快抖得越厉害
-      shake.set(Math.random() - 0.5, Math.random() - 0.5, 0).multiplyScalar(beta * 0.012 * camera.position.length());
-      camera.position.add(shake.applyQuaternion(camera.quaternion));
       // 最后越过视界：一黑，接着是加载画面
       veil.style.background = '#000';
       veil.style.opacity = String(smooth(clamp01((k - 0.88) / 0.12)));
@@ -881,10 +943,12 @@ export function mountDoor(options: DoorOptions): () => void {
     }
 
     holeUniforms.uBeta.value = beta;
+    warpBeta.value = beta;
     updateStreaks(beta, dt);
 
     if (scripted()) camera.lookAt(controls.target);
     else controls.update();
+    if (mode === 'diving') shakeCamera(beta, dt);
     camera.updateMatrixWorld();
     lastQuat.copy(stationQuat);
 
@@ -913,6 +977,7 @@ export function mountDoor(options: DoorOptions): () => void {
     holeUniforms.uHover.value = hover;
     holeUniforms.uCamPos.value.copy(camera.position);
     holeUniforms.uInvProj.value.copy(camera.projectionMatrixInverse);
+    holeUniforms.uProjZ.value.set(camera.projectionMatrix.elements[10], camera.projectionMatrix.elements[14]);
     holeUniforms.uCamWorld.value.copy(camera.matrixWorld);
 
     // 标注：对接、跃迁、俯冲时都收起来，画面留给屏幕和特效
@@ -934,6 +999,7 @@ export function mountDoor(options: DoorOptions): () => void {
     hud.pitchTape.style.backgroundPositionY = `${pitch * 4}px`;
 
     renderer.render(scene, camera);
+    renderSecondaryImages();
 
     // 自适应分辨率。几个坑：
     // - 60Hz 屏幕上帧间隔最快就是 16.7ms，升档门槛不能低于它，否则永远升不上去，只降不升，越待越糊

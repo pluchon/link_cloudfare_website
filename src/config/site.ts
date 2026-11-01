@@ -125,12 +125,12 @@ export interface PageBackdrop {
   darkPortrait: string;
 }
 
-function pageBackdrop(name: string): PageBackdrop {
+function pageBackdrop(name: string, directory = PAGE_BACKDROP_DIR): PageBackdrop {
   return {
-    light: `${PAGE_BACKDROP_DIR}/${name}-landscape.webp`,
-    dark: `${PAGE_BACKDROP_DIR}/night/${name}-landscape.webp`,
-    lightPortrait: `${PAGE_BACKDROP_DIR}/${name}-portrait.webp`,
-    darkPortrait: `${PAGE_BACKDROP_DIR}/night/${name}-portrait.webp`,
+    light: `${directory}/${name}-landscape.webp`,
+    dark: `${directory}/night/${name}-landscape.webp`,
+    lightPortrait: `${directory}/${name}-portrait.webp`,
+    darkPortrait: `${directory}/night/${name}-portrait.webp`,
   };
 }
 
@@ -143,6 +143,7 @@ export const pageBackdrops = {
   about: pageBackdrop('about'),
   tags: pageBackdrop('tags'),
   tagDetail: pageBackdrop('tag-detail'),
+  notice: pageBackdrop('notice', 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261102'),
 } as const;
 
 // 每条分支在首页最多展示几篇

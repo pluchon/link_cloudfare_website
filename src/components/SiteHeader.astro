@@ -1,8 +1,10 @@
 ---
 import { site, nav, palettes } from '../config/site';
 import KindIcon from './KindIcon.astro';
+import { getLatestNotice } from '../lib/content';
 
 const path = Astro.url.pathname;
+const latestNotice = await getLatestNotice();
 
 // 顶级路径高亮：/project/xxx/ 也算命中 /project/
 function isActive(href: string): boolean {
@@ -34,6 +36,18 @@ function isActive(href: string): boolean {
     </nav>
 
     <div class="tools">
+      <!-- 公告栏：最新一条发布 24 小时内亮红点，不显示数量。亮不亮由 data-new-since 按访问时刻算 -->
+      <a
+        class="icon-btn bell"
+        href="/notice/"
+        aria-label="公告栏"
+        title="公告栏"
+        aria-current={isActive('/notice/') ? 'page' : undefined}
+      >
+        <KindIcon name="notice" />
+        {latestNotice && <span class="bell__dot" data-new-since={latestNotice.data.publishedAt.toISOString()} hidden />}
+      </a>
+
       <button class="icon-btn" id="theme-toggle" type="button" aria-label="切换深色模式">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>

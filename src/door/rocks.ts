@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { warpBeta, warpGlsl, warpImage } from './warp';
 
 // 外围的小天体：空间站轨道外面一圈稀疏的小行星带，再远一点两颗岩质小行星（其中一颗带一颗小卫星）。
 // 都是低面数几何体 + 平直着色，小行星用 InstancedMesh，三种外形各一次绘制，几十块石头也只多三次绘制调用
@@ -7,6 +8,7 @@ import * as THREE from 'three';
 // 方向固定，照到黑洞另一侧的石头时正好是背光面，看上去全是黑剪影。所以石头和行星用自己的小着色器，
 // 按「指向黑洞中心」算漫反射，背面留一点冷色环境光
 const rockVertex = /* glsl */ `
+  ${warpGlsl}
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying vec3 vColor;
@@ -26,7 +28,8 @@ const rockVertex = /* glsl */ `
     vColor = uColor;
     #endif
     vUv = uv;
-    gl_Position = projectionMatrix * viewMatrix * world;
+    // vWorld 留真实位置算光照，画面上的位置走引力透镜和光行差
+    gl_Position = warpClip(projectionMatrix * viewMatrix * vec4(spaceWarp(world.xyz), 1.0));
   }
 `;
 
@@ -35,19 +38,21 @@ const rockFragment = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vColor;
   varying vec2 vUv;
+  varying vec3 vWarpTint;
   uniform sampler2D uMap;
   uniform float uUseMap;
   uniform float uFlat;
+  uniform float uWarpImage;
   void main() {
-    // 石头按面算法线（棱角分明），行星用平滑法线
-    vec3 faceN = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+    // 石头按面算法线（棱角分明），行星用平滑法线。次像是翻转的，屏幕导数算出来的法线要反一下
+    vec3 faceN = normalize(cross(dFdx(vWorld), dFdy(vWorld))) * (uWarpImage > 0.5 ? -1.0 : 1.0);
     vec3 n = normalize(mix(vNormal, faceN, uFlat));
     vec3 toLight = normalize(-vWorld);
     float diffuse = max(dot(n, toLight), 0.0);
     vec3 base = vColor;
     if (uUseMap > 0.5) base *= texture2D(uMap, vUv).rgb;
     vec3 col = base * (vec3(0.04, 0.05, 0.07) + diffuse * vec3(1.05, 0.82, 0.6));
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(col * vWarpTint, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -62,6 +67,8 @@ function rockMaterial(options: { color?: number; map?: THREE.Texture; flat: bool
       uMap: { value: options.map ?? null },
       uUseMap: { value: options.map ? 1 : 0 },
       uFlat: { value: options.flat ? 1 : 0 },
+      uWarpBeta: warpBeta,
+      uWarpImage: warpImage,
     },
   });
 }
@@ -138,6 +145,7 @@ function planetTexture(base: string, dark: string, light: string, seed: number):
 
 interface Planet {
   mesh: THREE.Mesh;
+  radius: number;
   a: number;
   theta0: number;
   tilt: THREE.Quaternion;
@@ -147,8 +155,8 @@ interface Planet {
 
 export interface Rocks {
   group: THREE.Group;
-  // 每帧：按时间摆好位置，被黑洞挡住的藏起来（黑洞画在背景上，不藏会盖在阴影前面）
-  update(simTime: number, hidden: (p: THREE.Vector3) => boolean): void;
+  // 每帧：按时间摆好位置，正好横跨在黑洞背后的藏起来（否则会被透镜撕开，三角形横穿阴影）
+  update(simTime: number, hidden: (p: THREE.Vector3, radius: number) => boolean): void;
   dispose(): void;
 }
 
@@ -207,13 +215,17 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
     return new THREE.Mesh(geometry, mat);
   };
 
-  const rusty = makePlanet(1.9, planetTexture('#8c5a43', '#4a2c22', '#c08a68', 7));
+  const rustyRadius = 1.9;
+  const rusty = makePlanet(rustyRadius, planetTexture('#8c5a43', '#4a2c22', '#c08a68', 7));
   const moonGeometry = new THREE.SphereGeometry(0.42, 18, 12);
   const moonMaterial = rockMaterial({ color: 0x9a948c, flat: true });
   disposables.push(moonGeometry, moonMaterial);
   const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+  rusty.frustumCulled = false;
+  moon.frustumCulled = false;
   planets.push({
     mesh: rusty,
+    radius: rustyRadius,
     a: 96,
     theta0: away + 0.62,
     tilt: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(6)),
@@ -221,9 +233,12 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
     moon: { mesh: moon, r: 4.2, speed: 0.22 },
   });
 
-  const icy = makePlanet(1.25, planetTexture('#6f7f96', '#3d4658', '#b6c4d6', 19));
+  const icyRadius = 1.25;
+  const icy = makePlanet(icyRadius, planetTexture('#6f7f96', '#3d4658', '#b6c4d6', 19));
+  icy.frustumCulled = false;
   planets.push({
     mesh: icy,
+    radius: icyRadius,
     a: 128,
     theta0: away - 0.5,
     tilt: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(-9)),
@@ -242,11 +257,11 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
   const touched = new Set<THREE.InstancedMesh>();
 
-  function update(simTime: number, hidden: (p: THREE.Vector3) => boolean) {
+  function update(simTime: number, hidden: (p: THREE.Vector3, radius: number) => boolean) {
     for (const rock of rocks) {
       const theta = rock.theta + (simTime / period(rock.r)) * Math.PI * 2;
       p.set(Math.cos(theta) * rock.r, rock.y, Math.sin(theta) * rock.r).applyQuaternion(beltTilt);
-      if (hidden(p)) {
+      if (hidden(p, rock.size * 1.3)) {
         rock.mesh.setMatrixAt(rock.index, zero);
       } else {
         q.setFromAxisAngle(rock.axis, simTime * rock.spin);
@@ -262,13 +277,13 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
       const theta = planet.theta0 + (simTime / period(planet.a)) * Math.PI * 2;
       planet.mesh.position.set(Math.cos(theta) * planet.a, 0, Math.sin(theta) * planet.a).applyQuaternion(planet.tilt);
       planet.mesh.rotation.y = simTime * planet.spin;
-      planet.mesh.visible = !hidden(planet.mesh.position);
+      planet.mesh.visible = !hidden(planet.mesh.position, planet.radius);
       if (planet.moon) {
         const phi = simTime * planet.moon.speed;
         planet.moon.mesh.position
           .set(Math.cos(phi) * planet.moon.r, Math.sin(phi) * planet.moon.r * 0.25, Math.sin(phi) * planet.moon.r)
           .add(planet.mesh.position);
-        planet.moon.mesh.visible = !hidden(planet.moon.mesh.position);
+        planet.moon.mesh.visible = !hidden(planet.moon.mesh.position, 0.42);
       }
     }
   }

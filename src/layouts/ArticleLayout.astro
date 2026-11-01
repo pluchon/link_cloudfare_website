@@ -2,6 +2,8 @@
 import '../styles/prose.css';
 import BaseLayout from './BaseLayout.astro';
 import PaletteDecor from '../components/PaletteDecor.astro';
+import MusicBar from '../components/MusicBar.astro';
+import MusicIcon from '../components/MusicIcon.astro';
 import type { MarkdownHeading } from 'astro';
 import type { AnyEntry, ContentKind } from '../lib/content';
 import { entryHref, formatDate, countWords, entryCover } from '../lib/content';
@@ -37,6 +39,7 @@ for (const h of headings) {
 <BaseLayout title={data.title} description={data.summary} ogImage={cover}>
   <PaletteDecor />
   <div class="progress" id="reading-progress" aria-hidden="true"></div>
+  {data.music && <MusicBar name={data.music.name} url={data.music.url} />}
 
   {
     toc.length > 0 && (
@@ -122,6 +125,21 @@ for (const h of headings) {
                 </svg>
                 视频链接
               </a>
+            )
+          }
+          {
+            data.music && (
+              <button
+                class="article__raw article__repo article__music"
+                type="button"
+                title={data.music.name}
+                data-music-toggle
+                aria-pressed="false"
+                aria-label={`播放：${data.music.name}`}
+              >
+                <MusicIcon />
+                <span class="article__music-name" data-music-name>{data.music.name}</span>
+              </button>
             )
           }
         </div>
@@ -267,6 +285,31 @@ for (const h of headings) {
   .article__video svg {
     width: 1rem;
     height: 1rem;
+  }
+
+  /* 伴奏：和旁边的链接同一套下划线，只是个按钮。显示歌名，太长就截断 */
+  .article__music {
+    max-width: 12rem;
+    border-width: 0 0 var(--hair);
+    padding-inline: 0;
+    padding-top: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+  }
+
+  .article__music[aria-pressed='true'] {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .article__music-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .article__tags {

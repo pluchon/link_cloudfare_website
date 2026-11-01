@@ -1,0 +1,235 @@
+---
+// 文章伴奏：音频本身和滚动后右下角的小播放条。入口按钮在 ArticleLayout 的日期行里，
+// 带 data-music-toggle 的按钮都由这里的脚本管。
+// 默认不播放，preload=none，点之前不产生任何音频流量。
+// 小条不能放进文章头部：那里有 data-reveal 的 transform，fixed 会变成相对它定位
+import MusicIcon from './MusicIcon.astro';
+
+interface Props {
+  name: string;
+  url: string;
+}
+
+const { name, url } = Astro.props;
+---
+
+<audio data-music data-name={name} src={url} preload="none" loop></audio>
+
+<div class="music-bar" data-music-bar>
+  <button class="music-bar__toggle" type="button" data-music-toggle aria-pressed="false" aria-label={`播放：${name}`}>
+    <MusicIcon idle="play" />
+  </button>
+  <span class="music-bar__name" title={name} data-music-name>{name}</span>
+  <input class="music-bar__volume" type="range" min="0" max="100" value="50" aria-label="音量" data-music-volume />
+</div>
+
+<style>
+  .music-bar {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: calc(100vw - 2.5rem);
+    padding: 0.4rem 0.8rem 0.4rem 0.4rem;
+    border: var(--hair) solid var(--line-strong);
+    background: var(--bg);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(0.4rem);
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out),
+      visibility var(--dur-2);
+  }
+
+  .music-bar[data-show='1'] {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+
+  .music-bar__toggle {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 1.0625rem;
+    cursor: pointer;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .music-bar__toggle:hover,
+  .music-bar__toggle[aria-pressed='true'] {
+    color: var(--accent);
+  }
+
+  .music-bar__name {
+    min-width: 0;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 音量条也是一根发丝线，滑块是一小截竖线 */
+  .music-bar__volume {
+    flex: none;
+    width: 4.5rem;
+    height: 1.5rem;
+    margin: 0;
+    background: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .music-bar__volume::-webkit-slider-runnable-track {
+    height: 1px;
+    background: var(--line-strong);
+  }
+
+  .music-bar__volume::-moz-range-track {
+    height: 1px;
+    background: var(--line-strong);
+  }
+
+  .music-bar__volume::-webkit-slider-thumb {
+    width: 0.3rem;
+    height: 0.8rem;
+    margin-top: calc(-0.4rem + 0.5px);
+    border: 0;
+    background: var(--accent);
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .music-bar__volume::-moz-range-thumb {
+    width: 0.3rem;
+    height: 0.8rem;
+    border: 0;
+    border-radius: 0;
+    background: var(--accent);
+  }
+</style>
+
+<script>
+  let teardown: (() => void) | null = null;
+  let mounted: HTMLAudioElement | null = null;
+
+  function init() {
+    const audio = document.querySelector<HTMLAudioElement>('[data-music]');
+    const bar = document.querySelector<HTMLElement>('[data-music-bar]');
+    const volume = document.querySelector<HTMLInputElement>('[data-music-volume]');
+    if (!audio || !bar || !volume || audio === mounted) return;
+    mounted = audio;
+
+    const toggles = [...document.querySelectorAll<HTMLElement>('[data-music-toggle]')];
+    const names = [...document.querySelectorAll<HTMLElement>('[data-music-name]')];
+    const entry = toggles.find((toggle) => !bar.contains(toggle));
+    const name = audio.dataset.name ?? '';
+    const events = new AbortController();
+    const { signal } = events;
+
+    let started = false;
+    let entryInView = true;
+
+    audio.volume = Number(volume.value) / 100;
+
+    const syncBar = () => {
+      bar.dataset.show = started && !entryInView ? '1' : '';
+    };
+
+    const setPressed = (pressed: boolean) => {
+      toggles.forEach((toggle) => {
+        toggle.setAttribute('aria-pressed', String(pressed));
+        toggle.setAttribute('aria-label', `${pressed ? '暂停' : '播放'}：${name}`);
+      });
+    };
+
+    const setFailed = (failed: boolean) => {
+      names.forEach((el) => (el.textContent = failed ? '加载失败，点击重试' : name));
+    };
+
+    toggles.forEach((toggle) => {
+      toggle.addEventListener(
+        'click',
+        () => {
+          if (!audio.paused) {
+            audio.pause();
+            return;
+          }
+          // 上次加载失败的话，重新加载一次再放
+          if (audio.error) {
+            setFailed(false);
+            audio.load();
+          }
+          // 真正的失败走 error 事件；这里只防止未处理的 rejection
+          audio.play().catch(() => {});
+        },
+        { signal },
+      );
+    });
+
+    audio.addEventListener(
+      'play',
+      () => {
+        started = true;
+        setPressed(true);
+        syncBar();
+      },
+      { signal },
+    );
+    audio.addEventListener('pause', () => setPressed(false), { signal });
+    audio.addEventListener(
+      'error',
+      () => {
+        setPressed(false);
+        setFailed(true);
+      },
+      { signal },
+    );
+
+    volume.addEventListener('input', () => (audio.volume = Number(volume.value) / 100), { signal });
+
+    // 入口滚出视口（顶栏下面也算看不见）才亮出小条
+    const observer = entry
+      ? new IntersectionObserver(
+          ([item]) => {
+            entryInView = item.isIntersecting;
+            syncBar();
+          },
+          { rootMargin: '-64px 0px 0px 0px' },
+        )
+      : null;
+    if (entry) observer?.observe(entry);
+
+    teardown = () => {
+      events.abort();
+      observer?.disconnect();
+      // 换页后旧节点虽然从 DOM 摘掉了，音频还会接着响，必须手动停
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    };
+  }
+
+  document.addEventListener('astro:page-load', init);
+  document.addEventListener('astro:before-swap', () => {
+    teardown?.();
+    teardown = null;
+    mounted = null;
+  });
+  // 这段脚本可能在第一次 astro:page-load 之后才执行，那次事件就错过了，所以这里先跑一次
+  init();
+</script>

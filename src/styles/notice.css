@@ -1,0 +1,151 @@
+/* 公告正文里的特色内容。这些节点是 lib/embeds.ts 拼出来再 set:html 进页面的，
+   Astro 的作用域样式够不着，所以单独放一个全局文件 */
+
+/* ---------- 帖子视窗 ---------- */
+
+.prose a.window:not(.anchor) {
+  display: block;
+  margin-block: 1.75rem;
+  border: var(--hair) solid var(--line);
+  color: var(--fg);
+  background: var(--bg);
+  transition: border-color var(--dur-1) var(--ease-out);
+}
+
+.prose a.window:not(.anchor):hover {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.window__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border-bottom: var(--hair) dashed var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
+.window__dots {
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+}
+
+.window__dots i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border: var(--hair) solid var(--fg-faint);
+  border-radius: 50%;
+}
+
+.window__dots i:first-child {
+  border-color: var(--icon-pink);
+  background: var(--icon-pink);
+}
+
+.window__kind {
+  color: var(--fg-muted);
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.window:hover .window__kind {
+  color: var(--accent);
+}
+
+.window__body {
+  display: flex;
+  gap: 1.1rem;
+  padding: 0.95rem;
+}
+
+.prose img.window__cover {
+  flex: none;
+  width: 11rem;
+  height: 7rem;
+  max-height: none;
+  margin: 0;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.window__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.window__title {
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.window__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--fg-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 标签固定一行：放不下的由脚本收成「+N」；脚本没跑时多余的直接被裁掉，也不会换行 */
+.window__tags {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: auto;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
+.window__tag {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 0.4rem;
+  border: var(--hair) solid var(--line);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window__tag--more {
+  border-style: dashed;
+}
+
+/* ---------- 小萌说 ---------- */
+
+.prose .meow {
+  margin-block: 1.75rem;
+  padding: 0.8rem 1rem;
+  border: var(--hair) solid var(--icon-pink);
+  background: var(--bg);
+  font-size: 0.9375rem;
+  line-height: 1.8;
+}
+
+.meow p + p {
+  margin-top: 0.5em;
+}
+
+@media (max-width: 40rem) {
+  .window__body {
+    flex-direction: column;
+  }
+
+  .prose img.window__cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+}

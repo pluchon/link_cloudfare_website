@@ -14,6 +14,8 @@ const schema = z.object({
   repos: z.array(z.object({ label: z.string(), url: z.string() })).default([]),
   // 文章里那行 bilibili: 推出来的视频地址，跟在仓库链接后面
   video: z.string().optional(),
+  // 文章里那行 music: 推出来的伴奏，日期行最右边显示歌名
+  music: z.object({ name: z.string(), url: z.string() }).optional(),
   cover: z.string().optional(),
 });
 
@@ -42,6 +44,12 @@ const daily = defineCollection({
   schema,
 });
 
+// 公告栏：只从顶栏铃铛进入，不算内容分类，不进导航、首页导图、标签和 RSS
+const notice = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/notice', defaultCategory: '公告' }),
+  schema,
+});
+
 // 关于页正文：引用块里的 tags 变成技能标签，其余整篇渲染
 const profile = defineCollection({
   loader: profileMarkdown({ dir: 'src/content/profile' }),
@@ -51,4 +59,4 @@ const profile = defineCollection({
   }),
 });
 
-export const collections = { project, tool, explore, daily, xiaomeng, profile };
+export const collections = { project, tool, explore, daily, xiaomeng, notice, profile };

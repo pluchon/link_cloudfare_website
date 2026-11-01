@@ -1,0 +1,544 @@
+---
+import '../styles/prose.css';
+import '../styles/notice.css';
+import BaseLayout from './BaseLayout.astro';
+import KindIcon from '../components/KindIcon.astro';
+import PageBackdrop from '../components/PageBackdrop.astro';
+import PixelBackdrop from '../components/PixelBackdrop.astro';
+import { pageBackdrops } from '../config/site';
+import { formatDate, isPinned, noticeHref, noticeType, type NoticeEntry } from '../lib/content';
+import { resolveEmbeds } from '../lib/embeds';
+
+interface Props {
+  notices: NoticeEntry[];
+  // 右边显示哪一条；没有公告时为空
+  current?: NoticeEntry;
+  // index：/notice/，窄屏只放列表；detail：单条公告，窄屏只放正文
+  view: 'index' | 'detail';
+}
+
+const { notices, current, view } = Astro.props;
+const html = current ? await resolveEmbeds(current.rendered?.html ?? '') : '';
+const pageTitle = view === 'detail' && current ? current.data.title : '公告栏';
+const description = current?.data.summary ?? '小萌贴在这里的站内公告';
+
+// 右侧索引只到二级：这条公告的标题算一级，正文里的 # 和 ## 跟在后面
+const headings = (current?.rendered?.metadata?.headings ?? []) as { depth: number; slug: string; text: string }[];
+const toc = current
+  ? [
+      { depth: 1, slug: 'notice-title', text: current.data.title },
+      ...headings.filter((heading) => heading.depth <= 2),
+    ]
+  : [];
+---
+
+<BaseLayout title={pageTitle} description={description}>
+  <PageBackdrop art={pageBackdrops.notice} quiet />
+  <PixelBackdrop />
+
+  <div class="wrap notice" data-view={view}>
+    <aside class="notice__side" aria-label="公告列表">
+      <header class="side-head">
+        <h2 class="side-head__title">
+          <KindIcon name="notice" class="side-head__icon" />
+          公告栏
+        </h2>
+      </header>
+
+      <ol class="items">
+        {
+          notices.map((item) => (
+            <li>
+              <a
+                class:list={['item', isPinned(item) && 'item--pinned']}
+                href={noticeHref(item.data.slug)}
+                aria-current={item.id === current?.id ? 'page' : undefined}
+              >
+                <span class="item__meta">
+                  <time datetime={item.data.publishedAt.toISOString()}>{formatDate(item.data.publishedAt)}</time>
+                  <span class="new-badge" data-new-since={item.data.publishedAt.toISOString()} hidden>NEW</span>
+                  <span class="item__labels">
+                    {isPinned(item) && (
+                      <span class="item__pin">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M9 3h6l-.8 6.2 3.3 3.3v1.7H6.500v-1.700l3.300-3.300zM12 14.200V21" />
+                        </svg>
+                        置顶
+                      </span>
+                    )}
+                    {noticeType(item) && <span class="item__type">{noticeType(item)}</span>}
+                  </span>
+                </span>
+                <span class="item__title">{item.data.title}</span>
+                <svg class="item__paw" viewBox="0 0 24 24" aria-hidden="true">
+                  <ellipse cx="12" cy="16" rx="5" ry="4.2" />
+                  <ellipse cx="5.2" cy="11" rx="2" ry="2.6" />
+                  <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7" />
+                  <ellipse cx="14.4" cy="6.8" rx="2" ry="2.7" />
+                  <ellipse cx="18.8" cy="11" rx="2" ry="2.6" />
+                </svg>
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+    </aside>
+
+    <div class:list={['notice__main', current && isPinned(current) && 'notice__main--pinned']}>
+      {
+        current ? (
+          <article data-reveal>
+            <a class="back" href="/notice/">← 全部公告</a>
+            <!-- 标题只留给读屏软件和索引跳转，页面上不显示 -->
+            <h1 class="sr-title" id="notice-title">{current.data.title}</h1>
+
+            {current.data.cover && <img class="head__cover" src={current.data.cover} alt="" />}
+
+            <div class="prose notice__prose" set:html={html} />
+          </article>
+        ) : (
+          <p class="empty">这里还空空的，小萌还没有贴新公告 (｡･ω･｡)</p>
+        )
+      }
+    </div>
+
+    {
+      toc.length > 0 && (
+        <nav class="toc" aria-label="公告索引">
+          <ol class="toc__list">
+            {toc.map((item) => (
+              <li>
+                <a class:list={['toc__item', item.depth === 2 && 'toc__item--sub']} href={`#${item.slug}`} data-notice-toc={item.slug}>
+                  <span class="toc__dash" aria-hidden="true" />
+                  <span class="toc__text">{item.text}</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )
+    }
+  </div>
+</BaseLayout>
+
+<script>
+  // 视窗里的标签只占一行：放不下就从最后一个往前藏，末尾补「+N」。只能按实际排版量
+  function clampWindowTags() {
+    document.querySelectorAll<HTMLElement>('[data-window-tags]').forEach((row) => {
+      if (!row.offsetParent) return;
+      const tags = [...row.querySelectorAll<HTMLElement>('.window__tag:not(.window__tag--more)')];
+      const more = row.querySelector<HTMLElement>('.window__tag--more');
+      if (!more) return;
+      tags.forEach((tag) => (tag.hidden = false));
+      more.hidden = true;
+      if (row.scrollWidth <= row.clientWidth) return;
+      more.hidden = false;
+      for (let k = tags.length - 1; k > 0; k--) {
+        tags[k].hidden = true;
+        more.textContent = `+${tags.length - k}`;
+        if (row.scrollWidth <= row.clientWidth) break;
+      }
+    });
+  }
+
+  // 索引高亮：读到哪个标题亮哪个。标题顶到视口上方三成以内就算读到了
+  function markToc() {
+    const links = [...document.querySelectorAll<HTMLElement>('[data-notice-toc]')];
+    if (!links.length) return;
+    const line = window.innerHeight * 0.3;
+    let active = links[0];
+    for (const link of links) {
+      const heading = document.getElementById(link.dataset.noticeToc ?? '');
+      if (heading && heading.getBoundingClientRect().top <= line) active = link;
+    }
+    // 滚到底时最后几节顶不到那条线，直接算读到最后一节
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+      active = links[links.length - 1];
+    }
+    links.forEach((link) => (link.dataset.active = link === active ? '1' : ''));
+  }
+
+  let ticking = false;
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        markToc();
+      });
+    },
+    { passive: true },
+  );
+  window.addEventListener('resize', () => {
+    clampWindowTags();
+    markToc();
+  });
+  document.addEventListener('astro:page-load', () => {
+    clampWindowTags();
+    markToc();
+  });
+  // 这段脚本可能在第一次 astro:page-load 之后才执行，那次事件就错过了，所以这里先跑一次
+  clampWindowTags();
+  markToc();
+</script>
+
+<style>
+  .notice {
+    display: grid;
+    position: relative;
+    z-index: 1;
+    /* 比站点版心宽一些，三栏才放得下一整栏正文 */
+    max-width: 92rem;
+    grid-template-columns: 18rem minmax(0, 1fr) 12rem;
+    align-items: start;
+    gap: clamp(1.5rem, 3vw, 3rem);
+    padding-block: 2.5rem 4rem;
+  }
+
+  /* 列表跟着页面走，长文读到底也还能换一条 */
+  .notice__side {
+    position: sticky;
+    top: 5rem;
+    max-height: calc(100dvh - 6rem);
+    overflow-y: auto;
+    scrollbar-width: none;
+    border: var(--hair) solid var(--line);
+    background: var(--bg);
+  }
+
+  .side-head {
+    padding: 1rem 1.1rem 0.9rem;
+    border-bottom: var(--hair) dashed var(--line);
+  }
+
+  .side-head__title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .side-head__icon {
+    font-size: 1.25rem;
+  }
+
+  .items {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .items li + li {
+    border-top: var(--hair) dashed var(--line);
+  }
+
+  .item {
+    position: relative;
+    display: block;
+    padding: 0.8rem 1.1rem 0.85rem;
+    transition: background var(--dur-1) var(--ease-out);
+  }
+
+  .item:hover {
+    background: var(--accent-wash);
+  }
+
+  .item__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--fg-faint);
+  }
+
+  /* 公告类型靠这一行的最右边，置顶标记排在它左边 */
+  .item__labels {
+    display: flex;
+    gap: 0.35rem;
+    margin-left: auto;
+  }
+
+  .item__type {
+    padding: 0 0.35rem;
+    border: var(--hair) solid var(--line);
+    line-height: 1.5;
+  }
+
+  /* 置顶：一层很淡的粉底、粉色标记、加粗标题，和普通公告之间一根粉线 */
+  .item--pinned {
+    background: color-mix(in srgb, var(--icon-pink) 12%, transparent);
+  }
+
+  .item__pin {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0 0.35rem 0 0.2rem;
+    border: var(--hair) solid var(--icon-pink);
+    line-height: 1.5;
+    color: var(--fg);
+  }
+
+  .item__pin svg {
+    width: 0.75rem;
+    height: 0.75rem;
+    fill: none;
+    stroke: var(--icon-pink);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .item--pinned .item__title {
+    font-weight: 600;
+  }
+
+  .items li:has(.item--pinned) + li:not(:has(.item--pinned)) {
+    border-top: var(--hair) solid var(--icon-pink);
+  }
+
+  .item__title {
+    display: -webkit-box;
+    margin-top: 0.35rem;
+    padding-right: 1.5rem;
+    overflow: hidden;
+    font-family: var(--font-serif);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--fg);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .item:hover .item__title,
+  .item[aria-current='page'] .item__title {
+    color: var(--accent);
+  }
+
+  /* 当前这条：左边一根强调色细线，右边一只粉肉垫 */
+  .item[aria-current='page']::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent);
+  }
+
+  .item__paw {
+    position: absolute;
+    right: 0.8rem;
+    bottom: 0.9rem;
+    width: 1.05rem;
+    height: 1.05rem;
+    fill: var(--icon-pink);
+    opacity: 0;
+    transform: scale(0.7) rotate(-12deg);
+    transition:
+      opacity var(--dur-1) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+
+  .item[aria-current='page'] .item__paw {
+    opacity: 1;
+    transform: rotate(12deg);
+  }
+
+  /* 正文和索引压在插画上，垫一层很薄的底板，只要字看得清；不加模糊，插画还要透出来 */
+  .notice__main,
+  .toc {
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+  }
+
+  .notice__main {
+    min-width: 0;
+    padding: 1.5rem clamp(1rem, 2.5vw, 2rem) 2rem;
+  }
+
+  .notice__main--pinned {
+    border-top: 2px solid var(--icon-pink);
+  }
+
+  .notice__main .notice__prose {
+    max-width: none;
+  }
+
+  .sr-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .back {
+    display: none;
+    margin-bottom: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+  }
+
+  .head__cover {
+    display: block;
+    width: 100%;
+    margin-bottom: 1.5rem;
+    border: var(--hair) solid var(--line);
+  }
+
+  /* 正文顶上不留空，和左边列表的上沿对齐 */
+  .notice__prose > :global(:first-child) {
+    margin-top: 0;
+  }
+
+  /* 正文列表的小圆点换成粉肉垫 */
+  .notice__prose :global(ul) {
+    list-style: none;
+  }
+
+  .notice__prose :global(ul > li) {
+    position: relative;
+  }
+
+  .notice__prose :global(ul > li)::before {
+    content: '';
+    position: absolute;
+    left: -1.3em;
+    top: 0.5em;
+    width: 0.85em;
+    height: 0.85em;
+    background: var(--icon-pink);
+    -webkit-mask: var(--paw) center / contain no-repeat;
+    mask: var(--paw) center / contain no-repeat;
+    --paw: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='5' ry='4.2'/%3E%3Cellipse cx='5.2' cy='11' rx='2' ry='2.6'/%3E%3Cellipse cx='9.6' cy='6.8' rx='2' ry='2.7'/%3E%3Cellipse cx='14.4' cy='6.8' rx='2' ry='2.7'/%3E%3Cellipse cx='18.8' cy='11' rx='2' ry='2.6'/%3E%3C/svg%3E");
+  }
+
+  .empty {
+    margin: 0;
+    padding: 3rem 0;
+    text-align: center;
+    color: var(--fg-muted);
+  }
+
+  /* 右侧索引：线条语言和文章页的卷轴目录一样，一截短线加文字 */
+  .toc {
+    position: sticky;
+    top: 5rem;
+    max-height: calc(100dvh - 6rem);
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 0.9rem;
+  }
+
+  .toc__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .toc__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .toc__item--sub {
+    padding-left: 0.6rem;
+  }
+
+  .toc__dash {
+    flex: none;
+    width: 0.8rem;
+    height: 1px;
+    background: var(--line-strong);
+    transition:
+      width var(--dur-2) var(--ease-out),
+      background var(--dur-1) var(--ease-out);
+  }
+
+  .toc__item--sub .toc__dash {
+    width: 0.45rem;
+  }
+
+  .toc__text {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--fg-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .toc__item:hover .toc__text {
+    color: var(--fg);
+  }
+
+  .toc__item[data-active='1'] .toc__dash {
+    width: 1.1rem;
+    background: var(--accent);
+  }
+
+  .toc__item[data-active='1'] .toc__text {
+    color: var(--accent);
+  }
+
+  /* 三栏放不下时先收索引，和文章页目录的做法一样 */
+  @media (max-width: 75rem) {
+    .notice {
+      grid-template-columns: 18rem minmax(0, 1fr);
+    }
+
+    .toc {
+      display: none;
+    }
+  }
+
+  /* 窄屏一次只放一栏：/notice/ 是列表，点进去是正文，正文顶上能退回来 */
+  @media (max-width: 48rem) {
+    .notice {
+      grid-template-columns: minmax(0, 1fr);
+      padding-block: 1.5rem 3rem;
+    }
+
+    .notice__side {
+      position: static;
+      max-height: none;
+    }
+
+    .notice[data-view='index'] .notice__main,
+    .notice[data-view='detail'] .notice__side {
+      display: none;
+    }
+
+    .back {
+      display: inline-block;
+    }
+
+    /* 窄屏的列表页没有打开任何一条，第一条不显示成选中 */
+    .notice[data-view='index'] .item[aria-current='page']::before,
+    .notice[data-view='index'] .item[aria-current='page'] .item__paw {
+      display: none;
+    }
+
+    .notice[data-view='index'] .item[aria-current='page'] .item__title {
+      color: var(--fg);
+    }
+  }
+</style>

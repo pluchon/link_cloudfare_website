@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 //   草稿   ← 文件名以下划线开头
 //   仓库   ← 元信息区一行 github: https://github.com/甲/乙
 //   视频   ← 元信息区一行 bilibili: https://www.bilibili.com/video/BV号/
-// 标题、简介、标签、日期、仓库、视频这几行会从正文里剔除，不会在文章里重复出现
+//   伴奏   ← 元信息区一行 music: https://…/歌曲名_时间戳.mp3
+// 标题、简介、标签、日期、仓库、视频、伴奏这几行会从正文里剔除，不会在文章里重复出现
 
 export interface PlainMarkdownOptions {
   /** 相对项目根目录，例如 src/content/blog */
@@ -29,12 +30,18 @@ interface Repo {
   url: string;
 }
 
+interface Music {
+  name: string;
+  url: string;
+}
+
 interface ParsedDoc {
   title: string;
   summary: string;
   tags: string[];
   repos: Repo[];
   video?: string;
+  music?: Music;
   date?: Date;
   cover?: string;
   body: string;
@@ -54,6 +61,9 @@ const REPO_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?/;
 // 只取到视频号为止，分享链接后面带的 share_source、vd_source 这些追踪参数一律丢掉
 const BILIBILI = /^bilibili\s*[:：]\s*(.+)$/i;
 const VIDEO_URL = /https:\/\/www\.bilibili\.com\/video\/\w+/;
+// 伴奏：music: https://…/歌曲名_时间戳.mp3。歌名默认从文件名取，想显示别的就写在地址前面：music: 下雨天 https://…
+const MUSIC = /^music\s*[:：]\s*(.+)$/i;
+const MUSIC_URL = /https:\/\/\S+/;
 // 发布时间：date: 2026-10-27，可以带时分 date: 2026-10-27 14:57，按台北时间算。
 // 手写这一行，改错字就不会动日期；觉得改动够大了再自己改这一行
 const DATE_LINE = /^date\s*[:：]\s*(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?\s*$/i;
@@ -89,7 +99,15 @@ function pickVideo(raw: string): string {
   return url ? `${url}/` : '';
 }
 
-// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags / github / bilibili 引用块、[toc]
+function pickMusic(raw: string): Music | undefined {
+  const url = raw.match(MUSIC_URL)?.[0];
+  if (!url) return undefined;
+  const label = raw.replace(url, '').trim();
+  const file = decodeURIComponent(url.split('/').pop() ?? '').replace(/\.[^.]+$/, '');
+  return { name: label || file.replace(/_\d+$/, ''), url };
+}
+
+// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags / github / bilibili / music 引用块、[toc]
 // 都算在内，一直读到第一行「正经正文」为止，整段不进正文
 function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   const lines = raw.replace(/\r\n/g, '\n').split('\n');
@@ -107,6 +125,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   let tags: string[] = [];
   let repos: Repo[] = [];
   let video = '';
+  let music: Music | undefined;
   let date: Date | undefined;
 
   for (; i < lines.length; i++) {
@@ -139,6 +158,11 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
         if (!video) video = pickVideo(videoLine[1]);
         continue;
       }
+      const musicLine = inner.match(MUSIC);
+      if (musicLine) {
+        music ??= pickMusic(musicLine[1]);
+        continue;
+      }
       const dateLine = inner.match(DATE_LINE);
       if (dateLine) {
         date ??= pickDate(dateLine);
@@ -165,6 +189,12 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     const videoLine = line.match(BILIBILI);
     if (videoLine) {
       if (!video) video = pickVideo(videoLine[1]);
+      continue;
+    }
+
+    const musicLine = line.match(MUSIC);
+    if (musicLine) {
+      music ??= pickMusic(musicLine[1]);
       continue;
     }
 
@@ -220,6 +250,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     tags,
     repos,
     video: video || undefined,
+    music,
     date,
     cover: cover || undefined,
     body,
@@ -275,6 +306,12 @@ function gitDate(file: string): Date | null {
 
   gitDateCache.set(file, d.valueOf());
   return d;
+}
+
+// watcher 看的是整个项目。不能只比前缀：src/content/notice_format.md 也以 src/content/notice 开头，
+// 只比前缀的话，改模板文件它就会被当成一条公告
+function isMarkdownIn(base: string, file: string): boolean {
+  return file.endsWith('.md') && file.startsWith(base + path.sep);
 }
 
 async function listMarkdown(dir: string): Promise<string[]> {
@@ -344,6 +381,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
             tags: parsed.tags,
             repos: parsed.repos,
             video: parsed.video,
+            music: parsed.music,
             cover: parsed.cover,
           },
         });
@@ -375,7 +413,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
       if (ctx.watcher) {
         ctx.watcher.add(base);
         const onChange = async (changed: string) => {
-          if (!changed.startsWith(base) || !changed.endsWith('.md')) return;
+          if (!isMarkdownIn(base, changed)) return;
           try {
             await sync(changed);
           } catch (error) {
@@ -386,7 +424,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
         ctx.watcher.on('add', onChange);
         // 删除也要跟着摘掉，否则文件没了条目还留在库里
         ctx.watcher.on('unlink', (removed: string) => {
-          if (!removed.startsWith(base) || !removed.endsWith('.md')) return;
+          if (!isMarkdownIn(base, removed)) return;
           const name = path.basename(removed, '.md');
           ctx.store.delete(name.replace(DATE_PREFIX, '').replace(/\s+/g, '-'));
         });
@@ -465,7 +503,7 @@ export function profileMarkdown(options: { dir: string }): Loader {
       if (ctx.watcher) {
         ctx.watcher.add(base);
         const onChange = async (changed: string) => {
-          if (!changed.startsWith(base) || !changed.endsWith('.md')) return;
+          if (!isMarkdownIn(base, changed)) return;
           try {
             await sync(changed);
           } catch (error) {
@@ -475,7 +513,7 @@ export function profileMarkdown(options: { dir: string }): Loader {
         ctx.watcher.on('change', onChange);
         ctx.watcher.on('add', onChange);
         ctx.watcher.on('unlink', (removed: string) => {
-          if (!removed.startsWith(base) || !removed.endsWith('.md')) return;
+          if (!isMarkdownIn(base, removed)) return;
           ctx.store.delete(path.basename(removed, '.md'));
         });
       }

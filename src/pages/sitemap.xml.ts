@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { site } from '../config/site';
-import { getAllPublished, tagCounts, entryHref } from '../lib/content';
+import { getAllPublished, getNotices, noticeHref, tagCounts, entryHref } from '../lib/content';
 
 export const GET: APIRoute = async () => {
   const all = await getAllPublished();
   const tags = tagCounts(all.map((item) => item.entry));
+  const notices = await getNotices();
 
   const urls: { loc: string; lastmod?: Date }[] = [
     { loc: '/' },
@@ -15,6 +16,11 @@ export const GET: APIRoute = async () => {
     { loc: '/xiaomeng/' },
     { loc: '/tags/' },
     { loc: '/about/' },
+    { loc: '/notice/' },
+    ...notices.map((entry) => ({
+      loc: noticeHref(entry.data.slug),
+      lastmod: entry.data.publishedAt,
+    })),
     ...all.map(({ kind, entry }) => ({
       loc: entryHref(kind, entry.data.slug),
       lastmod: entry.data.publishedAt,

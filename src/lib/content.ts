@@ -47,6 +47,45 @@ export function entryHref(kind: ContentKind, slug: string): string {
   return `/${kind}/${slug}/`;
 }
 
+// 公告不算内容分类，单独取
+export type NoticeEntry = CollectionEntry<'notice'>;
+
+// tags 里写「置顶」的公告排在最前面
+const PINNED_TAG = '置顶';
+
+export function isPinned(entry: NoticeEntry): boolean {
+  return entry.data.tags.includes(PINNED_TAG);
+}
+
+// 公告类型：tags 里除「置顶」以外的第一个
+export function noticeType(entry: NoticeEntry): string | undefined {
+  return entry.data.tags.find((tag) => tag !== PINNED_TAG);
+}
+
+// 列表顺序：置顶的在前，各自按时间倒序
+export async function getNotices(): Promise<NoticeEntry[]> {
+  const entries = await getCollection('notice');
+  return entries.sort(
+    (a, b) =>
+      Number(isPinned(b)) - Number(isPinned(a)) ||
+      b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf(),
+  );
+}
+
+// 顶栏铃铛的红点看发布时间最新的一条。不能取列表第一条：那可能是很久以前的置顶公告
+export async function getLatestNotice(): Promise<NoticeEntry | undefined> {
+  const entries = await getCollection('notice');
+  return entries.reduce<NoticeEntry | undefined>(
+    (latest, entry) =>
+      !latest || entry.data.publishedAt > latest.data.publishedAt ? entry : latest,
+    undefined,
+  );
+}
+
+export function noticeHref(slug: string): string {
+  return `/notice/${slug}/`;
+}
+
 // 中文按字计、西文按词计的字数估算
 export function countWords(body: string): number {
   const text = body

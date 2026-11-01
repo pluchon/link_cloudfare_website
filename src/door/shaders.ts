@@ -1,6 +1,9 @@
 // 门户页的着色器：黑洞与深空（全屏光线步进）、吸积粒子、俯冲时的速度线
+import { warpGlsl } from './warp';
 
-// 黑洞铺满整个画面，画在远平面上，空间站、探测器和粒子盖在它前面
+
+// 黑洞铺满整个画面，第一个画，空间站、探测器和粒子画在它上面。
+// 是否挡得住它们，由片元着色器写的深度决定（见 holeFragment 最后）
 export const holeVertex = /* glsl */ `
   varying vec2 vNdc;
   void main() {
@@ -36,6 +39,7 @@ export const holeFragment = /* glsl */ `
   uniform vec2 uHoleNdc;
   uniform float uStreak;
   uniform float uAspect;
+  uniform vec2 uProjZ;
 
   varying vec2 vNdc;
 
@@ -243,7 +247,8 @@ export const holeFragment = /* glsl */ `
 
   void main() {
     vec4 view = uInvProj * vec4(vNdc, 1.0, 1.0);
-    vec3 rd = normalize((uCamWorld * vec4(view.xyz / view.w, 0.0)).xyz);
+    vec3 viewDir = normalize(view.xyz / view.w);
+    vec3 rd = normalize((uCamWorld * vec4(viewDir, 0.0)).xyz);
 
     // 光行差：把看到的方向换回静止系里的方向，再拿去追光线
     float boostLum = 1.0;
@@ -272,6 +277,7 @@ export const holeFragment = /* glsl */ `
     vec3 jet = vec3(0.0);
     float minR = 1e4;
     bool swallowed = false;
+    float hitDist = -1.0;
 
     // 瞄准距离 b（光线到黑洞中心的最近距离）很大的光线碰不到吸积盘和光雾，
     // 不用一步步追，按弱场偏折一次算出弯折后的方向：迎面掠过偏 2/b，背离黑洞的几乎不偏。
@@ -301,7 +307,9 @@ export const holeFragment = /* glsl */ `
         vec3 hit = mix(pos, next, d0 / (d0 - d1));
         vec4 dc = disk(hit, normalize(rd));
         col += (1.0 - alpha) * dc.rgb * dc.a;
+        bool wasClear = alpha < 0.5;
         alpha += (1.0 - alpha) * dc.a;
+        if (wasClear && alpha >= 0.5) hitDist = length(hit - uCamPos);
       }
 
       float rr = length(pos - uDiskN * d0);
@@ -353,11 +361,23 @@ export const holeFragment = /* glsl */ `
     gl_FragColor = vec4(col, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
+
+    // 把这个像素「最先挡住光线的东西」的距离写进深度：盘面够实的地方是盘面，掉进视界的是黑洞本身。
+    // 星球和探测器的像画上来时就走普通的深度测试，比它远的自然被挡住。
+    // 盘面多留两成余量：粒子就在盘面上，不留的话和盘面抢深度，一闪一闪
+    float blockDist = hitDist > 0.0 ? hitDist * 1.2 : swallowed ? length(uCamPos) : -1.0;
+    if (blockDist > 0.0) {
+      float zv = blockDist * viewDir.z;
+      gl_FragDepth = clamp(0.5 * ((uProjZ.x * zv + uProjZ.y) / -zv) + 0.5, 0.0, 1.0);
+    } else {
+      gl_FragDepth = 1.0;
+    }
   }
 `;
 
 // 粒子绕黑洞按开普勒速度公转；uDive 从 0 到 1 时一层层往里掉，越近越快
 export const dustVertex = /* glsl */ `
+  ${warpGlsl}
   attribute float aRadius;
   attribute float aAngle;
   attribute float aLift;
@@ -382,9 +402,10 @@ export const dustVertex = /* glsl */ `
 
     float a = aAngle + uTime * 2.6 * pow(r, -1.5) + fall * fall * 9.0;
     float lift = aLift * (1.0 - fall);
-    vec3 p = (uDiskU * cos(a) + uDiskV * sin(a)) * r + uDiskN * lift;
+    // 和星空一样被透镜弯折、被光行差往前收拢
+    vec3 p = spaceWarp((uDiskU * cos(a) + uDiskV * sin(a)) * r + uDiskN * lift);
 
-    // 黑洞是画在背景上的，粒子却总盖在它前面。视线穿过阴影的粒子一律藏起来
+    // 黑洞是画在背景上的，粒子却总盖在它前面。弯折之后视线还穿过阴影的粒子一律藏起来
     vec3 toP = p - cameraPosition;
     float miss = length(cross(normalize(toP), -cameraPosition));
     float hidden = 1.0 - smoothstep(2.4, 3.0, miss);

@@ -1,0 +1,17 @@
+---
+import type { GetStaticPaths } from 'astro';
+import NoticeLayout from '../../layouts/NoticeLayout.astro';
+import { getNotices, type NoticeEntry } from '../../lib/content';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const notices = await getNotices();
+  return notices.map((entry) => ({
+    params: { slug: entry.data.slug },
+    props: { entry, notices },
+  }));
+};
+
+const { entry, notices } = Astro.props as { entry: NoticeEntry; notices: NoticeEntry[] };
+---
+
+<NoticeLayout notices={notices} current={entry} view="detail" />

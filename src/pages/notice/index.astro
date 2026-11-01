@@ -1,0 +1,8 @@
+---
+import NoticeLayout from '../../layouts/NoticeLayout.astro';
+import { getNotices } from '../../lib/content';
+
+const notices = await getNotices();
+---
+
+<NoticeLayout notices={notices} current={notices[0]} view="index" />
