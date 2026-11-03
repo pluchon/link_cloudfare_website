@@ -1,17 +1,22 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { site } from '../config/site';
+
+const poster = site.notFoundPoster;
 ---
 
 <BaseLayout title="页面不存在" description="没有找到这个页面。" noindex>
   <section class="wrap notfound">
-    <img
+    <div
       class="notfound__poster"
-      src={site.notFoundPoster}
-      alt=""
+      aria-hidden="true"
       data-reveal
-      width="1600"
-      height="900"
+      style={{
+        '--poster-day': `url('${poster.light}')`,
+        '--poster-night': `url('${poster.dark}')`,
+        '--poster-day-tall': `url('${poster.lightPortrait}')`,
+        '--poster-night-tall': `url('${poster.darkPortrait}')`,
+      }}
     />
 
     <div class="notfound__row" data-reveal style="--reveal-i: 1">
@@ -22,7 +27,6 @@ import { site } from '../config/site';
 </BaseLayout>
 
 <style>
-  /* 一屏放完：海报吃掉剩余高度，不产生滚动 */
   .notfound {
     display: flex;
     flex-direction: column;
@@ -31,11 +35,26 @@ import { site } from '../config/site';
   }
 
   .notfound__poster {
-    flex: 1;
+    --poster-light: var(--poster-day);
+    --poster-dark: var(--poster-night);
+    flex: 1 0 auto;
     min-height: 0;
     width: 100%;
-    object-fit: cover;
+    aspect-ratio: 16 / 9;
+    background: var(--poster-light) center / cover no-repeat;
     border: var(--hair) solid var(--line);
+  }
+
+  :global(:root[data-theme='dark']) .notfound__poster {
+    background-image: var(--poster-dark);
+  }
+
+  @media (max-aspect-ratio: 4 / 5) {
+    .notfound__poster {
+      --poster-light: var(--poster-day-tall);
+      --poster-dark: var(--poster-night-tall);
+      aspect-ratio: 9 / 16;
+    }
   }
 
   /* 标题在左，说明贴到同一行的最右侧 */

@@ -15,7 +15,8 @@ import { fileURLToPath } from 'node:url';
 //   仓库   ← 元信息区一行 github: https://github.com/甲/乙
 //   视频   ← 元信息区一行 bilibili: https://www.bilibili.com/video/BV号/
 //   伴奏   ← 元信息区一行 music: https://…/歌曲名_时间戳.mp3
-// 标题、简介、标签、日期、仓库、视频、伴奏这几行会从正文里剔除，不会在文章里重复出现
+//   游玩   ← 元信息区一行 play: /game/xxx/（游戏集合专用）
+// 标题、简介、标签、日期、仓库、视频、伴奏、游玩这几行会从正文里剔除，不会在文章里重复出现
 
 export interface PlainMarkdownOptions {
   /** 相对项目根目录，例如 src/content/blog */
@@ -42,6 +43,7 @@ interface ParsedDoc {
   repos: Repo[];
   video?: string;
   music?: Music;
+  play?: string;
   date?: Date;
   cover?: string;
   body: string;
@@ -64,6 +66,8 @@ const VIDEO_URL = /https:\/\/www\.bilibili\.com\/video\/\w+/;
 // 伴奏：music: https://…/歌曲名_时间戳.mp3。歌名默认从文件名取，想显示别的就写在地址前面：music: 下雨天 https://…
 const MUSIC = /^music\s*[:：]\s*(.+)$/i;
 const MUSIC_URL = /https:\/\/\S+/;
+// 游戏入口路由：play: /game/xxx/（填好后游戏大厅卡片变为可游玩状态）
+const PLAY_LINE = /^play\s*[:：]\s*(\S+)\s*$/i;
 // 发布时间：date: 2026-10-27，可以带时分 date: 2026-10-27 14:57，按台北时间算。
 // 手写这一行，改错字就不会动日期；觉得改动够大了再自己改这一行
 const DATE_LINE = /^date\s*[:：]\s*(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?\s*$/i;
@@ -107,7 +111,7 @@ function pickMusic(raw: string): Music | undefined {
   return { name: label || file.replace(/_\d+$/, ''), url };
 }
 
-// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags / github / bilibili / music 引用块、[toc]
+// 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags / github / bilibili / music / play 引用块、[toc]
 // 都算在内，一直读到第一行「正经正文」为止，整段不进正文
 function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   const lines = raw.replace(/\r\n/g, '\n').split('\n');
@@ -126,6 +130,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   let repos: Repo[] = [];
   let video = '';
   let music: Music | undefined;
+  let play = '';
   let date: Date | undefined;
 
   for (; i < lines.length; i++) {
@@ -163,6 +168,11 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
         music ??= pickMusic(musicLine[1]);
         continue;
       }
+      const playLine = inner.match(PLAY_LINE);
+      if (playLine) {
+        if (!play && /^(?:\/|https?:\/\/)/.test(playLine[1])) play = playLine[1];
+        continue;
+      }
       const dateLine = inner.match(DATE_LINE);
       if (dateLine) {
         date ??= pickDate(dateLine);
@@ -198,6 +208,12 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
       continue;
     }
 
+    const playLine = line.match(PLAY_LINE);
+    if (playLine) {
+      if (!play && /^(?:\/|https?:\/\/)/.test(playLine[1])) play = playLine[1];
+      continue;
+    }
+
     const dateLine = line.match(DATE_LINE);
     if (dateLine) {
       date ??= pickDate(dateLine);
@@ -206,7 +222,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
 
     const img = line.match(IMAGE_ONLY);
     if (img) {
-      if (!cover) cover = img[1];
+      if (!cover && /^(?:\/|https?:\/\/)/.test(img[1])) cover = img[1];
       continue;
     }
 
@@ -232,7 +248,10 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     .trim();
 
   // 元信息区没放图就退回正文第一张
-  if (!cover) cover = body.match(ANY_IMAGE)?.[1] ?? '';
+  if (!cover) {
+    const firstImg = body.match(ANY_IMAGE)?.[1] ?? '';
+    if (/^(?:\/|https?:\/\/)/.test(firstImg)) cover = firstImg;
+  }
 
   // 没写引用块就退回正文第一段，截一句话
   if (!summary) {
@@ -251,6 +270,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     repos,
     video: video || undefined,
     music,
+    play: play || undefined,
     date,
     cover: cover || undefined,
     body,
@@ -382,6 +402,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
             repos: parsed.repos,
             video: parsed.video,
             music: parsed.music,
+            play: parsed.play,
             cover: parsed.cover,
           },
         });

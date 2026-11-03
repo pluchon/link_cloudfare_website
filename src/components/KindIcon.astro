@@ -2,7 +2,7 @@
 // 顶栏导航、分类页标题、标签页标题前面的小图标。线条和顶栏那几个工具图标同一套（24 格、1.5 描边、圆头），
 // 每个再点一处粉色（蝴蝶结、腮红、小爱心），和站标那条系着粉蝴蝶结的猫尾巴呼应。
 // 粉色只是插画里的一点点缀，不是交互色，所以不用朱红
-export type IconName = 'project' | 'tool' | 'explore' | 'daily' | 'xiaomeng' | 'about' | 'tags' | 'hot' | 'notice';
+export type IconName = 'project' | 'tool' | 'explore' | 'daily' | 'xiaomeng' | 'about' | 'tags' | 'hot' | 'notice' | 'game';
 
 interface Props {
   name: IconName;
@@ -118,6 +118,18 @@ const { name, class: className } = Astro.props;
         <path d="M12 3.2V2.2" />
         <path d="M6.2 16.8v-6a5.8 5.8 0 0 1 11.6 0v6l1.7 1.8H4.5z" />
         <circle class="kind-icon__pink" cx="12" cy="20.8" r="1.7" />
+      </>
+    )
+  }
+  {
+    name === 'game' && (
+      <>
+        {/* 游戏手柄：圆润握把轮廓，左侧十字方向键，右侧一颗粉色小按键 */}
+        <path d="M12 4.8v2.4" />
+        <path d="M6.8 7.2h10.4a4.2 4.2 0 0 1 4.1 5.1l-.9 4.3a2.6 2.6 0 0 1-4.5 1.2l-1.6-2H9.7l-1.6 2a2.6 2.6 0 0 1-4.5-1.2l-.9-4.3a4.2 4.2 0 0 1 4.1-5.1z" />
+        <path d="M8.4 10.6v3.2M6.8 12.2h3.2" />
+        <circle class="kind-icon__pink" cx="16.3" cy="11.4" r="1.45" />
+        <circle cx="14.1" cy="13.3" r="0.85" fill="currentColor" stroke="none" />
       </>
     )
   }

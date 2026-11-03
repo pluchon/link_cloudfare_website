@@ -36,6 +36,16 @@ function isActive(href: string): boolean {
     </nav>
 
     <div class="tools">
+      <a
+        class="icon-btn bell"
+        href="/game/"
+        aria-label="游戏"
+        title="游戏"
+        aria-current={isActive('/game/') ? 'page' : undefined}
+      >
+        <KindIcon name="game" />
+      </a>
+
       <!-- 公告栏：最新一条发布 24 小时内亮红点，不显示数量。亮不亮由 data-new-since 按访问时刻算 -->
       <a
         class="icon-btn bell"

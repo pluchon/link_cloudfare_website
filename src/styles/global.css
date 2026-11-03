@@ -560,11 +560,21 @@ body.is-canvas > main {
   background: var(--dot, var(--accent));
 }
 
-/* 窄屏：顶栏分两行。第一行站名（短名）和右边三个图标，第二行六个导航项平均铺满。
-   以前是硬挤在一行，导航加到六项、图标加到三个以后 375px 宽就放不下，整页横向溢出 */
+/* 中屏（<= 66.5rem）：右侧工具栏加到五个图标后，全称站名与七项导航同处一行会超宽，
+   先切换成短站名并收紧导航间距，保持单行不溢出 */
 .brand__short { display: none; }
 
-@media (max-width: 40rem) {
+@media (max-width: 66.5rem) {
+  .site-header__inner { gap: 0.75rem; }
+  .brand__full { display: none; }
+  .brand__short { display: inline; }
+  .site-nav { gap: 0.1rem; }
+  .site-nav a { padding: 0.4rem 0.5rem; }
+  .tools { margin-left: 0.5rem; padding-left: 0.5rem; }
+}
+
+/* 窄屏（<= 48rem，含竖屏平板与手机）：顶栏分两行。第一行站名（短名）和右边五个图标，第二行七个导航项平均铺满 */
+@media (max-width: 48rem) {
   .site-header__inner {
     flex-wrap: wrap;
     gap: 0;
@@ -573,8 +583,6 @@ body.is-canvas > main {
   }
 
   .brand { font-size: 0.9375rem; }
-  .brand__full { display: none; }
-  .brand__short { display: inline; }
 
   .tools {
     margin-left: auto;

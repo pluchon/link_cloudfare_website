@@ -1035,9 +1035,9 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           }
         });
 
-        // 入场动画：进入视口才播，播完就不再管
+        // 入场动画：进入视口才播，播完就不再管；首屏已在视口内的直接触发，不依赖异步回调
         function reveal() {
-          var targets = document.querySelectorAll('[data-reveal]');
+          var targets = document.querySelectorAll('[data-reveal]:not(.is-in)');
           if (!targets.length) return;
 
           function showAll() {
@@ -1052,6 +1052,18 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           }
 
           try {
+            var vh = window.innerHeight || document.documentElement.clientHeight;
+            var pending = [];
+            targets.forEach(function (el) {
+              var rect = el.getBoundingClientRect();
+              if (rect.top < vh * 0.94 && rect.bottom > 0) {
+                el.classList.add('is-in');
+              } else {
+                pending.push(el);
+              }
+            });
+            if (!pending.length) return;
+
             var observer = new IntersectionObserver(
               function (entries) {
                 entries.forEach(function (item) {
@@ -1060,9 +1072,9 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
                   observer.unobserve(item.target);
                 });
               },
-              { rootMargin: '0px 0px -8% 0px', threshold: 0 },
+              { rootMargin: '0px 0px -6% 0px', threshold: 0 },
             );
-            targets.forEach(function (el) {
+            pending.forEach(function (el) {
               observer.observe(el);
             });
           } catch (e) {
@@ -1071,15 +1083,13 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
           }
         }
 
-        // 换页靠 astro:page-load；没有 ClientRouter 时退回 DOMContentLoaded，
-        // 保证内容不会永远停在隐藏状态
+        // 换页靠 astro:page-load；首次加载同时挂 DOMContentLoaded，
+        // 避免外链资源拖住 window.load 导致内容停在隐藏状态
         document.addEventListener('astro:page-load', reveal);
-        if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', reveal);
-          } else {
-            reveal();
-          }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', reveal);
+        } else {
+          reveal();
         }
       })();
     </script>
@@ -1104,14 +1114,12 @@ const canonical = new URL(Astro.url.pathname, site.url).href;
         document.addEventListener('astro:page-load', function () {
           markNew();
         });
-        if (!document.querySelector('meta[name="astro-view-transitions-enabled"]')) {
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function () {
-              markNew();
-            });
-          } else {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', function () {
             markNew();
-          }
+          });
+        } else {
+          markNew();
         }
       })();
     </script>

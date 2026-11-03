@@ -1,0 +1,605 @@
+---
+import '../../styles/prose.css';
+import '../../styles/notice.css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageBackdrop from '../../components/PageBackdrop.astro';
+import PixelBackdrop from '../../components/PixelBackdrop.astro';
+import KindIcon from '../../components/KindIcon.astro';
+import { games as fallbackGames, pageBackdrops, site } from '../../config/site';
+import { getGames } from '../../lib/content';
+import { resolveEmbeds } from '../../lib/embeds';
+
+const collectionGames = await getGames();
+
+const items =
+  collectionGames.length > 0
+    ? await Promise.all(
+        collectionGames.map(async (entry, idx) => ({
+          id: String(idx + 1).padStart(2, '0'),
+          slug: entry.data.slug,
+          title: entry.data.title,
+          summary: entry.data.summary,
+          tag: entry.data.tags.slice(0, 2).join(' / ') || '小游戏',
+          cover: entry.data.cover ?? '',
+          href: entry.data.play ?? '',
+          rulesHtml: entry.body?.trim()
+            ? await resolveEmbeds(entry.rendered?.html ?? '')
+            : '',
+        })),
+      )
+    : fallbackGames.map((item) => ({
+        ...item,
+        slug: item.id,
+        rulesHtml: '',
+      }));
+---
+
+<BaseLayout title="游戏" description={site.gameLine}>
+  <PageBackdrop art={pageBackdrops.game} />
+  <PixelBackdrop />
+
+  <section class="wrap game-head">
+    <div class="game-head__row" data-reveal>
+      <h1 class="game-head__title">
+        <KindIcon name="game" class="game-head__icon" />
+        游戏
+      </h1>
+      <p class="game-head__desc">{site.gameLine}</p>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="rule-tab" aria-hidden="true"></div>
+  </div>
+
+  <section class="wrap game-body" aria-label="游戏列表">
+    <ol class="game-grid">
+      {
+        items.map((item, i) => {
+          const ready = Boolean(item.href);
+          const hasRules = Boolean(item.rulesHtml);
+          return (
+            <li data-reveal style={`--reveal-i: ${Math.min(i + 1, 7)}`}>
+              <article class:list={['game-card', !ready && 'game-card--coming']}>
+                <header class="game-card__bar">
+                  <span class="game-card__no">GAME {item.id}</span>
+                  <span class="game-card__tag">{item.tag}</span>
+                </header>
+
+                <div class="game-card__cover-wrap">
+                  {item.cover ? (
+                    <img class="game-card__cover" src={item.cover} alt="" loading="lazy" />
+                  ) : (
+                    <div class="game-card__cover cover-ph">
+                      <svg class="game-card__motif" viewBox="0 0 64 40" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                        <rect x="14" y="8" width="36" height="24" rx="2" />
+                        <path d="M22 20h6M25 17v6" />
+                        <circle class="game-card__motif-dot" cx="40" cy="18" r="2" />
+                        <circle cx="36" cy="22" r="1.5" />
+                      </svg>
+                      <span>封面待补</span>
+                    </div>
+                  )}
+                </div>
+
+                <div class="game-card__body">
+                  <h2 class="game-card__title">{item.title}</h2>
+                  <p class="game-card__summary">{item.summary}</p>
+                </div>
+
+                <footer class="game-card__foot">
+                  <span class="game-card__state">{ready ? '开始游戏' : '制作中'}</span>
+                  <div class="game-card__actions">
+                    {hasRules && (
+                      <button
+                        type="button"
+                        class="game-card__rules-btn"
+                        data-open-rules={`game-rules-${item.slug}`}
+                      >
+                        游戏规则
+                      </button>
+                    )}
+                    <span class="game-card__action" aria-hidden="true">
+                      {ready ? '→' : '—'}
+                    </span>
+                  </div>
+                  <svg class="game-card__paw" viewBox="0 0 24 24" aria-hidden="true">
+                    <ellipse cx="12" cy="16" rx="5" ry="4.2" />
+                    <ellipse cx="5.2" cy="11" rx="2" ry="2.6" />
+                    <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7" />
+                    <ellipse cx="14.4" cy="6.8" rx="2" ry="2.7" />
+                    <ellipse cx="18.8" cy="11" rx="2" ry="2.6" />
+                  </svg>
+                </footer>
+
+                {ready && <a class="game-card__hit" href={item.href} aria-label={item.title} />}
+              </article>
+
+              {hasRules && (
+                <dialog class="game-rules-modal" id={`game-rules-${item.slug}`} aria-label={`${item.title} 游戏规则`}>
+                  <div class="game-rules-modal__panel">
+                    <header class="game-rules-modal__head">
+                      <div>
+                        <span class="game-rules-modal__meta">GAME {item.id} · RULES</span>
+                        <h3 class="game-rules-modal__title">{item.title}</h3>
+                      </div>
+                      <button type="button" class="game-rules-modal__close" data-close-rules aria-label="关闭规则">
+                        关闭 ×
+                      </button>
+                    </header>
+                    <div class="prose notice__prose game-rules-modal__body" set:html={item.rulesHtml} />
+                  </div>
+                </dialog>
+              )}
+            </li>
+          );
+        })
+      }
+    </ol>
+  </section>
+</BaseLayout>
+
+<script>
+  function wireGameRules() {
+    document.querySelectorAll<HTMLButtonElement>('[data-open-rules]').forEach((btn) => {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.openRules;
+        const dialog = id ? (document.getElementById(id) as HTMLDialogElement | null) : null;
+        dialog?.showModal();
+      });
+    });
+
+    document.querySelectorAll<HTMLDialogElement>('.game-rules-modal').forEach((dialog) => {
+      if (dialog.dataset.wired) return;
+      dialog.dataset.wired = '1';
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog || (e.target as HTMLElement).closest('[data-close-rules]')) {
+          dialog.close();
+        }
+      });
+    });
+  }
+
+  wireGameRules();
+  document.addEventListener('astro:page-load', wireGameRules);
+</script>
+
+<style>
+  /* 背景插画与像素粒子为 fixed，内容层抬起 */
+  .game-head,
+  .game-body,
+  .rule-tab {
+    position: relative;
+    z-index: 1;
+  }
+
+  .game-head {
+    padding-block: clamp(2.5rem, 6vw, 4rem) 1.5rem;
+  }
+
+  .game-head__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .game-head__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .game-head__title :global(.game-head__icon) {
+    font-size: 0.8em;
+    color: var(--fg-muted);
+  }
+
+  .game-head__desc {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    text-align: right;
+  }
+
+  /* 标题下方的虚线 + 左端强调色短横，与列表页保持同一套视觉语法 */
+  .rule-tab {
+    position: relative;
+    height: var(--hair);
+    background: repeating-linear-gradient(
+      to right,
+      var(--line) 0 5px,
+      transparent 5px 10px
+    );
+  }
+
+  .rule-tab::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -1px;
+    width: 4.5rem;
+    height: 3px;
+    background: var(--accent);
+  }
+
+  /* 主体区：底部留出充足呼吸空间，让左下角背景插画自然透出 */
+  .game-body {
+    padding-block: clamp(2.25rem, 5vw, 3.25rem) clamp(5rem, 11vw, 8rem);
+  }
+
+  .game-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(1.5rem, 3vw, 2.25rem);
+  }
+
+  /* 卡片：只用 1px 发丝线做骨架，薄底板承托文字，不加阴影、圆角或渐变 */
+  .game-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      background var(--dur-1) var(--ease-out);
+  }
+
+  /* 顶部朱红发丝线：悬停时从左往右生长 */
+  .game-card::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: -1px;
+    height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--dur-2) var(--ease-line);
+    z-index: 2;
+  }
+
+  .game-card:hover {
+    border-color: var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 86%, var(--accent-wash));
+  }
+
+  .game-card:hover::before {
+    transform: scaleX(1);
+  }
+
+  /* 顶栏编号与小签 */
+  .game-card__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 1.15rem;
+    border-bottom: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+  }
+
+  .game-card__no {
+    color: var(--fg-faint);
+  }
+
+  .game-card__tag {
+    color: var(--fg-muted);
+  }
+
+  /* 封面位：16:10 画幅，支持 OSS 图与发丝线点阵占位 */
+  .game-card__cover-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .game-card__cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .game-card__cover.cover-ph {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+  }
+
+  .game-card__motif {
+    width: 3.25rem;
+    height: auto;
+    color: var(--line-strong);
+    transition:
+      color var(--dur-2) var(--ease-out),
+      transform var(--dur-3) var(--ease-out);
+  }
+
+  .game-card__motif-dot {
+    fill: var(--icon-pink);
+    stroke: none;
+  }
+
+  .game-card:hover .game-card__motif {
+    color: var(--fg-muted);
+    transform: scale(1.05);
+  }
+
+  /* 悬停时一道斜光掠过封面，与文章列表封面保持一致 */
+  .game-card__cover-wrap::after {
+    content: "";
+    position: absolute;
+    top: -20%;
+    left: -70%;
+    width: 45%;
+    height: 140%;
+    background: linear-gradient(
+      100deg,
+      transparent,
+      color-mix(in srgb, var(--fg) 10%, transparent),
+      transparent
+    );
+    transform: skewX(-18deg);
+    transition: left 700ms var(--ease-out);
+    pointer-events: none;
+  }
+
+  .game-card:hover .game-card__cover-wrap::after {
+    left: 125%;
+  }
+
+  /* 正文：标题与单行简述，克制留白 */
+  .game-card__body {
+    flex: 1;
+    padding: 1.25rem 1.25rem 1.35rem;
+  }
+
+  .game-card__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.1875rem;
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: 0.02em;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .game-card:hover .game-card__title {
+    color: var(--accent);
+  }
+
+  .game-card__summary {
+    margin: 0.5rem 0 0;
+    color: var(--fg-muted);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* 底栏：虚线分隔，左状态右箭头与小猫爪点缀 */
+  .game-card__foot {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    border-top: var(--hair) dashed var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    color: var(--fg-faint);
+  }
+
+  .game-card:not(.game-card--coming) .game-card__state {
+    color: var(--fg-muted);
+  }
+
+  .game-card__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .game-card__rules-btn {
+    position: relative;
+    z-index: 2;
+    padding: 0.15rem 0.45rem;
+    border: var(--hair) solid var(--line);
+    background: transparent;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .game-card__rules-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .game-card__action {
+    transition:
+      transform var(--dur-2) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .game-card:not(.game-card--coming):hover .game-card__action {
+    color: var(--accent);
+    transform: translateX(3px);
+  }
+
+  .game-card__paw {
+    position: absolute;
+    right: 2.35rem;
+    top: 50%;
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: var(--icon-pink);
+    opacity: 0;
+    transform: translateY(-50%) scale(0.75) rotate(-10deg);
+    transition:
+      opacity var(--dur-1) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+    pointer-events: none;
+  }
+
+  .game-card:hover .game-card__paw {
+    opacity: 0.9;
+    transform: translateY(-50%) scale(1) rotate(10deg);
+  }
+
+  .game-card__hit {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  /* 游戏规则弹窗：沿用 1px 发丝线与正文排版，兼容 PC 与移动端 */
+  .game-rules-modal {
+    margin: auto;
+    padding: 0;
+    width: min(38rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 3rem);
+    border: var(--hair) solid var(--line-strong);
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .game-rules-modal::backdrop {
+    background: color-mix(in srgb, var(--bg) 65%, transparent);
+    backdrop-filter: blur(2px);
+  }
+
+  .game-rules-modal__panel {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 3rem);
+  }
+
+  .game-rules-modal__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.15rem 1.5rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .game-rules-modal__meta {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    color: var(--fg-faint);
+  }
+
+  .game-rules-modal__title {
+    margin: 0.25rem 0 0;
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .game-rules-modal__close {
+    padding: 0.25rem 0.6rem;
+    border: var(--hair) solid var(--line);
+    background: transparent;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .game-rules-modal__close:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .game-rules-modal__body {
+    padding: 1.35rem 1.5rem 1.75rem;
+    overflow-y: auto;
+  }
+
+  /* 平板端：两列排布 */
+  @media (max-width: 58rem) {
+    .game-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .game-head__row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.65rem;
+    }
+
+    .game-head__desc {
+      text-align: left;
+    }
+  }
+
+  /* 移动端：单列展开，保证触屏点击区域舒展、375/320 零横向溢出 */
+  @media (max-width: 38rem) {
+    .game-head {
+      padding-block: 1.75rem 1.25rem;
+    }
+
+    .game-body {
+      padding-block: 1.75rem 4rem;
+    }
+
+    .game-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1.25rem;
+    }
+
+    .game-card__body {
+      padding: 1.1rem 1.1rem 1.2rem;
+    }
+
+    .game-card__bar,
+    .game-card__foot {
+      padding-inline: 1.1rem;
+    }
+
+    .game-rules-modal__head,
+    .game-rules-modal__body {
+      padding-inline: 1.1rem;
+    }
+  }
+</style>

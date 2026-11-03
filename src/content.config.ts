@@ -16,6 +16,8 @@ const schema = z.object({
   video: z.string().optional(),
   // 文章里那行 music: 推出来的伴奏，日期行最右边显示歌名
   music: z.object({ name: z.string(), url: z.string() }).optional(),
+  // 游戏说明里那行 play: 推出来的实际游玩路由
+  play: z.string().optional(),
   cover: z.string().optional(),
 });
 
@@ -50,6 +52,12 @@ const notice = defineCollection({
   schema,
 });
 
+// 游戏与规则说明：只从顶栏手柄图标进入，每个 .md 文件同时提供大厅卡片元信息与该游戏的规则正文
+const game = defineCollection({
+  loader: plainMarkdown({ dir: 'src/content/game', defaultCategory: '游戏' }),
+  schema,
+});
+
 // 关于页正文：引用块里的 tags 变成技能标签，其余整篇渲染
 const profile = defineCollection({
   loader: profileMarkdown({ dir: 'src/content/profile' }),
@@ -59,4 +67,4 @@ const profile = defineCollection({
   }),
 });
 
-export const collections = { project, tool, explore, daily, xiaomeng, notice, profile };
+export const collections = { project, tool, explore, daily, xiaomeng, notice, game, profile };

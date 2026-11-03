@@ -28,8 +28,13 @@ export const site = {
     coord: 'RA 17h 45m 40s · DEC −29° 00′ 28″ · 人马座方向',
   },
   footerNote: '今天也辛苦啦，要不要在这里休息一会儿？小萌会陪着你的♪٩(´ω`)و♪',
-  notFoundPoster:
-    'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404.webp',
+  gameLine: '快和诺诺一起玩游戏吧~ ヾ(≧▽≦*)o',
+  notFoundPoster: {
+    light: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404/20261103/404-landscape.webp?v=7b4f2b54fbf8',
+    dark: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404/20261103/night/404-landscape.webp?v=a33d14e2fa4e',
+    lightPortrait: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404/20261103/404-portrait.webp?v=e29b719d072c',
+    darkPortrait: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404/20261103/night/404-portrait.webp?v=bd465813f231',
+  },
 } as const;
 
 // 顶栏导航。icon 对应 KindIcon.astro 里的图标名；sep 表示在这一项左边画一道竖线，
@@ -144,7 +149,45 @@ export const pageBackdrops = {
   tags: pageBackdrop('tags'),
   tagDetail: pageBackdrop('tag-detail'),
   notice: pageBackdrop('notice', 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261102'),
+  game: pageBackdrop('game', 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261103'),
 } as const;
+
+// 游戏大厅条目：每一项都是一个独立的小游戏。cover 填 OSS 完整 URL，留空则显示发丝线点阵占位框；href 填好后即可点击进入该游戏
+export interface GameEntry {
+  id: string;
+  title: string;
+  summary: string;
+  tag: string;
+  cover: string;
+  href: string;
+}
+
+export const games: readonly GameEntry[] = [
+  {
+    id: '01',
+    title: '新游戏 · 筹备中',
+    summary: '第一个独立小游戏正在装机调试，敬请期待。',
+    tag: '街机 / 益智',
+    cover: '',
+    href: '',
+  },
+  {
+    id: '02',
+    title: '新游戏 · 筹备中',
+    summary: '第二个独立小游戏正在装机调试，敬请期待。',
+    tag: '策略 / 解谜',
+    cover: '',
+    href: '',
+  },
+  {
+    id: '03',
+    title: '新游戏 · 筹备中',
+    summary: '第三个独立小游戏正在装机调试，敬请期待。',
+    tag: '休闲 / 日常',
+    cover: '',
+    href: '',
+  },
+] as const;
 
 // 每条分支在首页最多展示几篇
 export const BRANCH_LEAF_LIMIT = 5;

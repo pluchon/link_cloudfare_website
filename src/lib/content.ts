@@ -86,6 +86,18 @@ export function noticeHref(slug: string): string {
   return `/notice/${slug}/`;
 }
 
+// 游戏条目：每个 .md 文件既是游戏大厅卡片，也承载该游戏的规则说明正文
+export type GameCollectionEntry = CollectionEntry<'game'>;
+
+export async function getGames(): Promise<GameCollectionEntry[]> {
+  const entries = await getCollection('game');
+  return entries.sort(
+    (a, b) =>
+      a.data.publishedAt.valueOf() - b.data.publishedAt.valueOf() ||
+      a.id.localeCompare(b.id, 'zh-CN', { numeric: true }),
+  );
+}
+
 // 中文按字计、西文按词计的字数估算
 export function countWords(body: string): number {
   const text = body
