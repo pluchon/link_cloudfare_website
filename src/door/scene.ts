@@ -184,14 +184,19 @@ export function mountDoor(options: DoorOptions): () => void {
   station.add(deckLight);
   deckLight.layers.enable(IMAGE_LAYER);
 
-  // 光从吸积盘那边来：暖色平行光勾边，冷色环境光很弱，暗面要够暗才有深空感
-  const skyLight = new THREE.HemisphereLight(0x4a5a80, 0x05070d, 0.35);
+  // 光从黑洞吸积盘中心向四周辐射：无衰减中心点光源让任意公转方位的探测器和空间站都严格受吸积盘方向照明，
+  // 极轴上方再补一盏微弱冷色喷流散射光勾出暗部金属轮廓
+  const skyLight = new THREE.HemisphereLight(0x4e6088, 0x05070d, 0.38);
   skyLight.layers.enable(IMAGE_LAYER);
   scene.add(skyLight);
-  const diskLight = new THREE.DirectionalLight(0xffc690, 2.4);
-  diskLight.target = station;
+  const diskLight = new THREE.PointLight(0xffc894, 2.55, 0, 0);
+  diskLight.position.set(0, 0, 0);
   diskLight.layers.enable(IMAGE_LAYER);
   scene.add(diskLight);
+  const coronaLight = new THREE.PointLight(0x88b4ff, 0.52, 0, 0);
+  coronaLight.position.set(0, 4.5, 0);
+  coronaLight.layers.enable(IMAGE_LAYER);
+  scene.add(coronaLight);
 
   // ---- 轨迹线：甲板上看很淡，离开甲板才清楚；空间站自己的虚线轨道只在自由视角显示 ----
   const trackMaterial = new THREE.LineBasicMaterial({ color: 0xe9e6f0, transparent: true, opacity: 0.06, depthWrite: false });
@@ -291,6 +296,7 @@ export function mountDoor(options: DoorOptions): () => void {
 
   // 速度线：每条线在相机坐标里从远处迎面飞来，越快拉得越长
   function updateStreaks(beta: number, dt: number) {
+    if (beta <= 0.001 && streakMaterial.opacity === 0) return;
     const speed = 20 + beta * 260;
     const len = 0.5 + beta * 9;
     for (let i = 0; i < streakCount; i++) {
@@ -299,7 +305,13 @@ export function mountDoor(options: DoorOptions): () => void {
       streakSeed[i * 3 + 2] = z;
       const x = streakSeed[i * 3];
       const y = streakSeed[i * 3 + 1];
-      streakPositions.set([x, y, z, x, y, z - len], i * 6);
+      const base = i * 6;
+      streakPositions[base] = x;
+      streakPositions[base + 1] = y;
+      streakPositions[base + 2] = z;
+      streakPositions[base + 3] = x;
+      streakPositions[base + 4] = y;
+      streakPositions[base + 5] = z - len;
     }
     streakGeometry.attributes.position.needsUpdate = true;
     streakMaterial.opacity = Math.min(beta * 0.6, 0.45);
@@ -339,8 +351,12 @@ export function mountDoor(options: DoorOptions): () => void {
   }
 
   // 甲板上的默认朝向：正对黑洞
-  const deckLook = (out = new THREE.Vector3()) => out.copy(eye).add(offsetTmp.copy(ORIGIN).sub(eye).setLength(0.05));
   const offsetTmp = new THREE.Vector3();
+  const sideTmp = new THREE.Vector3();
+  const crossTmp = new THREE.Vector3();
+  const changeDirTmp = new THREE.Vector3();
+  const ndcTmp = new THREE.Vector2();
+  const deckLook = (out = new THREE.Vector3()) => out.copy(eye).add(offsetTmp.copy(ORIGIN).sub(eye).setLength(0.05));
   camera.position.copy(eye);
   controls.target.copy(deckLook());
   controls.update();
@@ -427,19 +443,18 @@ export function mountDoor(options: DoorOptions): () => void {
   });
   controls.addEventListener('change', () => {
     if (mode !== 'deck' || !armed) return;
-    const now = new THREE.Vector3();
-    camera.getWorldDirection(now);
-    if (now.angleTo(startDir) > 0.06) setMode('leaving');
+    camera.getWorldDirection(changeDirTmp);
+    if (changeDirTmp.angleTo(startDir) > 0.06) setMode('leaving');
   });
 
   // 视线到黑洞中心的最近距离（直线近似）小于阴影半径，就算点中了黑洞
   const ray = new THREE.Raycaster();
   function overHole(x: number, y: number): boolean {
-    ray.setFromCamera(new THREE.Vector2(x, y), camera);
+    ray.setFromCamera(ndcTmp.set(x, y), camera);
     const o = ray.ray.origin;
     const d = ray.ray.direction;
     if (o.dot(d) > 0) return false;
-    return new THREE.Vector3().crossVectors(o, d).length() < 3.4;
+    return crossTmp.crossVectors(o, d).length() < 3.4;
   }
 
   // 屏幕上离指针最近、20px 以内的探测器
@@ -502,8 +517,8 @@ export function mountDoor(options: DoorOptions): () => void {
   const dockLook = new THREE.Vector3();
   function placeDock(p: Probe) {
     const out = offsetTmp.copy(p.group.position).normalize();
-    const side = new THREE.Vector3().crossVectors(DISK_N, out);
-    dockPos.copy(p.group.position).addScaledVector(out, 5.5).addScaledVector(DISK_N, 0.9).addScaledVector(side, 1.6);
+    sideTmp.crossVectors(DISK_N, out);
+    dockPos.copy(p.group.position).addScaledVector(out, 5.5).addScaledVector(DISK_N, 0.9).addScaledVector(sideTmp, 1.6);
     dockLook.copy(p.group.position).multiplyScalar(0.5);
   }
 
@@ -716,8 +731,8 @@ export function mountDoor(options: DoorOptions): () => void {
     return Math.sqrt(Math.max(p.lengthSq() - along * along, 0)) < radius * 1.3;
   }
 
-  function placeTag(tag: Tag, p: THREE.Vector3, on: boolean) {
-    const s = on && !behindHole(p) ? toScreen(p) : null;
+  function placeTag(tag: Tag, p: THREE.Vector3, on: boolean, occludedRadius = 0) {
+    const s = on && (occludedRadius <= 0 || !behindHole(p, occludedRadius)) ? toScreen(p) : null;
     if (!s) {
       show(tag, false);
       return;
@@ -765,6 +780,11 @@ export function mountDoor(options: DoorOptions): () => void {
   // 次像是翻转的，三角形绕向也反了，这一遍要反过来算正面，否则看到的是物体的背面。
   // 在黑洞前面的物体没有次像，直接跳过省绘制调用。手机上不画：次像很小，看不出来
   const gl = renderer.getContext();
+  const probesShown = new Array<boolean>(probes.length);
+  let lastDistText = '';
+  let lastHeadText = '';
+  let lastVeilOpacity = '';
+  let lastCopyOpacity = '';
   function isBehind(p: THREE.Vector3) {
     return p.dot(offset.copy(camera.position)) < 0;
   }
@@ -772,8 +792,11 @@ export function mountDoor(options: DoorOptions): () => void {
     if (lite) return;
     const stationShown = station.visible;
     station.visible = stationShown && isBehind(stationPos);
-    const probesShown = probes.map((p) => p.group.visible);
-    for (const p of probes) p.group.visible = p.group.visible && isBehind(p.group.position);
+    for (let i = 0; i < probes.length; i++) {
+      const p = probes[i];
+      probesShown[i] = p.group.visible;
+      p.group.visible = p.group.visible && isBehind(p.group.position);
+    }
     camera.layers.set(IMAGE_LAYER);
     warpImage.value = 1;
     renderer.autoClear = false;
@@ -785,7 +808,7 @@ export function mountDoor(options: DoorOptions): () => void {
     warpImage.value = 0;
     camera.layers.set(0);
     station.visible = stationShown;
-    probes.forEach((p, i) => (p.group.visible = probesShown[i]));
+    for (let i = 0; i < probes.length; i++) probes[i].group.visible = probesShown[i];
   }
 
   function frame() {
@@ -802,20 +825,21 @@ export function mountDoor(options: DoorOptions): () => void {
       holeUniforms.uTime.value += dt;
       dustUniforms.uTime.value += dt;
       holo.rotation.y += dt * 0.25;
+      holo.rotation.x = Math.sin(simTime * 0.35) * 0.1;
     }
     // 桅杆顶上的航标灯：短促地闪一下，大部分时间是暗的
     const blink = 0.25 + 0.75 * Math.max(0, Math.sin(simTime * 2.2)) ** 8;
     stationBeacon.color.setRGB(blink, blink * 0.14, blink * 0.1);
 
-    // 空间站和探测器按各自轨道走；被黑洞挡住的不画（黑洞画在背景上，不藏的话会盖在阴影前面）
+    // 空间站和探测器按各自轨道连续运转；黑洞视界与吸积盘已写入真实硬件深度，后方经过时由深度缓冲自然遮挡，不再生硬开关 visible
     placeStation();
-    station.visible = !behindHole(stationPos, 2);
+    station.visible = mode !== 'diving' || !behindHole(stationPos, 2.0);
     stationQuat.copy(station.quaternion);
     for (const p of probes) {
       orbitPosition(p.orbit, p.frame, simTime, p.group.position);
       // 天线（局部 -z）始终对准空间站，像真的探测器对着地球通讯
       p.group.lookAt(offsetTmp.copy(p.group.position).multiplyScalar(2).sub(stationPos));
-      p.group.visible = !behindHole(p.group.position);
+      p.group.visible = true;
       p.beacon.color.copy(p.tint).multiplyScalar(0.4 + 0.6 * Math.max(0, Math.sin(simTime * 3 + p.phase)));
     }
     rocks.update(simTime, behindHole);
@@ -953,7 +977,13 @@ export function mountDoor(options: DoorOptions): () => void {
     lastQuat.copy(stationQuat);
 
     // 开场从黑里亮起来
-    if (mode !== 'diving') veil.style.opacity = String(still ? 0 : 1 - smooth(clamp01((now - startAt) / 1600)));
+    if (mode !== 'diving') {
+      const vo = String(still ? 0 : 1 - smooth(clamp01((now - startAt) / 1600)));
+      if (vo !== lastVeilOpacity) {
+        lastVeilOpacity = vo;
+        veil.style.opacity = vo;
+      }
+    }
 
     // 标题只在甲板上显示，按时间算
     const onDeck =
@@ -964,12 +994,16 @@ export function mountDoor(options: DoorOptions): () => void {
           : mode === 'leaving'
             ? 1 - clamp01(t / 800)
             : 0;
-    copy.style.opacity = String(onDeck);
+    const co = String(onDeck);
+    if (co !== lastCopyOpacity) {
+      lastCopyOpacity = co;
+      copy.style.opacity = co;
+    }
 
-    // 轨迹线：甲板上很淡，离开甲板就清楚一些；空间站的虚线只在自由视角
+    // 轨迹线：甲板上很淡，离开甲板就清楚一些；对接特写时压低避免横穿吸积盘光环；空间站的虚线只在自由视角
     const away = mode === 'free' || mode === 'leaving' ? 1 : 0;
-    // 俯冲时轨迹线收掉，不然最后会有几根线横穿在黑洞阴影上
-    const trackGoal = mode === 'diving' ? 0 : away ? 0.18 : 0.06;
+    const nearProbe = mode === 'docked' || mode === 'docking' || mode === 'warping';
+    const trackGoal = mode === 'diving' ? 0 : away ? 0.18 : nearProbe ? 0.02 : 0.06;
     trackMaterial.opacity += (trackGoal - trackMaterial.opacity) * Math.min(dt * 3, 1);
     stationTrackMaterial.opacity += (away * 0.2 - stationTrackMaterial.opacity) * Math.min(dt * 3, 1);
 
@@ -986,17 +1020,27 @@ export function mountDoor(options: DoorOptions): () => void {
     // 横向光晕只属于侧视：越接近俯视越淡，正上方往下看时它就是一道莫名其妙的横线
     const edgeOn = 1 - Math.abs(offset.copy(camera.position).normalize().dot(DISK_N));
     holeUniforms.uStreak.value = holeOn ? edgeOn * edgeOn : 0;
-    for (const p of probes) placeTag(p.tag, p.group.position, tagsOn);
-    placeTag(options.base, stationPos, away === 1);
+    for (const p of probes) placeTag(p.tag, p.group.position, tagsOn, 1.8);
+    placeTag(options.base, stationPos, away === 1, 0);
 
-    // 读数：离视界多远、朝哪个方向、俯仰多少
+    // 读数：离视界多远、朝哪个方向、俯仰多少（仅在文本实际变化时写 DOM，避免每帧触发文本重排）
     camera.getWorldDirection(forward);
     const heading = (THREE.MathUtils.radToDeg(Math.atan2(forward.x, -forward.z)) + 360) % 360;
     const pitch = THREE.MathUtils.radToDeg(Math.asin(forward.y));
-    if (mode !== 'diving') hud.distance.textContent = `距视界 ${(camera.position.length() - 1).toFixed(1)} Rs`;
-    hud.heading.textContent = `方位 ${heading.toFixed(0).padStart(3, '0')}° · 俯仰 ${pitch >= 0 ? '+' : ''}${pitch.toFixed(0)}°`;
-    hud.headingTape.style.backgroundPositionX = `${-heading * 4}px`;
-    hud.pitchTape.style.backgroundPositionY = `${pitch * 4}px`;
+    if (mode !== 'diving') {
+      const distText = `距视界 ${(camera.position.length() - 1).toFixed(1)} Rs`;
+      if (distText !== lastDistText) {
+        lastDistText = distText;
+        hud.distance.textContent = distText;
+      }
+    }
+    const headText = `方位 ${heading.toFixed(0).padStart(3, '0')}° · 俯仰 ${pitch >= 0 ? '+' : ''}${pitch.toFixed(0)}°`;
+    if (headText !== lastHeadText) {
+      lastHeadText = headText;
+      hud.heading.textContent = headText;
+      hud.headingTape.style.backgroundPositionX = `${-Math.round(heading * 4)}px`;
+      hud.pitchTape.style.backgroundPositionY = `${Math.round(pitch * 4)}px`;
+    }
 
     renderer.render(scene, camera);
     renderSecondaryImages();

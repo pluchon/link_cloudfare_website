@@ -6,7 +6,7 @@ import { warpBeta, warpGlsl, warpImage } from './warp';
 
 // 光源在中心：吸积盘就是这片空间里唯一的灯。场景里那盏平行光是给空间站和探测器勾边用的，
 // 方向固定，照到黑洞另一侧的石头时正好是背光面，看上去全是黑剪影。所以石头和行星用自己的小着色器，
-// 按「指向黑洞中心」算漫反射，背面留一点冷色环境光
+// 按「指向黑洞中心」算漫反射，背面留一点冷色环境光与吸积盘暖色边缘散射
 const rockVertex = /* glsl */ `
   ${warpGlsl}
   varying vec3 vWorld;
@@ -42,23 +42,31 @@ const rockFragment = /* glsl */ `
   uniform sampler2D uMap;
   uniform float uUseMap;
   uniform float uFlat;
+  uniform vec3 uRim;
   uniform float uWarpImage;
   void main() {
     // 石头按面算法线（棱角分明），行星用平滑法线。次像是翻转的，屏幕导数算出来的法线要反一下
     vec3 faceN = normalize(cross(dFdx(vWorld), dFdy(vWorld))) * (uWarpImage > 0.5 ? -1.0 : 1.0);
     vec3 n = normalize(mix(vNormal, faceN, uFlat));
     vec3 toLight = normalize(-vWorld);
-    float diffuse = max(dot(n, toLight), 0.0);
+    vec3 viewDir = normalize(cameraPosition - vWorld);
+    float ndl = max(dot(n, toLight), 0.0);
+    float ndv = max(dot(n, viewDir), 0.0);
+    // 月表/小行星风化层 Lommel-Seeliger 散射近似：晨昏线过渡更立体，向光边缘更扎实
+    float regolith = ndl / max(ndl + ndv * 0.65, 0.18);
+    float diffuse = mix(ndl, regolith * 0.85, 0.45);
+    // 边缘菲涅尔：受吸积盘暖光与行星稀薄大气散射勾边
+    float fresnel = pow(1.0 - ndv, 3.2) * (0.25 + 0.75 * smoothstep(-0.2, 0.5, dot(n, toLight)));
     vec3 base = vColor;
     if (uUseMap > 0.5) base *= texture2D(uMap, vUv).rgb;
-    vec3 col = base * (vec3(0.04, 0.05, 0.07) + diffuse * vec3(1.05, 0.82, 0.6));
+    vec3 col = base * (vec3(0.038, 0.048, 0.072) + diffuse * vec3(1.12, 0.84, 0.60)) + uRim * fresnel;
     gl_FragColor = vec4(col * vWarpTint, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
 `;
 
-function rockMaterial(options: { color?: number; map?: THREE.Texture; flat: boolean }): THREE.ShaderMaterial {
+function rockMaterial(options: { color?: number; map?: THREE.Texture; flat: boolean; rim?: number }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: rockVertex,
     fragmentShader: rockFragment,
@@ -67,6 +75,7 @@ function rockMaterial(options: { color?: number; map?: THREE.Texture; flat: bool
       uMap: { value: options.map ?? null },
       uUseMap: { value: options.map ? 1 : 0 },
       uFlat: { value: options.flat ? 1 : 0 },
+      uRim: { value: new THREE.Color(options.rim ?? 0x3a2818) },
       uWarpBeta: warpBeta,
       uWarpImage: warpImage,
     },
@@ -104,36 +113,59 @@ function rockGeometry(seed: number): THREE.BufferGeometry {
   return geometry;
 }
 
-// 岩质行星的表面：铁锈色底子、几片深浅斑块、一些带亮边的环形坑
+// 岩质行星的表面：纬度层理带、地质深浅斑块、带辐射纹与背阴壁的环形坑
 function planetTexture(base: string, dark: string, light: string, seed: number): THREE.CanvasTexture {
+  const w = 512;
+  const h = 256;
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 128;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d')!;
   const rand = rng(seed);
   ctx.fillStyle = base;
-  ctx.fillRect(0, 0, 256, 128);
-  for (let i = 0; i < 26; i++) {
+  ctx.fillRect(0, 0, w, h);
+
+  // 柔和纬度层理与古盆地色带
+  for (let i = 0; i < 18; i++) {
+    const y = rand() * h;
+    const bandH = 6 + rand() * 24;
     ctx.fillStyle = rand() < 0.5 ? dark : light;
-    ctx.globalAlpha = 0.18 + rand() * 0.2;
+    ctx.globalAlpha = 0.08 + rand() * 0.1;
+    ctx.fillRect(0, y, w, bandH);
+  }
+
+  // 玄武岩平原与高地斑块
+  for (let i = 0; i < 36; i++) {
+    ctx.fillStyle = rand() < 0.52 ? dark : light;
+    ctx.globalAlpha = 0.16 + rand() * 0.18;
     ctx.beginPath();
-    ctx.ellipse(rand() * 256, rand() * 128, 10 + rand() * 40, 4 + rand() * 14, rand() * Math.PI, 0, Math.PI * 2);
+    ctx.ellipse(rand() * w, rand() * h, 16 + rand() * 72, 6 + rand() * 26, rand() * Math.PI, 0, Math.PI * 2);
     ctx.fill();
   }
-  for (let i = 0; i < 40; i++) {
-    const x = rand() * 256;
-    const y = 12 + rand() * 104;
-    const r = 1.5 + Math.pow(rand(), 2) * 9;
-    ctx.globalAlpha = 0.5;
+
+  // 环形山：外环溅射毯 + 坑底暗影 + 向光壁亮脊 + 中央峰
+  for (let i = 0; i < 58; i++) {
+    const x = rand() * w;
+    const y = 20 + rand() * (h - 40);
+    const r = 2 + Math.pow(rand(), 2.1) * 16;
+    ctx.globalAlpha = 0.2;
+    ctx.strokeStyle = light;
+    ctx.lineWidth = Math.max(1, r * 0.35);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.18, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.52;
     ctx.fillStyle = dark;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 0.45;
+
+    ctx.globalAlpha = 0.5;
     ctx.strokeStyle = light;
-    ctx.lineWidth = Math.max(0.8, r * 0.25);
+    ctx.lineWidth = Math.max(1, r * 0.24);
     ctx.beginPath();
-    ctx.arc(x - r * 0.15, y - r * 0.15, r, Math.PI * 0.9, Math.PI * 1.9);
+    ctx.arc(x - r * 0.12, y - r * 0.12, r, Math.PI * 0.85, Math.PI * 1.88);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
@@ -169,11 +201,12 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
 
   // ---- 小行星带：52–72 Rs，薄薄一层，整体和盘面只差 2°，从甲板看是贴着盘面那条地平线的一串碎石 ----
   const beltTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(2));
-  const material = rockMaterial({ flat: true });
+  const material = rockMaterial({ flat: true, rim: 0x4d3420 });
   disposables.push(material);
 
   type Rock = { r: number; theta: number; y: number; size: number; axis: THREE.Vector3; spin: number; mesh: THREE.InstancedMesh; index: number };
   const rocks: Rock[] = [];
+  const meshes: THREE.InstancedMesh[] = [];
   // 只要一点点：桌面三种外形各 14 块，手机各 7 块
   const perShape = lite ? 7 : 14;
   const color = new THREE.Color();
@@ -197,10 +230,11 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
         mesh,
         index: i,
       });
-      // 灰褐色之间略有深浅
-      color.setHSL(0.07 + rand() * 0.05, 0.1 + rand() * 0.1, 0.2 + rand() * 0.14);
+      // 灰褐色与碳质硅酸盐色温之间略有深浅
+      color.setHSL(0.065 + rand() * 0.055, 0.12 + rand() * 0.12, 0.22 + rand() * 0.15);
       mesh.setColorAt(i, color);
     }
+    meshes.push(mesh);
     group.add(mesh);
   }
 
@@ -208,17 +242,17 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
   // 甲板望向黑洞的方向是 -startDir；两颗行星分别往两侧偏开一点
   const away = Math.atan2(-startDir.z, -startDir.x);
   const planets: Planet[] = [];
-  const makePlanet = (radius: number, texture: THREE.CanvasTexture) => {
+  const makePlanet = (radius: number, texture: THREE.CanvasTexture, rim: number) => {
     const geometry = new THREE.SphereGeometry(radius, lite ? 24 : 40, lite ? 16 : 28);
-    const mat = rockMaterial({ map: texture, flat: false });
+    const mat = rockMaterial({ map: texture, flat: false, rim });
     disposables.push(geometry, mat, texture);
     return new THREE.Mesh(geometry, mat);
   };
 
   const rustyRadius = 1.9;
-  const rusty = makePlanet(rustyRadius, planetTexture('#8c5a43', '#4a2c22', '#c08a68', 7));
+  const rusty = makePlanet(rustyRadius, planetTexture('#8c5a43', '#4a2c22', '#c08a68', 7), 0x8f5636);
   const moonGeometry = new THREE.SphereGeometry(0.42, 18, 12);
-  const moonMaterial = rockMaterial({ color: 0x9a948c, flat: true });
+  const moonMaterial = rockMaterial({ color: 0x9a948c, flat: true, rim: 0x52463a });
   disposables.push(moonGeometry, moonMaterial);
   const moon = new THREE.Mesh(moonGeometry, moonMaterial);
   rusty.frustumCulled = false;
@@ -234,7 +268,7 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
   });
 
   const icyRadius = 1.25;
-  const icy = makePlanet(icyRadius, planetTexture('#6f7f96', '#3d4658', '#b6c4d6', 19));
+  const icy = makePlanet(icyRadius, planetTexture('#6f7f96', '#3d4658', '#b6c4d6', 19), 0x6282ad);
   icy.frustumCulled = false;
   planets.push({
     mesh: icy,
@@ -255,35 +289,28 @@ export function buildRocks(lite: boolean, startDir: THREE.Vector3): Rocks {
   const p = new THREE.Vector3();
   const s = new THREE.Vector3();
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-  const touched = new Set<THREE.InstancedMesh>();
 
-  function update(simTime: number, hidden: (p: THREE.Vector3, radius: number) => boolean) {
+  function update(simTime: number, _hidden: (p: THREE.Vector3, radius: number) => boolean) {
     for (const rock of rocks) {
       const theta = rock.theta + (simTime / period(rock.r)) * Math.PI * 2;
       p.set(Math.cos(theta) * rock.r, rock.y, Math.sin(theta) * rock.r).applyQuaternion(beltTilt);
-      if (hidden(p, rock.size * 1.3)) {
-        rock.mesh.setMatrixAt(rock.index, zero);
-      } else {
-        q.setFromAxisAngle(rock.axis, simTime * rock.spin);
-        s.setScalar(rock.size);
-        rock.mesh.setMatrixAt(rock.index, m.compose(p, q, s));
-      }
-      touched.add(rock.mesh);
+      q.setFromAxisAngle(rock.axis, simTime * rock.spin);
+      s.setScalar(rock.size);
+      rock.mesh.setMatrixAt(rock.index, m.compose(p, q, s));
     }
-    for (const mesh of touched) mesh.instanceMatrix.needsUpdate = true;
-    touched.clear();
+    for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
 
     for (const planet of planets) {
       const theta = planet.theta0 + (simTime / period(planet.a)) * Math.PI * 2;
       planet.mesh.position.set(Math.cos(theta) * planet.a, 0, Math.sin(theta) * planet.a).applyQuaternion(planet.tilt);
       planet.mesh.rotation.y = simTime * planet.spin;
-      planet.mesh.visible = !hidden(planet.mesh.position, planet.radius);
+      planet.mesh.visible = true;
       if (planet.moon) {
         const phi = simTime * planet.moon.speed;
         planet.moon.mesh.position
           .set(Math.cos(phi) * planet.moon.r, Math.sin(phi) * planet.moon.r * 0.25, Math.sin(phi) * planet.moon.r)
           .add(planet.mesh.position);
-        planet.moon.mesh.visible = !hidden(planet.moon.mesh.position, 0.42);
+        planet.moon.mesh.visible = true;
       }
     }
   }
