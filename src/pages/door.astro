@@ -305,7 +305,7 @@ const tags = [
             </svg>
             <span class="guide__text">
               <span class="guide__title">按住拖动</span>
-              <span class="guide__desc">环顾四周 · 脱离甲板自由巡航</span>
+              <span class="guide__desc"><span class="guide__desc-extra">环顾四周 · </span>脱离甲板<span class="guide__desc-extra">自由</span>巡航</span>
             </span>
           </span>
         </li>
@@ -320,7 +320,7 @@ const tags = [
             </svg>
             <span class="guide__text">
               <span class="guide__title">点击探测器</span>
-              <span class="guide__desc">停靠轨道信标 · 查看分类近况</span>
+              <span class="guide__desc"><span class="guide__desc-extra">停靠轨道信标 · </span>查看分类近况</span>
             </span>
           </span>
         </li>
@@ -337,7 +337,7 @@ const tags = [
             </svg>
             <span class="guide__text">
               <span class="guide__title">双击画面</span>
-              <span class="guide__desc">断开巡航链路 · 自动飞回甲板</span>
+              <span class="guide__desc"><span class="guide__desc-extra">断开巡航链路 · </span>自动飞回甲板</span>
             </span>
           </span>
         </li>
@@ -686,10 +686,15 @@ const tags = [
       .boot__tag--br { right: 3.25rem; bottom: 1.4rem; }
 
       @media (max-width: 40rem) {
+        .boot__tape--top,
         .boot__tape--left,
         .boot__tag--bl {
           display: none;
         }
+
+        .boot__tag--tl { left: 2.65rem; }
+        .boot__tag--tr,
+        .boot__tag--br { right: 2.65rem; }
       }
 
       .boot[data-state='done'] {
@@ -1238,9 +1243,9 @@ const tags = [
         position: absolute;
         left: 50%;
         bottom: 1.25rem;
-        width: min(42rem, calc(100vw - 6rem));
+        width: min(44.5rem, calc(100vw - 4.5rem));
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 0.65rem;
         margin: 0;
         padding: 0;
@@ -1257,6 +1262,7 @@ const tags = [
 
       .guide__item {
         position: relative;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 0.45rem;
@@ -1403,6 +1409,12 @@ const tags = [
         }
       }
 
+      @media (max-width: 46rem) {
+        .guide__desc-extra {
+          display: none;
+        }
+      }
+
       /* 不支持 WebGL2：没有场景，黑洞引线的文字原地变成进入链接 */
       :global(.flat) .callout__label--hole {
         opacity: 1;
@@ -1418,15 +1430,35 @@ const tags = [
           display: none;
         }
 
-        .hud__read--br {
-          bottom: 3rem;
+        .hud__tape--heading {
+          width: min(13rem, 38vw);
         }
 
-        /* 手机上三块面板占满宽度，图标在上；终端从底部展开时收起，免得从它下面露出来 */
+        .hud__read {
+          font-size: 0.64rem;
+          letter-spacing: 0.1em;
+        }
+
+        .hud__read--tr {
+          right: 2.65rem;
+          top: 1.38rem;
+        }
+
+        .hud__read--bl {
+          left: 2.65rem;
+          bottom: 1.35rem;
+        }
+
+        .hud__read--br {
+          right: 2.65rem;
+          bottom: 1.35rem;
+        }
+
+        /* 手机上三块面板等宽并排，图标在上；终端从底部展开时收起，免得从它下面露出来 */
         .guide {
-          bottom: 4.4rem;
-          width: calc(100vw - 2rem);
-          gap: 0.4rem;
+          bottom: 3.1rem;
+          width: calc(100vw - 2.5rem);
+          gap: 0.55rem;
         }
 
         .guide[data-mode='docking'],
@@ -1439,28 +1471,38 @@ const tags = [
         }
 
         .guide__item {
-          padding: 0.55rem 0.25rem;
+          padding: 0.6rem 0.4rem 0.65rem;
         }
 
         .guide__body {
           flex-direction: column;
-          gap: 0.35rem;
+          gap: 0.38rem;
           text-align: center;
         }
 
+        .guide__text {
+          width: 100%;
+          align-items: center;
+        }
+
         .guide__icon {
-          width: 1.3rem;
-          height: 1.3rem;
+          width: 1.25rem;
+          height: 1.25rem;
         }
 
         .guide__title {
-          font-size: 0.82rem;
-          letter-spacing: 0.02em;
+          font-size: 0.8rem;
+          letter-spacing: 0.04em;
         }
 
         .guide__desc {
-          font-size: 0.68rem;
-          letter-spacing: 0;
+          width: 100%;
+          font-size: 0.65rem;
+          letter-spacing: 0.02em;
+        }
+
+        .guide__desc-extra {
+          display: none;
         }
 
         .copy {
