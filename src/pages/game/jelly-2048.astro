@@ -1,0 +1,601 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageBackdrop from '../../components/PageBackdrop.astro';
+import { pageBackdrops } from '../../config/site';
+import { getGames } from '../../lib/content';
+
+const PLAY = '/game/jelly-2048/';
+const entry = (await getGames()).find((item) => item.data.play === PLAY);
+const title = entry?.data.title ?? '果冻 2048';
+const summary = entry?.data.summary ?? '';
+---
+
+<BaseLayout title={title} description={summary}>
+  <PageBackdrop art={pageBackdrops.game} />
+
+  <section class="wrap jelly-page">
+    <header class="jelly-head">
+      <h1 class="jelly-head__title">{title}</h1>
+      <a class="jelly-head__back" href="/game/">← 游戏大厅</a>
+    </header>
+
+    <div class="jelly" data-jelly>
+      <aside class="jelly__side">
+        <dl class="jelly__stats">
+          <div>
+            <dt>分数</dt>
+            <dd data-score>0</dd>
+          </div>
+          <div>
+            <dt>最高</dt>
+            <dd data-best>0</dd>
+          </div>
+          <div>
+            <dt>用时</dt>
+            <dd data-time>00:00</dd>
+          </div>
+          <div>
+            <dt>最大</dt>
+            <dd data-tile>2</dd>
+          </div>
+        </dl>
+
+        <section class="jelly__ladder">
+          <h2 class="jelly__label">合成进度 <span>2 → 8192</span></h2>
+          <ol class="jelly__ladder-dots" data-ladder></ol>
+        </section>
+
+        <div class="jelly__actions">
+          <button type="button" class="jelly-btn" data-pause aria-pressed="false">
+            <svg class="jelly-btn__icon jelly-btn__icon--on" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 6v12M15 6v12" />
+            </svg>
+            <svg class="jelly-btn__icon jelly-btn__icon--off" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5.5v13l10.5-6.5z" />
+            </svg>
+            <span data-text>暂停</span>
+          </button>
+          <button type="button" class="jelly-btn jelly-btn--sound" data-mute aria-pressed="true">
+            <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
+              <path class="jelly-btn__wave" d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+              <path class="jelly-btn__mute" d="M16 9.5l5 5M21 9.5l-5 5" />
+            </svg>
+            <span data-text>音效</span>
+          </button>
+          <button type="button" class="jelly-btn" data-restart>
+            <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5.5 12a6.5 6.5 0 1 0 2-4.7" />
+              <path d="M5 4.5v3.8h3.8" />
+            </svg>
+            <span data-text>重开</span>
+          </button>
+        </div>
+
+        <section class="jelly__records" data-records-box>
+          <h2 class="jelly__label">本机最佳</h2>
+          <table class="jelly__table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">分数</th>
+                <th scope="col">最大</th>
+                <th scope="col">用时</th>
+                <th scope="col">日期</th>
+              </tr>
+            </thead>
+            <tbody data-records></tbody>
+          </table>
+        </section>
+      </aside>
+
+      <div class="jelly__board">
+        <canvas class="jelly__canvas" data-canvas aria-label="果冻 2048 游戏画面：按住托盘里的果冻往外拉，松手顺着拉的方向弹进井里"></canvas>
+        <div class="jelly__overlay" data-overlay hidden>
+          <p class="jelly__overlay-title" data-overlay-title></p>
+          <p class="jelly__overlay-text" data-overlay-text></p>
+          <button type="button" class="jelly-btn jelly-btn--main" data-overlay-btn></button>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { mountJelly } from '../../game/jelly/game';
+
+  let destroy: (() => void) | null = null;
+
+  function boot() {
+    const root = document.querySelector<HTMLElement>('[data-jelly]');
+    if (!root || root.dataset.mounted) return;
+    root.dataset.mounted = '1';
+    destroy = mountJelly(root);
+  }
+
+  // 这段脚本可能在第一次 astro:page-load 之后才执行，所以先跑一次
+  boot();
+  document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:before-swap', () => {
+    destroy?.();
+    destroy = null;
+  });
+</script>
+
+<style>
+  .jelly-page {
+    position: relative;
+    z-index: 1;
+    padding-block: 1rem 1.25rem;
+  }
+
+  .jelly-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.65rem;
+    margin-bottom: 1rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .jelly-head__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(1.4rem, 3.6vw, 1.9rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .jelly-head__back {
+    padding: 0.3rem 0.7rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .jelly-head__back:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* 按钮：图标 + 文字，左上角一个粉色小折角，悬停时折角和边框一起变成强调色 */
+  .jelly-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.42rem 0.5rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out),
+      background var(--dur-1) var(--ease-out);
+  }
+
+  .jelly-btn::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-top: 1.5px solid var(--icon-pink);
+    border-left: 1.5px solid var(--icon-pink);
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .jelly-btn:hover,
+  .jelly-btn:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--bg) 86%, var(--accent-wash));
+  }
+
+  .jelly-btn:hover::before,
+  .jelly-btn:focus-visible::before {
+    border-color: var(--accent);
+  }
+
+  .jelly-btn__icon {
+    flex: none;
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* 暂停键：进行中显示两竖，暂停时换成三角 */
+  .jelly-btn[aria-pressed="true"] .jelly-btn__icon--on,
+  .jelly-btn[aria-pressed="false"] .jelly-btn__icon--off {
+    display: none;
+  }
+
+  /* 音效键：开着画声波，关了画叉。这颗按钮的 aria-pressed 表示「声音开着」 */
+  .jelly-btn--sound[aria-pressed="true"] .jelly-btn__mute,
+  .jelly-btn--sound[aria-pressed="false"] .jelly-btn__wave {
+    display: none;
+  }
+
+  .jelly-btn--main {
+    padding: 0.5rem 1.4rem;
+    color: var(--fg);
+  }
+
+  /* PC：左边一列面板，右边整块都是画板 */
+  .jelly {
+    display: grid;
+    grid-template-columns: 17rem minmax(0, 1fr);
+    gap: clamp(1.25rem, 2.5vw, 2rem);
+    align-items: stretch;
+    /* 顶栏、标题行、上下留白和页脚加起来约 18.75rem，剩下的给游戏区，PC 上整页不滚动 */
+    height: clamp(26rem, calc(100dvh - 18.75rem), 52rem);
+  }
+
+  /* 面板和画板四角各一个折角，左上和右下压一点粉色 */
+  .jelly__side,
+  .jelly__board {
+    position: relative;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 84%, transparent);
+  }
+
+  .jelly__side::before,
+  .jelly__side::after,
+  .jelly__board::before,
+  .jelly__board::after {
+    content: "";
+    position: absolute;
+    width: 0.7rem;
+    height: 0.7rem;
+    pointer-events: none;
+  }
+
+  .jelly__side::before,
+  .jelly__board::before {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid var(--icon-pink);
+    border-left: 2px solid var(--icon-pink);
+  }
+
+  .jelly__side::after,
+  .jelly__board::after {
+    right: -1px;
+    bottom: -1px;
+    border-right: 2px solid var(--line-strong);
+    border-bottom: 2px solid var(--line-strong);
+  }
+
+  .jelly__side {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: 0.8rem 1.1rem;
+    overflow: hidden auto;
+    scrollbar-width: none;
+  }
+
+  /* 计分：一行一项，名字在左、数字在右，中间一条点线连着 */
+  .jelly__stats {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+  }
+
+  .jelly__stats > div {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.28rem 0.1rem;
+    border-bottom: var(--hair) dashed var(--line);
+  }
+
+  .jelly__stats > div::after {
+    content: "";
+    order: 1;
+    flex: 1;
+    align-self: center;
+    border-bottom: var(--hair) dotted var(--line-strong);
+    opacity: 0.6;
+  }
+
+  .jelly__stats dt {
+    font-size: 0.8125rem;
+    color: var(--fg-muted);
+  }
+
+  .jelly__stats dd {
+    order: 2;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+
+  .jelly__stats > div:first-child dd {
+    color: var(--accent);
+  }
+
+  .jelly__label {
+    display: flex;
+    justify-content: space-between;
+    margin: 0 0 0.55rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    color: var(--fg-faint);
+  }
+
+  .jelly__label span {
+    letter-spacing: 0.04em;
+  }
+
+  .jelly__ladder-dots {
+    display: flex;
+    justify-content: space-between;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .jelly__ladder-dots :global(li) {
+    width: 0.62rem;
+    height: 0.62rem;
+    border: 1.5px solid var(--dot);
+    border-radius: 50%;
+    opacity: 0.45;
+    transition:
+      background var(--dur-2) var(--ease-out),
+      opacity var(--dur-2) var(--ease-out);
+  }
+
+  .jelly__ladder-dots :global(li.is-on) {
+    background: var(--dot);
+    opacity: 1;
+  }
+
+  .jelly__ladder-dots :global(li.is-top) {
+    outline: 1px solid var(--dot);
+    outline-offset: 2px;
+  }
+
+  .jelly__actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  /* 本机最佳：占满面板剩下的高度，放得下几行就显示几行（脚本把放不下的整行藏掉，不会露半行） */
+  .jelly__records {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding-top: 0.75rem;
+    border-top: var(--hair) dashed var(--line);
+  }
+
+  .jelly__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .jelly__table th,
+  .jelly__table :global(td) {
+    padding: 0.3rem 0.25rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .jelly__table th:first-child,
+  .jelly__table :global(td:first-child) {
+    width: 1.4rem;
+    padding-left: 0;
+    text-align: left;
+  }
+
+  .jelly__table th {
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    color: var(--fg-faint);
+    border-top: var(--hair) solid var(--line);
+    border-bottom: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 70%, var(--accent-wash));
+  }
+
+  .jelly__table :global(td) {
+    color: var(--fg-faint);
+    border-bottom: var(--hair) dashed var(--line);
+  }
+
+  .jelly__table :global(td:first-child) {
+    color: var(--icon-pink);
+    font-weight: 600;
+  }
+
+  .jelly__table :global(td:nth-child(2)) {
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  .jelly__table :global(td:nth-child(3)) {
+    color: var(--fg-muted);
+  }
+
+  /* 第一名那行垫一层很淡的粉 */
+  .jelly__table :global(tr:first-child td) {
+    background: color-mix(in srgb, var(--icon-pink) 10%, transparent);
+  }
+
+  .jelly__table :global(td.jelly__empty) {
+    padding: 0.6rem 0;
+    text-align: left;
+    font-family: var(--font-sans);
+    font-weight: 400;
+    color: var(--fg-faint);
+    background: none;
+  }
+
+  /* 画板：画布按逻辑宽高比装进来，居中 */
+  .jelly__board {
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.5rem;
+  }
+
+  .jelly__canvas {
+    display: block;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .jelly__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    text-align: center;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+  }
+
+  .jelly__overlay[hidden] {
+    display: none;
+  }
+
+  .jelly__overlay-title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.6rem;
+    font-weight: 600;
+  }
+
+  .jelly__overlay-text {
+    margin: 0 0 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    color: var(--fg-muted);
+  }
+
+  /* 窄屏：上下排。计分一行四格，按钮一行，画板占满宽度、一屏放得下，最佳记录放最下面 */
+  @media (max-width: 48rem) {
+    .jelly-page {
+      padding-block: 0.75rem 2.5rem;
+    }
+
+    .jelly-head {
+      padding-bottom: 0.6rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .jelly-head__title {
+      font-size: 1.3rem;
+    }
+
+    .jelly {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      height: auto;
+    }
+
+    .jelly__side {
+      display: contents;
+    }
+
+    .jelly__side::before,
+    .jelly__side::after,
+    .jelly__ladder {
+      display: none;
+    }
+
+    /* 手机上四项横排成一行，每格上名字下数字 */
+    .jelly__stats {
+      order: 1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: var(--hair) solid var(--line);
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+    }
+
+    .jelly__stats > div {
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.4rem 0.55rem;
+      border-bottom: 0;
+    }
+
+    .jelly__stats > div + div {
+      border-left: var(--hair) solid var(--line);
+    }
+
+    .jelly__stats > div::after {
+      display: none;
+    }
+
+    .jelly__stats dt {
+      font-size: 0.6875rem;
+    }
+
+    .jelly__stats dd {
+      font-size: 1rem;
+    }
+
+    .jelly__actions {
+      order: 2;
+    }
+
+    .jelly-btn {
+      padding-block: 0.3rem;
+    }
+
+    .jelly__board {
+      order: 3;
+      width: 100%;
+      margin-inline: auto;
+      padding: 0;
+      aspect-ratio: 2 / 3;
+      /* 顶栏、页头、计分、按钮大约占 19rem，剩下的高度给画板 */
+      max-width: calc((100dvh - 19rem) * 2 / 3);
+    }
+
+    .jelly__records {
+      order: 4;
+      padding: 0.85rem 1rem;
+      border: var(--hair) solid var(--line);
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+    }
+  }
+</style>
