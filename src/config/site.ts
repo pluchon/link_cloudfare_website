@@ -152,6 +152,21 @@ export const pageBackdrops = {
   game: pageBackdrop('game', 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261103'),
 } as const;
 
+const JELLY_2048_ART_DIR =
+  'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/20261105';
+
+export const jelly2048Art = {
+  play: '/game/jelly-2048/',
+  cover: {
+    light: `${JELLY_2048_ART_DIR}/cover-day.webp`,
+    dark: `${JELLY_2048_ART_DIR}/cover-night.webp`,
+  },
+  emptyRecords: {
+    light: `${JELLY_2048_ART_DIR}/empty-day.webp`,
+    dark: `${JELLY_2048_ART_DIR}/empty-night.webp`,
+  },
+} as const;
+
 // 游戏大厅条目：每一项都是一个独立的小游戏。cover 填 OSS 完整 URL，留空则显示发丝线点阵占位框；href 填好后即可点击进入该游戏
 export interface GameEntry {
   id: string;

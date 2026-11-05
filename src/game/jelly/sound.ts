@@ -48,15 +48,17 @@ export function createDing() {
       const c = ensure();
       if (c && c.state === 'suspended') void c.resume();
     },
-    play() {
+    // slow：慢放倍率（1 是正常，越小越慢）。像磁带放慢：音调跟着变低、尾巴变长、更闷
+    play(slow = 1) {
       const c = ensure();
       if (!c || muted) return;
       const now = c.currentTime;
       combo = now - last < COMBO_GAP ? Math.min(combo + 1, STEPS.length - 1) : 0;
       last = now;
-      const freq = BASE * 2 ** (STEPS[combo] / 12);
-      voice('triangle', freq, 0.9, now, 0.32, 900 + freq);
-      voice('sine', freq / 2, 0.6, now, 0.26, 600);
+      const freq = BASE * 2 ** (STEPS[combo] / 12) * slow;
+      const length = 0.32 / slow;
+      voice('triangle', freq, 0.9, now, length, (900 + freq) * slow);
+      voice('sine', freq / 2, 0.6, now, length * 0.8, 600 * slow);
     },
     setMuted(value: boolean) {
       muted = value;

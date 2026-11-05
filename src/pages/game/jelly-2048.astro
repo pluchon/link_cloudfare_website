@@ -1,11 +1,10 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageBackdrop from '../../components/PageBackdrop.astro';
-import { pageBackdrops } from '../../config/site';
+import { jelly2048Art, pageBackdrops } from '../../config/site';
 import { getGames } from '../../lib/content';
 
-const PLAY = '/game/jelly-2048/';
-const entry = (await getGames()).find((item) => item.data.play === PLAY);
+const entry = (await getGames()).find((item) => item.data.play === jelly2048Art.play);
 const title = entry?.data.title ?? '果冻 2048';
 const summary = entry?.data.summary ?? '';
 ---
@@ -16,65 +15,77 @@ const summary = entry?.data.summary ?? '';
   <section class="wrap jelly-page">
     <header class="jelly-head">
       <h1 class="jelly-head__title">{title}</h1>
-      <a class="jelly-head__back" href="/game/">← 游戏大厅</a>
+      <a class="jelly-head__back" href="/game/"><span aria-hidden="true">←</span> 游戏大厅</a>
     </header>
 
     <div class="jelly" data-jelly>
       <aside class="jelly__side">
-        <dl class="jelly__stats">
-          <div>
-            <dt>分数</dt>
-            <dd data-score>0</dd>
-          </div>
-          <div>
-            <dt>最高</dt>
-            <dd data-best>0</dd>
-          </div>
-          <div>
-            <dt>用时</dt>
-            <dd data-time>00:00</dd>
-          </div>
-          <div>
-            <dt>最大</dt>
-            <dd data-tile>2</dd>
-          </div>
-        </dl>
+        <div class="jelly__panel">
+          <dl class="jelly__stats">
+            <div>
+              <dt>分数</dt>
+              <dd data-score>0</dd>
+            </div>
+            <div>
+              <dt>最高</dt>
+              <dd data-best>0</dd>
+            </div>
+            <div>
+              <dt>用时</dt>
+              <dd data-time>00:00</dd>
+            </div>
+            <div>
+              <dt>最大</dt>
+              <dd data-tile>2</dd>
+            </div>
+          </dl>
 
-        <section class="jelly__ladder">
-          <h2 class="jelly__label">合成进度 <span>2 → 8192</span></h2>
-          <ol class="jelly__ladder-dots" data-ladder></ol>
-        </section>
+          <section class="jelly__ladder">
+            <h2 class="jelly__label">合成进度 <span>2 → 8192</span></h2>
+            <ol class="jelly__ladder-dots" data-ladder></ol>
+          </section>
 
-        <div class="jelly__actions">
-          <button type="button" class="jelly-btn" data-pause aria-pressed="false">
-            <svg class="jelly-btn__icon jelly-btn__icon--on" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M9 6v12M15 6v12" />
-            </svg>
-            <svg class="jelly-btn__icon jelly-btn__icon--off" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M8 5.5v13l10.5-6.5z" />
-            </svg>
-            <span data-text>暂停</span>
-          </button>
-          <button type="button" class="jelly-btn jelly-btn--sound" data-mute aria-pressed="true">
-            <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
-              <path class="jelly-btn__wave" d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
-              <path class="jelly-btn__mute" d="M16 9.5l5 5M21 9.5l-5 5" />
-            </svg>
-            <span data-text>音效</span>
-          </button>
-          <button type="button" class="jelly-btn" data-restart>
-            <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5.5 12a6.5 6.5 0 1 0 2-4.7" />
-              <path d="M5 4.5v3.8h3.8" />
-            </svg>
-            <span data-text>重开</span>
-          </button>
+          <div class="jelly__actions">
+            <button type="button" class="jelly-btn" data-pause aria-pressed="false">
+              <svg class="jelly-btn__icon jelly-btn__icon--on" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 6v12M15 6v12" />
+              </svg>
+              <svg class="jelly-btn__icon jelly-btn__icon--off" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5.5v13l10.5-6.5z" />
+              </svg>
+              <span data-text>暂停</span>
+            </button>
+            <button type="button" class="jelly-btn jelly-btn--sound" data-mute aria-pressed="true">
+              <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
+                <path class="jelly-btn__wave" d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+                <path class="jelly-btn__mute" d="M16 9.5l5 5M21 9.5l-5 5" />
+              </svg>
+              <span data-text>音效</span>
+            </button>
+            <button type="button" class="jelly-btn" data-restart>
+              <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5.5 12a6.5 6.5 0 1 0 2-4.7" />
+                <path d="M5 4.5v3.8h3.8" />
+              </svg>
+              <span data-text>重开</span>
+            </button>
+          </div>
         </div>
 
-        <section class="jelly__records" data-records-box>
-          <h2 class="jelly__label">本机最佳</h2>
-          <table class="jelly__table">
+        <section class="jelly__records" data-records-box aria-labelledby="jelly-records-title">
+          <header class="jelly__records-head">
+            <h2 class="jelly__label" id="jelly-records-title">本机成绩记录</h2>
+            <button type="button" class="jelly-btn jelly-btn--mini" data-clear-records>
+              <svg class="jelly-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 7h14M10 7V5h4v2" />
+                <path d="M7 7l.8 12h8.4L17 7" />
+                <path class="jelly-btn__pink" d="M10.5 11v4.5M13.5 11v4.5" />
+              </svg>
+              <span>清空本机成绩</span>
+            </button>
+          </header>
+          <table class="jelly__table" data-records-table>
             <thead>
               <tr>
                 <th scope="col">#</th>
@@ -86,17 +97,31 @@ const summary = entry?.data.summary ?? '';
             </thead>
             <tbody data-records></tbody>
           </table>
+          <figure class="jelly__empty" data-records-empty hidden>
+            <img class="jelly__empty-art jelly__empty-art--day" src={jelly2048Art.emptyRecords.light} alt="" loading="lazy" />
+            <img class="jelly__empty-art jelly__empty-art--night" src={jelly2048Art.emptyRecords.dark} alt="" loading="lazy" />
+            <figcaption>还没有记录，先来一局吧</figcaption>
+          </figure>
         </section>
       </aside>
 
       <div class="jelly__board">
-        <canvas class="jelly__canvas" data-canvas aria-label="果冻 2048 游戏画面：按住托盘里的果冻往外拉，松手顺着拉的方向弹进井里"></canvas>
+        <canvas class="jelly__canvas" data-canvas aria-label="果冻 2048 游戏画面：按住托盘里的果冻往外拉，松手弹出去：往下进井，往上或横着拉在托盘里弹"></canvas>
         <div class="jelly__overlay" data-overlay hidden>
           <p class="jelly__overlay-title" data-overlay-title></p>
           <p class="jelly__overlay-text" data-overlay-text></p>
           <button type="button" class="jelly-btn jelly-btn--main" data-overlay-btn></button>
         </div>
       </div>
+
+      <!-- 一局进行中点重开、点链接离开时问一句：一行说明，两个按钮并排居中，确定在左、继续玩在右。默认焦点在「继续玩」上 -->
+      <dialog class="jelly-confirm" data-confirm aria-labelledby="jelly-confirm-text">
+        <p class="jelly-confirm__text" id="jelly-confirm-text" data-confirm-text></p>
+        <div class="jelly-confirm__actions">
+          <button type="button" class="jelly-btn" data-confirm-ok>结算</button>
+          <button type="button" class="jelly-btn jelly-btn--main" data-confirm-cancel autofocus>继续玩</button>
+        </div>
+      </dialog>
     </div>
   </section>
 </BaseLayout>
@@ -167,6 +192,16 @@ const summary = entry?.data.summary ?? '';
     color: var(--accent);
   }
 
+  /* 返回箭头悬停时往左挪一点 */
+  .jelly-head__back span {
+    display: inline-block;
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+
+  .jelly-head__back:hover span {
+    transform: translateX(-3px);
+  }
+
   /* 按钮：图标 + 文字，左上角一个粉色小折角，悬停时折角和边框一起变成强调色 */
   .jelly-btn {
     position: relative;
@@ -213,6 +248,25 @@ const summary = entry?.data.summary ?? '';
     border-color: var(--accent);
   }
 
+  /* 悬停时内侧多一圈粉色虚线框；按下时往下沉 1px */
+  .jelly-btn::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: var(--hair) dashed transparent;
+    pointer-events: none;
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .jelly-btn:hover::after,
+  .jelly-btn:focus-visible::after {
+    border-color: color-mix(in srgb, var(--icon-pink) 70%, transparent);
+  }
+
+  .jelly-btn:active {
+    transform: translateY(1px);
+  }
+
   .jelly-btn__icon {
     flex: none;
     width: 0.95rem;
@@ -236,6 +290,28 @@ const summary = entry?.data.summary ?? '';
     display: none;
   }
 
+  /* 小号按钮：记录面板标题行右边的「清空本机成绩」，图标里两道粉色竖线；没有记录时变淡、点不了 */
+  .jelly-btn--mini {
+    padding: 0.2rem 0.45rem 0.2rem 0.4rem;
+    gap: 0.3rem;
+    font-size: 0.6875rem;
+  }
+
+  .jelly-btn--mini .jelly-btn__icon {
+    width: 0.85rem;
+    height: 0.85rem;
+  }
+
+  .jelly-btn__pink {
+    stroke: var(--icon-pink);
+  }
+
+  .jelly-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+  }
+
   .jelly-btn--main {
     padding: 0.5rem 1.4rem;
     color: var(--fg);
@@ -251,12 +327,28 @@ const summary = entry?.data.summary ?? '';
     height: clamp(26rem, calc(100dvh - 18.75rem), 52rem);
   }
 
-  /* 面板和画板四角各一个折角，左上和右下压一点粉色 */
+  /* 面板和画板四角各一个折角，左上和右下压一点粉色；顶上靠左一小段强调色短条（和游戏大厅标题下那条一样） */
   .jelly__side,
   .jelly__board {
     position: relative;
     border: var(--hair) solid var(--line);
-    background: color-mix(in srgb, var(--bg) 84%, transparent);
+    background:
+      linear-gradient(var(--accent), var(--accent)) 1.1rem 0 / 2.2rem 2px no-repeat,
+      color-mix(in srgb, var(--bg) 84%, transparent);
+  }
+
+  /* 面板再铺一层很淡的点阵底纹，不那么空 */
+  .jelly__side {
+    background:
+      linear-gradient(var(--accent), var(--accent)) 1.1rem 0 / 2.2rem 2px no-repeat,
+      radial-gradient(color-mix(in srgb, var(--line-strong) 70%, transparent) 0.7px, transparent 1px) 0 0 / 14px 14px,
+      color-mix(in srgb, var(--bg) 84%, transparent);
+  }
+
+  .jelly__panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
   }
 
   .jelly__side::before,
@@ -320,8 +412,19 @@ const summary = entry?.data.summary ?? '';
   }
 
   .jelly__stats dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     font-size: 0.8125rem;
     color: var(--fg-muted);
+  }
+
+  /* 名字前一个粉色小方点 */
+  .jelly__stats dt::before {
+    content: "";
+    width: 4px;
+    height: 4px;
+    background: var(--icon-pink);
   }
 
   .jelly__stats dd {
@@ -389,7 +492,22 @@ const summary = entry?.data.summary ?? '';
   }
 
   /* 本机最佳：占满面板剩下的高度，放得下几行就显示几行（脚本把放不下的整行藏掉，不会露半行） */
+  /* 记录面板标题行：左边小标题，右边清空按钮 */
+  .jelly__records-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .jelly__records-head .jelly__label {
+    margin: 0;
+  }
+
   .jelly__records {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -452,13 +570,36 @@ const summary = entry?.data.summary ?? '';
     background: color-mix(in srgb, var(--icon-pink) 10%, transparent);
   }
 
-  .jelly__table :global(td.jelly__empty) {
-    padding: 0.6rem 0;
-    text-align: left;
-    font-family: var(--font-sans);
-    font-weight: 400;
+  .jelly__empty {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    justify-items: center;
+    flex: 1;
+    min-height: 0;
+    max-height: 10rem;
+    margin: auto 0;
+    padding-block: 0.4rem;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    text-align: center;
     color: var(--fg-faint);
-    background: none;
+  }
+
+  .jelly__empty[hidden],
+  .jelly__empty-art--night,
+  :global(:root[data-theme='dark']) .jelly__empty-art--day {
+    display: none;
+  }
+
+  .jelly__empty-art {
+    width: min(100%, 8rem);
+    height: 100%;
+    min-height: 0;
+    object-fit: contain;
+  }
+
+  :global(:root[data-theme='dark']) .jelly__empty-art--night {
+    display: block;
   }
 
   /* 画板：画布按逻辑宽高比装进来，居中 */
@@ -509,7 +650,52 @@ const summary = entry?.data.summary ?? '';
     color: var(--fg-muted);
   }
 
-  /* 窄屏：上下排。计分一行四格，按钮一行，画板占满宽度、一屏放得下，最佳记录放最下面 */
+  /* 确认框：小小一块，发丝线边框加粉色折角，说明一行、两个按钮并排居中 */
+  .jelly-confirm {
+    margin: auto;
+    padding: 1.35rem 1.5rem 1.25rem;
+    width: min(19rem, calc(100vw - 2rem));
+    border: var(--hair) solid var(--line-strong);
+    background: var(--bg);
+    color: var(--fg);
+    text-align: center;
+  }
+
+  .jelly-confirm::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-top: 2px solid var(--icon-pink);
+    border-left: 2px solid var(--icon-pink);
+  }
+
+  .jelly-confirm::backdrop {
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+
+  .jelly-confirm__text {
+    margin: 0 0 1.1rem;
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .jelly-confirm__actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.6rem;
+  }
+
+  .jelly-confirm__actions .jelly-btn {
+    min-width: 5.5rem;
+  }
+
+  /* 窄屏：上下排，但尽量还是 PC 那套面板。
+     上面一块面板（计分一行四格、合成进度、三个按钮），中间画板，下面一块记录面板；
+     两块面板都和 PC 一样有折角、强调色短条和点阵底纹 */
   @media (max-width: 48rem) {
     .jelly-page {
       padding-block: 0.75rem 2.5rem;
@@ -536,29 +722,55 @@ const summary = entry?.data.summary ?? '';
     }
 
     .jelly__side::before,
-    .jelly__side::after,
-    .jelly__ladder {
+    .jelly__side::after {
       display: none;
     }
 
-    /* 手机上四项横排成一行，每格上名字下数字 */
-    .jelly__stats {
+    .jelly__panel,
+    .jelly__records {
+      position: relative;
+      border: var(--hair) solid var(--line);
+      background:
+        linear-gradient(var(--accent), var(--accent)) 0.9rem 0 / 1.8rem 2px no-repeat,
+        radial-gradient(color-mix(in srgb, var(--line-strong) 70%, transparent) 0.7px, transparent 1px) 0 0 / 14px 14px,
+        color-mix(in srgb, var(--bg) 84%, transparent);
+    }
+
+    .jelly__panel::before,
+    .jelly__records::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: -1px;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-top: 2px solid var(--icon-pink);
+      border-left: 2px solid var(--icon-pink);
+      pointer-events: none;
+    }
+
+    .jelly__panel {
       order: 1;
+      gap: 0.55rem;
+      padding: 0.55rem 0.7rem 0.65rem;
+    }
+
+    /* 四项横排成一行，每格上名字下数字 */
+    .jelly__stats {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      border: var(--hair) solid var(--line);
-      background: color-mix(in srgb, var(--bg) 84%, transparent);
+      border-bottom: var(--hair) dashed var(--line);
     }
 
     .jelly__stats > div {
       flex-direction: column;
       gap: 0.1rem;
-      padding: 0.4rem 0.55rem;
+      padding: 0.15rem 0.45rem 0.4rem;
       border-bottom: 0;
     }
 
     .jelly__stats > div + div {
-      border-left: var(--hair) solid var(--line);
+      border-left: var(--hair) dashed var(--line);
     }
 
     .jelly__stats > div::after {
@@ -573,8 +785,8 @@ const summary = entry?.data.summary ?? '';
       font-size: 1rem;
     }
 
-    .jelly__actions {
-      order: 2;
+    .jelly__ladder .jelly__label {
+      margin-bottom: 0.4rem;
     }
 
     .jelly-btn {
@@ -582,20 +794,22 @@ const summary = entry?.data.summary ?? '';
     }
 
     .jelly__board {
-      order: 3;
+      order: 2;
       width: 100%;
       margin-inline: auto;
       padding: 0;
       aspect-ratio: 2 / 3;
-      /* 顶栏、页头、计分、按钮大约占 19rem，剩下的高度给画板 */
-      max-width: calc((100dvh - 19rem) * 2 / 3);
+      /* 顶栏、页头、上面那块面板大约占 22rem，剩下的高度给画板，一屏放得下 */
+      max-width: calc((100dvh - 22rem) * 2 / 3);
     }
 
     .jelly__records {
-      order: 4;
+      order: 3;
       padding: 0.85rem 1rem;
-      border: var(--hair) solid var(--line);
-      background: color-mix(in srgb, var(--bg) 84%, transparent);
+    }
+
+    .jelly__empty {
+      min-height: 9rem;
     }
   }
 </style>
