@@ -9,15 +9,13 @@
 //
 // 表面边上再加一点表面张力：每个点往两个邻居的中点拉一点，挤出来的尖角、缺口会被抹平。
 //
-// 托盘和井是两套规则：
-// - 托盘也是一个小容器，和井是同一个世界（同样的重力、阻尼）：果冻坐在托盘底上，落到别人身上会顺着圆滑的表面滑下来。
-//   只管左右的是一根很软的弹簧：相邻两个想留一小段间隔，远了慢慢靠过来，近了轻轻分开，整排再被很弱的力拉向中间，
-//   所以是「有点吸引又不完全吸住」的松散一行。相邻两个数字相同时吸得更紧，一碰就合成。
-//   新来的从两侧带着速度滑进来，撞到已有的会把它们推开
+// 托盘和井：
+// - 托盘也是一个小容器，和井是同一套物理（同样的重力、阻尼、按质量分摊的碰撞），没有「排队」之类的假力：
+//   托盘底是一只很浅的碗，坐在底上的果冻顺着坡慢慢挪到中间、互相挨着停下；落到别人身上会顺着圆滑的表面滑下来。
+//   挨着的两个数字相同就合。新来的从两侧带着速度滑进来，撞到已有的会把它们推开（动量分过去）
 // - 按住只拉不拖：果冻待在原地，正对手指的那一小块伸出一个小突起（像细胞伸伪足），伸不到托盘框；
-//   拿着的和别的果冻照样相撞（它也有体积）。松手由 game.ts 决定往哪弹：往下拉出托盘就弹进井里，
-//   否则在托盘里弹出去（hopInTray）：像甩出去的一滴划抛物线，飞的时候缩小一点、照样有体积，
-//   容易从别的果冻上方越过，碰到相同数字就合，落地停稳了鼓回原大小、排回队伍
+//   拿着的和别的果冻碰时只有它自己的轮廓让开，别人不会被它拱动。松手由 game.ts 决定往哪弹：往下拉出托盘就弹进井里，
+//   否则在托盘里弹出去（hopInTray）：像甩出去的一块果冻划抛物线，大小不变，撞到谁就把谁推开，碰到相同数字就合
 // - 合成：新果冻冷却一小会才能接着合，连锁合成一步一步来；半径按欠阻尼弹簧鼓过头再回弹，Q 弹一下
 // - 压扁回弹：落地、撞上别的果冻、合成时，沿撞击方向压扁、横向鼓开，按一根欠阻尼的弹簧来回晃几下才停
 // - 井里：两侧墙和顶上按恢复系数反弹，地面带摩擦、不弹
@@ -52,8 +50,6 @@ export interface Blob {
   entering: number;
   partner: Blob | null;
   mergeT: number;
-  // 托盘这一行这一步算出来的横向力（每步重算，存在果冻上免得每步新建 Map）
-  rowF: number;
   // 被拉着时朝手指的方向（单位向量）和伸出的突起长度，不拉时长度是 0
   sx: number;
   sy: number;
@@ -62,10 +58,8 @@ export interface Blob {
   cool: number;
   // 冷却期间碰到的相同数字：冷却一结束，只要还挨着就合（碰撞会把它们推开一层薄缝，不记下来的话就再也检测不到接触）
   near: Blob | null;
-  // 在托盘里被弹出去、还在飞的剩余时间：飞的时候缩小一点、不排队，落地停稳了再鼓回来、排回队伍
+  // 在托盘里被弹出去、还在飞的剩余时间：飞的时候不按重力压扁，落地停稳了才塌下来
   hop: number;
-  // 这一次飞的时候缩到几倍：往上甩得越猛缩得越多，横着滑出去不缩
-  hopScale: number;
   // 最近还在接触别的果冻、地面或墙的剩余子步数。黏性只作用在接触着的果冻上（消除堆叠抖动），
   // 自由下落、飞着的不受影响，否则从静止开始掉的果冻每一步都被刹车，永远加速不起来，像掉进蜂蜜里
   contact: number;
@@ -140,15 +134,11 @@ const ESCAPE = 2.5;
 const SKIN = 0.5;
 // 表面张力：每一步把点往两个邻居的中点拉多少
 const TENSION = 0.12;
-// 托盘：相邻两个之间想留的间隔、那根只管左右的软弹簧的硬度和最大力，整排往中间的拉力
-const ROW_GAP = 8;
-const ROW_X = 22;
-const ROW_MAX = 320;
-const CENTER_X = 0.6;
-// 相邻两个相同数字互相吸的力
-const MATCH_PULL = 420;
+// 托盘底那只浅碗：坐在底上的果冻往中间蠕动，离中间每远一个单位每秒多挪 CREEP，最快每秒 CREEP_MAX
+const CREEP = 0.6;
+const CREEP_MAX = 45;
 // 托盘底的摩擦：比井底小，落在别人身上的果冻容易滑下来、滚到旁边
-const TRAY_FRICTION = 0.8;
+const TRAY_FRICTION = 0.9;
 // 准备发射时：果冻基本待在原地，质心最多往手指方向挪 HOLD_MOVE（挪多了会把旁边的挤得乱跳）。
 // 伪足不是整团变形，而是像细胞伸伪足：只有正对手指的那一小块（方向夹角在 POD_WIDTH 以内）往外伸出一个小突起，身体别处不动。
 // 突起最长 POD_MAX 倍半径，并且永远到不了托盘框：可伸的空间是「沿拉的方向到框的距离 − 半径 − POD_GAP」，
@@ -156,15 +146,11 @@ const TRAY_FRICTION = 0.8;
 // 拉着的时候形状匹配更硬（HOLD_SHAPE），形状跟得上手
 const PULL = 320;
 const HOLD_MOVE = 12;
-// 在托盘里弹出去：像甩出去的一滴，按重力划一条抛物线，撞顶会反弹。最多飞 HOP_TIME 秒，
-// 落到东西上、速度掉到 HOP_SETTLE 以下（且至少飞了 0.1 秒）就算停稳。
-// 飞的时候收缩到 HOP_SHRINK 倍大小（甩起来的一滴收紧了），还是有体积、照样碰撞，只是更容易从别的果冻上方越过；
-// 停稳后半径弹簧把它鼓回原大小，顺带 Q 弹一下。
-// 出手速度完全按拉的方向：横着拉就横着滑出去，不会自己蹦起来；缩小也按向上的速度分量算，到 HOP_UP 才缩满
+// 在托盘里弹出去：像甩出去的一块果冻，按重力划一条抛物线，撞顶会反弹，撞到别的果冻就按质量把它推开（动量分过去），
+// 大小不变、不穿过任何东西。最多算 HOP_TIME 秒在飞，落到东西上、速度掉到 HOP_SETTLE 以下（且至少飞了 0.1 秒）就算停稳。
+// 出手速度完全按拉的方向：横着拉就横着滑出去，不会自己蹦起来
 const HOP_TIME = 1.4;
 const HOP_SETTLE = 70;
-const HOP_SHRINK = 0.72;
-const HOP_UP = 420;
 const POD_WIDTH = 0.32;
 const POD_MAX = 0.9;
 const POD_GAP = 7;
@@ -235,14 +221,12 @@ export function makeBlob(value: number, cx: number, cy: number, zone: Zone, star
     entering: 0,
     partner: null,
     mergeT: 0,
-    rowF: 0,
     sx: 0,
     sy: 0,
     reach: 0,
     cool: 0,
     near: null,
     hop: 0,
-    hopScale: 1,
     contact: 0,
     rv: 0,
     sq: 0,
@@ -298,16 +282,12 @@ export function translate(b: Blob, dx: number, dy: number) {
 export function hopInTray(b: Blob, vx: number, vy: number, dt: number) {
   b.state = 'idle';
   b.hop = HOP_TIME;
-  b.hopScale = hopScaleOf(vy);
   setVelocity(b, vx, vy, dt);
 }
 
-function hopScaleOf(vy: number): number {
-  return 1 - (1 - HOP_SHRINK) * Math.min(1, Math.max(0, -vy / HOP_UP));
-}
-
-// 预测弹出去以后第一次落在哪：和物理同一套重力、阻尼（托盘里飞的按缩小后的大小算），
-// 碰到第一个果冻、地面或墙就停，不算反弹。往 path 里每隔几步放一个点（x, y 交替），返回是不是真的落到了东西上
+// 预测弹出去以后第一次碰到什么：和物理同一套重力、阻尼、同样大小，
+// 碰到第一个果冻、地面或墙就停，不算反弹。往 path 里每隔几步放一个点（x, y 交替），返回是不是真的落到了东西上。
+// 出手时已经挨着的邻居不算（不然一出手就「撞上」了）
 export function predictLanding(
   world: World,
   b: Blob,
@@ -318,7 +298,7 @@ export function predictLanding(
   path: number[],
 ): boolean {
   const bounds = world.bounds;
-  const r = intoWell ? b.targetR : b.targetR * hopScaleOf(vy);
+  const r = b.targetR;
   const zone: Zone = intoWell ? 'well' : 'tray';
   const left = intoWell ? bounds.wellL : bounds.trayL;
   const right = intoWell ? bounds.wellR : bounds.trayR;
@@ -341,12 +321,12 @@ export function predictLanding(
       path.push(x, floor - r);
       return true;
     }
-    // 只在往下落的时候算落在别人身上，往上飞擦过的不算
-    if (uy <= 0) continue;
     for (const o of world.blobs) {
       if (o === b || o.zone !== zone) continue;
       if (x + r < o.minX || x - r > o.maxX || y + r < o.minY || y - r > o.maxY) continue;
-      if (Math.hypot(x - o.cx, y - o.cy) < r + o.bound * 0.85) {
+      const reach = r + o.bound * 0.85;
+      if (Math.hypot(b.cx - o.cx, b.cy - o.cy) < reach) continue;
+      if (Math.hypot(x - o.cx, y - o.cy) < reach) {
         path.push(x, y);
         return true;
       }
@@ -602,25 +582,6 @@ function bounceY(b: Blob, i: number, wall: number, bounce: number) {
   b.contact = CONTACT_STEPS;
 }
 
-// 托盘里正被拿着或正在飞的：撞到排着的果冻时只有它让开
-function moving(b: Blob): boolean {
-  return b.hop > 0 || b.state === 'held';
-}
-
-// 托盘里弹起来、还在往上升的（pvy 是上一子步质心的竖直速度，往上是负的）
-function rising(b: Blob): boolean {
-  return b.hop > 0 && b.pvy < 0;
-}
-
-// 托盘这一排算间距用的左右边缘。拿着的按身体本身算（半径），不算伸出去的伪足，否则一拉伪足就把旁边的推走
-function rowLeft(b: Blob): number {
-  return b.state === 'held' ? b.cx - b.r : b.minX;
-}
-
-function rowRight(b: Blob): number {
-  return b.state === 'held' ? b.cx + b.r : b.maxX;
-}
-
 function solveBounds(b: Blob, bounds: Bounds) {
   if (b.zone === 'tray') {
     // 托盘是个小容器：两侧和顶上按恢复系数反弹，底下像井底一样不弹、带一点摩擦。
@@ -653,16 +614,16 @@ function solveBounds(b: Blob, bounds: Bounds) {
   }
 }
 
-// a 的质点钻进 b 就推回 b 最近的那条边，两边按质量分摊。返回是否接触。
-// 托盘里两边各让一半：按质量分的话小的全让，会被两边的大果冻挤成月牙。
-// 例外是拿着的、飞着的撞上排着的：只有动的那个让开（它照样被挡住、贴着滑过去），排着的不动，托盘里就不会被撞乱
+// a 的质点钻进 b 就推回 b 最近的那条边，两边按质量分摊（托盘和井一样，大的推小的更容易）。返回是否接触。
+// 唯一的例外是手里按着的：它被手指托着、不该被别人挤走，也不该用伸出去的伪足去拱旁边的，
+// 所以它和别人碰时只有它自己的轮廓让开（伪足贴着别人的边弯过去），别人一动不动
 function pushOut(a: Blob, b: Blob): boolean {
   let touched = false;
-  const tray = a.zone === 'tray';
-  let wa = tray ? 1 : a.invMass;
-  let wb = tray ? 1 : b.invMass;
-  if (tray && moving(a) !== moving(b)) {
-    wa = moving(a) ? 1 : 0;
+  let wa = a.invMass;
+  let wb = b.invMass;
+  const aHeld = a.state === 'held';
+  if (aHeld !== (b.state === 'held')) {
+    wa = aHeld ? 1 : 0;
     wb = 1 - wa;
   }
   const sum = wa + wb;
@@ -727,36 +688,11 @@ export function createWorld(bounds: Bounds, hooks: Pick<World, 'canMerge' | 'onM
   return { blobs: [], bounds, grab: null, ...hooks };
 }
 
-// 托盘这一行，每个子步复用
-const row: Blob[] = [];
-
 function integrate(world: World, dt: number) {
   const g = world.grab;
   const bounds = world.bounds;
   const trayCx = (bounds.trayL + bounds.trayR) / 2;
   const dt2 = dt * dt;
-
-  // 托盘这一行：按现在的左右顺序，相邻两个之间一根软弹簧，想留 ROW_GAP 的间隔，力有上限；
-  // 整排被很弱的力拉向中间。数字相同的两个吸得更紧，碰到就合。正在合成的不参加。
-  // 手里拉着的也占着它的位置（旁边的照常和它留间隔，不会因为它被拿起来就重新排队），只是它自己不受这些力。
-  // 这一步每个子步都跑，所以复用同一个数组、把中间结果存在果冻身上，不新建 Map
-  row.length = 0;
-  for (const b of world.blobs) {
-    // 还在飞的不排队，停稳了再排进来
-    if (b.zone !== 'tray' || (b.state !== 'idle' && b.state !== 'held') || b.hop > 0) continue;
-    row.push(b);
-    b.rowF = (trayCx - b.cx) * CENTER_X;
-  }
-  row.sort((a, b) => a.cx - b.cx);
-  for (let i = 0; i + 1 < row.length; i++) {
-    const a = row[i];
-    const b = row[i + 1];
-    // 按两个果冻真实的左右边缘量间隙：形状有波纹，按半径估会偏小
-    let f = Math.max(-ROW_MAX, Math.min(ROW_MAX, (rowLeft(b) - rowRight(a) - ROW_GAP) * ROW_X));
-    if (a.value === b.value && !a.entering && !b.entering && world.canMerge(a, b)) f += MATCH_PULL;
-    a.rowF += f;
-    b.rowF -= f;
-  }
 
   // 速度按「每子步挪多少」算
   const slowStep = SLOW_SPEED * dt;
@@ -764,8 +700,14 @@ function integrate(world: World, dt: number) {
 
   for (const b of world.blobs) {
     const held = g?.blob === b;
-    const inRow = b.zone === 'tray' && b.state === 'idle' && b.hop <= 0;
-    let ax = inRow ? b.rowF : 0;
+    // 托盘底是一只很浅的碗：坐在底上的果冻顺着坡慢慢蠕动到中间、互相挨着停下，挨着的相同数字就会碰上合成。
+    // 按蠕动处理（整团平移，不加速度）：做成力的话会被接触黏性一直刹住，隔着一小段的两个永远挪不到一起。
+    // 只有贴着东西、没在飞的才蠕动；手里按着一个的时候整盘都不蠕动：被按住的那个不会被挤，旁边的也不会一路贴过来
+    if (!g && b.zone === 'tray' && b.state === 'idle' && b.hop <= 0 && b.contact > 0) {
+      const creep = Math.max(-CREEP_MAX, Math.min(CREEP_MAX, (trayCx - b.cx) * CREEP));
+      translate(b, creep * dt, 0);
+    }
+    let ax = 0;
     // 重力：托盘和井一样；拿着的由手上的弹簧托着，不加重力
     let ay = held ? 0 : GRAVITY;
     const damp = held ? HOLD_DAMP : DAMP;
@@ -843,9 +785,6 @@ function collide(world: World) {
       const b = list[j];
       if (a.zone !== b.zone) continue;
       if (a.partner === b) continue;
-      // 托盘里弹起来、还在往上升的，不和排着的相撞：刚出手时还没缩小、邻居就挨在旁边，往侧上方一飞就会蹭上被挡回来。
-      // 升到顶开始往下落才恢复碰撞，落在别人身上照样有体积、会滑下去（落点预测也是这么算的）
-      if (a.zone === 'tray' && rising(a) !== rising(b) && a.value !== b.value) continue;
       // 包围盒不相交就不可能碰上
       if (a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY) continue;
       // 中心都进了对方里面（合成出来的新果冻正好生在第三个里面时会这样）：
@@ -950,8 +889,8 @@ function finishMerges(world: World, dt: number) {
 export function step(world: World, dt: number) {
   for (const b of world.blobs) {
     if (b.contact > 0) b.contact--;
-    // 半径按欠阻尼弹簧走向目标：刚合成、刚恢复存档的会鼓过头再回弹几下；在托盘里飞着的目标是缩小后的大小
-    const goal = b.hop > 0 ? b.targetR * b.hopScale : b.targetR;
+    // 半径按欠阻尼弹簧走向目标：刚合成、刚恢复存档的会鼓过头再回弹几下
+    const goal = b.targetR;
     const growing = b.r !== goal || b.rv !== 0;
     if (growing) {
       b.rv += ((goal - b.r) * POP_K - b.rv * POP_C) * dt;

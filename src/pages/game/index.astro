@@ -40,11 +40,8 @@ const items =
 <BaseLayout title="游戏" description={site.gameLine}>
   <PageBackdrop art={pageBackdrops.game} />
   <PixelBackdrop />
-  <!-- 和首页导图同一套瞄准光标，整页生效：卡片、规则按钮、顶栏和页脚的链接都会被瞄准。具体游戏页不用 -->
-  <TargetCursor
-    area="body"
-    targets=".game-card, .game-card__rules-btn, .site-header a, .site-header button, .site-footer a"
-  />
+  <!-- 和首页导图同一套瞄准光标，只在正文里接管（和首页只管画布一样，顶栏、页脚是普通鼠标）：瞄准游戏卡片和规则按钮。具体游戏页不用 -->
+  <TargetCursor area="main" targets=".game-card, .game-card__rules-btn" />
 
   <section class="wrap game-head">
     <div class="game-head__row" data-reveal>

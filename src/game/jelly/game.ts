@@ -19,7 +19,7 @@ import { createDing } from './sound';
 const H = 600;
 const MIN_W = 400;
 const MAX_W = 1000;
-// 托盘高 112：一排果冻坐在托盘底上，上方留出的空间够弹起来的果冻从别人头上越过
+// 托盘高 112：一排果冻坐在托盘底上，上方留出空间让弹起来的果冻划一段抛物线
 const TRAY_TOP = 10;
 const TRAY_BOTTOM = 122;
 const WELL_TOP = 138;
@@ -754,7 +754,7 @@ export function mountJelly(root: HTMLElement): () => void {
 
     if (grabbed && world.grab) drawGuide(grabbed, px);
 
-    // 托盘里飞着的最后画，从别的果冻上方越过时压在上面
+    // 托盘里飞着的最后画，落在别的果冻上时压在上面
     for (const b of world.blobs) if (b.hop <= 0) drawBlob(b, px);
     for (const b of world.blobs) if (b.hop > 0) drawBlob(b, px);
 
@@ -990,7 +990,7 @@ export function mountJelly(root: HTMLElement): () => void {
       blob.state = 'idle';
       return;
     }
-    // 没往下拉出托盘：在托盘里弹出去，越过别的果冻，碰到相同数字就合，不会掉进井里
+    // 没往下拉出托盘：在托盘里弹出去，撞到别的果冻会把它推开，碰到相同数字就合，不会掉进井里
     if (!pull.down) {
       hopInTray(blob, pull.ox * HOP_LAUNCH, pull.oy * HOP_LAUNCH, STEP);
       return;

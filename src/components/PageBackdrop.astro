@@ -28,19 +28,26 @@ const vars = [
 
 <style>
   /* z-index 负数：只压在页面底色之上，正文、封面、列表页的像素噪声都在它上面 */
+  /* 高度用 lvh（地址栏收起时的大视口），不用 inset: 0：手机上滑动时地址栏一收一放，
+     inset: 0 的高度跟着变，cover 跟着重新缩放，贴底的插画就一下一下地挪。lvh 不变，插画钉死不动，
+     地址栏展开时只是底边被它挡住一点 */
   .page-bd {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100lvh;
     z-index: -1;
     pointer-events: none;
   }
 
-  /* 人物都在左下角、中间留白，按底边对齐裁切，人物和桌面不会被裁掉 */
+  /* 人物都在左下角、中间留白：横图靠左贴底裁切，窗口比图窄时只裁掉右边的留白和小装饰，人物和桌面永远完整 */
   .page-bd__layer {
     position: absolute;
     inset: 0;
     background-size: cover;
-    background-position: center bottom;
+    background-position: left bottom;
     background-repeat: no-repeat;
     opacity: 0;
     transition: opacity var(--dur-3) var(--ease-out);
@@ -80,8 +87,13 @@ const vars = [
   :global(:root[data-theme='dark']) .page-bd__layer--day { opacity: 0; }
   :global(:root[data-theme='dark']) .page-bd__layer--night { opacity: var(--pb-night-alpha); }
 
-  /* 竖屏换竖图 */
-  @media (max-aspect-ratio: 4 / 5) {
+  /* 比正方形还窄就换竖图。横图 16:9、竖图 9:16，1:1 正好在两者中间，两边裁得都最少；
+     以前在 4:5 才切，接近正方形的窗口用横图会被左右裁掉近一半。竖图人物占满底部整宽，左右各裁一点，居中 */
+  @media (max-aspect-ratio: 1 / 1) {
+    .page-bd__layer {
+      background-position: center bottom;
+    }
+
     .page-bd__layer--day { background-image: var(--pb-day-tall); }
     .page-bd__layer--night { background-image: var(--pb-night-tall); }
   }

@@ -324,7 +324,8 @@ const summary = entry?.data.summary ?? '';
     gap: clamp(1.25rem, 2.5vw, 2rem);
     align-items: stretch;
     /* 顶栏、标题行、上下留白和页脚加起来约 18.75rem，剩下的给游戏区，PC 上整页不滚动 */
-    height: clamp(26rem, calc(100dvh - 18.75rem), 52rem);
+    /* 用 svh 不用 dvh：手机滑动时地址栏收起、展开，dvh 跟着变，画板就会被一下一下地缩放 */
+    height: clamp(26rem, calc(100svh - 18.75rem), 52rem);
   }
 
   /* 面板和画板四角各一个折角，左上和右下压一点粉色；顶上靠左一小段强调色短条（和游戏大厅标题下那条一样） */
@@ -800,7 +801,8 @@ const summary = entry?.data.summary ?? '';
       padding: 0;
       aspect-ratio: 2 / 3;
       /* 顶栏、页头、上面那块面板大约占 22rem，剩下的高度给画板，一屏放得下 */
-      max-width: calc((100dvh - 22rem) * 2 / 3);
+      /* svh：地址栏收起、展开时不变，滑动页面画板不会被缩放 */
+      max-width: calc((100svh - 22rem) * 2 / 3);
     }
 
     .jelly__records {
