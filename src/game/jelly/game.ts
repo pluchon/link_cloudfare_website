@@ -235,7 +235,9 @@ export function mountJelly(root: HTMLElement): () => void {
         grabbed = null;
         canvas.style.cursor = '';
       }
-      score += merged.value;
+      // 还没往井里弹过（这一局没开始）时，托盘里挨着的相同数字自己合了，不计分也不飘「+N」：
+      // 不然新开一局什么都没做分数就是 4，而且这时离开也不会结算，分数对不上
+      if (started) score += merged.value;
       tile = Math.max(tile, merged.value);
       dirty = true;
       // 井里连锁合成：连得越多、合出的数越大，整个画面越慢，音效也跟着放慢变闷
@@ -248,7 +250,7 @@ export function mountJelly(root: HTMLElement): () => void {
         }
       }
       ding.play(speed);
-      popups.push({ text: `+${merged.value}`, x: merged.cx, y: merged.cy - merged.targetR * 0.4, t: 0, color: colorOf(merged.level) });
+      if (started) popups.push({ text: `+${merged.value}`, x: merged.cx, y: merged.cy - merged.targetR * 0.4, t: 0, color: colorOf(merged.level) });
       if (merged.value === 2048 && !reached) {
         reached = true;
         toastT = 2.4;
@@ -470,7 +472,9 @@ export function mountJelly(root: HTMLElement): () => void {
       }
     }
 
-    if (refillDue) {
+    // 平时弹出一个才补一个；这一局开始前（还没往井里弹过），托盘里自己合成少了也马上补满。
+    // 开局前合成不计分（见 onMerge），所以这样补不会白拿分
+    if (refillDue || (!started && tray < traySize)) {
       refillT -= dt;
       if (tray >= traySize) refillDue = false;
       else if (refillT <= 0) {
@@ -681,6 +685,20 @@ export function mountJelly(root: HTMLElement): () => void {
   }
 
   function drawBlob(b: Blob, px: number) {
+    // 从两侧滑进托盘的那一段只画边框以内的部分，像从墙里钻出来，不压在边框线上
+    if (b.entering) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bounds.trayL, 0, bounds.trayR - bounds.trayL, H);
+      ctx.clip();
+      drawBlobBody(b, px);
+      ctx.restore();
+    } else {
+      drawBlobBody(b, px);
+    }
+  }
+
+  function drawBlobBody(b: Blob, px: number) {
     const color = colorOf(b.level);
     blobPath(b);
     ctx.fillStyle = color;
