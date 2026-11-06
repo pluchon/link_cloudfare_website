@@ -6,6 +6,8 @@
 // 目标形状不是圆：圆上叠两道慢慢转动的波纹，形状一直在变；井里的再按重力往下压扁一点，像一滴水塌在地上。
 // 果冻之间按「质点钻进对方多边形就推回最近的边」处理碰撞，推开的量按质量分摊，
 // 所以飞来的果冻砸进堆里时两边都被压扁、推开，动量也跟着分过去（位置动力学里速度就是位置差）。
+// 井里再加两条防穿模：每个果冻中间有一颗不能重叠的硬核（CORE），上下叠着时下面的按高度差加重、当地基（STACK）。
+// 以前只有软外壳，大果冻压在小果冻上时小的被压扁到一半，压得深了还会从另一面被推穿过去
 //
 // 表面边上再加一点表面张力：每个点往两个邻居的中点拉一点，挤出来的尖角、缺口会被抹平。
 //
@@ -134,6 +136,15 @@ const ESCAPE = 2.5;
 const SKIN = 0.5;
 // 表面张力：每一步把点往两个邻居的中点拉多少
 const TENSION = 0.12;
+// 硬核（只在井里）：每个果冻中间有一颗看不见的硬圆核，半径 CORE 倍。外壳照样软、能挤扁，
+// 但两颗核绝不重叠、核也不进墙和底，所以两个果冻的中心永远不会交错，小的再怎么被压也不会被整个压穿。
+// 每轮最多纠正 CORE_STEP：纠正量会变成速度，一次挪太多会把果冻弹飞
+const CORE = 0.7;
+const CORE_STEP = 1.5;
+// 堆叠（只在井里）：上下挨着时，下面那个按高度差加重（每高出一个单位乘 e^STACK，最多 e^STACK_MAX 倍），
+// 像地基一样托住上面的，大果冻会坐在小果冻上或顺着它滑下去，而不是把它压扁
+const STACK = 0.05;
+const STACK_MAX = 3;
 // 托盘底那只浅碗：坐在底上的果冻往中间蠕动，离中间每远一个单位每秒多挪 CREEP，最快每秒 CREEP_MAX
 const CREEP = 0.6;
 const CREEP_MAX = 45;
@@ -276,6 +287,24 @@ export function translate(b: Blob, dx: number, dy: number) {
   }
   b.cx += dx;
   b.cy += dy;
+}
+
+// 整团挪一下、不动上一步的位置：挪动的量算进速度（位置动力学的纠正就是这样把撞进去的速度去掉的）
+function shift(b: Blob, dx: number, dy: number) {
+  for (let i = 0; i < b.n; i++) {
+    b.x[i] += dx;
+    b.y[i] += dy;
+  }
+  b.cx += dx;
+  b.cy += dy;
+  b.minX += dx;
+  b.maxX += dx;
+  b.minY += dy;
+  b.maxY += dy;
+}
+
+function coreOf(b: Blob): number {
+  return b.r * CORE;
 }
 
 // 在托盘里弹出去：留在托盘、开始飞，速度就是拉出来的速度
@@ -601,6 +630,7 @@ function solveBounds(b: Blob, bounds: Bounds) {
     }
     return;
   }
+  solveCoreBounds(b, bounds.wellL, bounds.wellR, bounds.wellBottom);
   for (let i = 0; i < b.n; i++) {
     // 井底不弹：液体落地是摊开，不是蹦起来
     if (b.y[i] > bounds.wellBottom) {
@@ -614,19 +644,66 @@ function solveBounds(b: Blob, bounds: Bounds) {
   }
 }
 
-// a 的质点钻进 b 就推回 b 最近的那条边，两边按质量分摊（托盘和井一样，大的推小的更容易）。返回是否接触。
+// 硬核不进墙和底：上面压得再重，被压在底下的果冻中心离地也至少有一个核半径，不会被压成一张饼
+function solveCoreBounds(b: Blob, left: number, right: number, floor: number) {
+  const c = coreOf(b);
+  if (b.cy + c > floor) shift(b, 0, Math.max(-CORE_STEP, floor - c - b.cy));
+  if (b.cx - c < left) shift(b, Math.min(CORE_STEP, left + c - b.cx), 0);
+  else if (b.cx + c > right) shift(b, Math.max(-CORE_STEP, right - c - b.cx), 0);
+}
+
+// a、b 碰撞时 a 让多少（0–1），b 让剩下的。
+// 平时按质量分摊（托盘和井一样，大的推小的更容易）；上下挨着时下面那个按高度差加重，当地基托住上面的（STACK）。
 // 唯一的例外是手里按着的：它被手指托着、不该被别人挤走，也不该用伸出去的伪足去拱旁边的，
-// 所以它和别人碰时只有它自己的轮廓让开（伪足贴着别人的边弯过去），别人一动不动
-function pushOut(a: Blob, b: Blob): boolean {
-  let touched = false;
-  let wa = a.invMass;
-  let wb = b.invMass;
+// 所以它和别人碰时只有它自己让开（伪足贴着别人的边弯过去），别人一动不动。
+// 但压在它上面的那个照常按质量分摊：全让它自己让开的话，按住底下的小果冻时上面的大果冻会慢慢陷进去；
+// 也不能反过来让上面的全让开，那样伸出去的伪足会把上面的拱起来
+function shareOf(a: Blob, b: Blob): number {
   const aHeld = a.state === 'held';
   if (aHeld !== (b.state === 'held')) {
-    wa = aHeld ? 1 : 0;
-    wb = 1 - wa;
+    const held = aHeld ? a : b;
+    const other = aHeld ? b : a;
+    if (other.cy >= held.cy - held.r * 0.5) return aHeld ? 1 : 0;
   }
-  const sum = wa + wb;
+  // 堆叠加重只在井里：托盘是一排，加了的话甩出去落在别人身上的会被托住、坐在上面不下来
+  const e = a.zone === 'well' ? Math.max(-STACK_MAX, Math.min(STACK_MAX, (a.cy - b.cy) * STACK)) : 0;
+  const wa = a.invMass * Math.exp(-e);
+  return wa / (wa + b.invMass);
+}
+
+// 两颗硬核重叠就沿中心连线推开，按 shareOf 分摊。返回是否碰上。
+// 只在井里：托盘是一排小数字，压不穿；加了反而让按住时旁边的被核推着多挪
+function solveCore(a: Blob, b: Blob): boolean {
+  if (a.zone === 'tray') return false;
+  const min = coreOf(a) + coreOf(b);
+  let ux = b.cx - a.cx;
+  let uy = b.cy - a.cy;
+  const d2 = ux * ux + uy * uy;
+  if (d2 >= min * min) return false;
+  const d = Math.sqrt(d2);
+  if (d < 1e-3) {
+    ux = 0;
+    uy = 1;
+  } else {
+    ux /= d;
+    uy /= d;
+  }
+  const push = Math.min(min - d, CORE_STEP);
+  const s = shareOf(a, b);
+  shift(a, -ux * push * s, -uy * push * s);
+  shift(b, ux * push * (1 - s), uy * push * (1 - s));
+  a.contact = b.contact = CONTACT_STEPS;
+  return true;
+}
+
+// a 的质点钻进 b 就推回 b 的边，按 shareOf 分摊。返回是否接触。
+// 推回的那条边只在 b 朝着 a 的那一半里找：压得很深时离点最近的可能是 b 另一面的边，
+// 往那边推就等于把 a 从 b 身上推穿过去。硬核保证两个中心不会交错，所以「朝着 a 的那一半」一直是对的
+function pushOut(a: Blob, b: Blob): boolean {
+  let touched = false;
+  const share = shareOf(a, b);
+  const fx = a.cx - b.cx;
+  const fy = a.cy - b.cy;
   for (let i = 0; i < a.n; i++) {
     const x = a.x[i];
     const y = a.y[i];
@@ -635,11 +712,17 @@ function pushOut(a: Blob, b: Blob): boolean {
     if (!inside(b, x, y)) continue;
     touched = true;
     a.contact = b.contact = CONTACT_STEPS;
+    // 朝着 a 的那一半里最近的边；那一半一条都没有（几乎不会）才退回全体里最近的
     let best = Infinity;
     let bj = 0;
     let bt = 0;
     let qx = 0;
     let qy = 0;
+    let anyBest = Infinity;
+    let anyJ = 0;
+    let anyT = 0;
+    let anyX = 0;
+    let anyY = 0;
     for (let j = 0; j < b.n; j++) {
       const k = (j + 1) % b.n;
       const ex = b.x[k] - b.x[j];
@@ -649,7 +732,14 @@ function pushOut(a: Blob, b: Blob): boolean {
       const cx = b.x[j] + ex * t;
       const cy = b.y[j] + ey * t;
       const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
-      if (d2 < best) {
+      if (d2 < anyBest) {
+        anyBest = d2;
+        anyJ = j;
+        anyT = t;
+        anyX = cx;
+        anyY = cy;
+      }
+      if (d2 < best && (cx - b.cx) * fx + (cy - b.cy) * fy > 0) {
         best = d2;
         bj = j;
         bt = t;
@@ -657,16 +747,23 @@ function pushOut(a: Blob, b: Blob): boolean {
         qy = cy;
       }
     }
+    if (best === Infinity) {
+      best = anyBest;
+      bj = anyJ;
+      bt = anyT;
+      qx = anyX;
+      qy = anyY;
+    }
     // 推到边外 SKIN 处：沿「点 → 最近点」的方向多推一点
     const dist = Math.sqrt(best) || 1e-6;
     const mx = ((qx - x) / dist) * (dist + SKIN);
     const my = ((qy - y) / dist) * (dist + SKIN);
-    a.x[i] += (mx * wa) / sum;
-    a.y[i] += (my * wa) / sum;
+    a.x[i] += mx * share;
+    a.y[i] += my * share;
     const k = (bj + 1) % b.n;
     const s = 1 / ((1 - bt) * (1 - bt) + bt * bt);
-    const ex = (mx * wb) / sum;
-    const ey = (my * wb) / sum;
+    const ex = mx * (1 - share);
+    const ey = my * (1 - share);
     b.x[bj] -= ex * (1 - bt) * s;
     b.y[bj] -= ey * (1 - bt) * s;
     b.x[k] -= ex * bt * s;
@@ -809,7 +906,9 @@ function collide(world: World) {
       // 两个方向都要推，不能写成 || 短路掉后一个
       const hitA = pushOut(a, b);
       const hitB = pushOut(b, a);
-      if ((hitA || hitB) && mergeable(world, a, b)) {
+      // 外壳推完再管硬核，硬核说了算
+      const hitC = solveCore(a, b);
+      if ((hitA || hitB || hitC) && mergeable(world, a, b)) {
         if (a.cool > 0 || b.cool > 0) {
           a.near = b;
           b.near = a;
