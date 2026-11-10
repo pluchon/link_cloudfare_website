@@ -39,7 +39,7 @@ for (const h of headings) {
 <BaseLayout title={data.title} description={data.summary} ogImage={cover}>
   <PaletteDecor />
   <div class="progress" id="reading-progress" aria-hidden="true"></div>
-  {data.music && <MusicBar name={data.music.name} url={data.music.url} />}
+  {(data.music || data.speech) && <MusicBar music={data.music} speech={data.speech} />}
 
   {
     toc.length > 0 && (
@@ -139,6 +139,21 @@ for (const h of headings) {
               >
                 <MusicIcon />
                 <span class="article__music-name" data-music-name>{data.music.name}</span>
+              </button>
+            )
+          }
+          {
+            data.speech && (
+              <button
+                class="article__raw article__repo article__music article__speech"
+                type="button"
+                title={data.speech.name}
+                data-speech-toggle
+                aria-pressed="false"
+                aria-label={`播放：${data.speech.name}`}
+              >
+                <MusicIcon idle="speech" />
+                <span class="article__music-name" data-speech-name>{data.speech.name}</span>
               </button>
             )
           }

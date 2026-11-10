@@ -92,9 +92,10 @@
 | 仓库 | 元信息区一行 `github: https://github.com/甲/乙`；多个仓库写成 `github: 后端 https://…, 前端 https://…`。只认 github.com 的地址，详情页「Markdown 原文」右边显示成新标签页打开的链接 |
 | 视频 | 元信息区一行 `bilibili: https://www.bilibili.com/video/BV号/`。只认 B 站视频页，分享链接后面的追踪参数会被丢掉；显示在仓库链接右边，B 站图标加「视频链接」 |
 | 伴奏 | 元信息区一行 `music: https://…/personal_website_music/歌曲名_时间戳.mp3`。歌名从文件名取（去掉末尾的 `_时间戳`），想显示别的就写在地址前面。文件存 OSS 的 `personal_website_music/` |
+| 朗读 | 元信息区一行 `speech: https://…/personal_website_speech/篇名_时间戳.mp3`。显示在伴奏按钮右边，名称默认「朗读音频」，想显示别的就写在地址前面。文件存 OSS 的 `personal_website_speech/` |
 | 草稿 | 文件名以 `_` 开头 |
 
-标题、简介、标签、日期、仓库、视频、伴奏这几行会从正文里剔除，不会重复渲染。格式模板见
+标题、简介、标签、日期、仓库、视频、伴奏、朗读这几行会从正文里剔除，不会重复渲染。格式模板见
 `src/content/content_format.md` 和 `src/content/profile_format.md`。
 
 **发布时间是手写的（2026-10-27 起）。** 以前取 git 最后一次改内容的提交，改一个错字日期就跳到当天；

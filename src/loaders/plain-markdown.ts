@@ -15,8 +15,9 @@ import { fileURLToPath } from 'node:url';
 //   仓库   ← 元信息区一行 github: https://github.com/甲/乙
 //   视频   ← 元信息区一行 bilibili: https://www.bilibili.com/video/BV号/
 //   伴奏   ← 元信息区一行 music: https://…/歌曲名_时间戳.mp3
+//   朗读   ← 元信息区一行 speech: https://…/篇名_时间戳.mp3
 //   游玩   ← 元信息区一行 play: /game/xxx/（游戏集合专用）
-// 标题、简介、标签、日期、仓库、视频、伴奏、游玩这几行会从正文里剔除，不会在文章里重复出现
+// 标题、简介、标签、日期、仓库、视频、伴奏、朗读、游玩这几行会从正文里剔除，不会在文章里重复出现
 
 export interface PlainMarkdownOptions {
   /** 相对项目根目录，例如 src/content/blog */
@@ -43,6 +44,7 @@ interface ParsedDoc {
   repos: Repo[];
   video?: string;
   music?: Music;
+  speech?: Music;
   play?: string;
   date?: Date;
   cover?: string;
@@ -66,6 +68,8 @@ const VIDEO_URL = /https:\/\/www\.bilibili\.com\/video\/\w+/;
 // 伴奏：music: https://…/歌曲名_时间戳.mp3。歌名默认从文件名取，想显示别的就写在地址前面：music: 下雨天 https://…
 const MUSIC = /^music\s*[:：]\s*(.+)$/i;
 const MUSIC_URL = /https:\/\/\S+/;
+// 朗读：speech: https://…/篇名_时间戳.mp3。名称默认「朗读音频」，想显示别的就写在地址前面
+const SPEECH = /^speech\s*[:：]\s*(.+)$/i;
 // 游戏入口路由：play: /game/xxx/（填好后游戏大厅卡片变为可游玩状态）
 const PLAY_LINE = /^play\s*[:：]\s*(\S+)\s*$/i;
 // 发布时间：date: 2026-10-27，可以带时分 date: 2026-10-27 14:57，按台北时间算。
@@ -111,6 +115,13 @@ function pickMusic(raw: string): Music | undefined {
   return { name: label || file.replace(/_\d+$/, ''), url };
 }
 
+function pickSpeech(raw: string): Music | undefined {
+  const url = raw.match(MUSIC_URL)?.[0];
+  if (!url) return undefined;
+  const label = raw.replace(url, '').trim();
+  return { name: label || '朗读音频', url };
+}
+
 // 文件开头那一段是元信息区：标题、摘要引用块、分隔线、封面图、tags / github / bilibili / music / play 引用块、[toc]
 // 都算在内，一直读到第一行「正经正文」为止，整段不进正文
 function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
@@ -130,6 +141,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
   let repos: Repo[] = [];
   let video = '';
   let music: Music | undefined;
+  let speech: Music | undefined;
   let play = '';
   let date: Date | undefined;
 
@@ -166,6 +178,11 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
       const musicLine = inner.match(MUSIC);
       if (musicLine) {
         music ??= pickMusic(musicLine[1]);
+        continue;
+      }
+      const speechLine = inner.match(SPEECH);
+      if (speechLine) {
+        speech ??= pickSpeech(speechLine[1]);
         continue;
       }
       const playLine = inner.match(PLAY_LINE);
@@ -205,6 +222,12 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     const musicLine = line.match(MUSIC);
     if (musicLine) {
       music ??= pickMusic(musicLine[1]);
+      continue;
+    }
+
+    const speechLine = line.match(SPEECH);
+    if (speechLine) {
+      speech ??= pickSpeech(speechLine[1]);
       continue;
     }
 
@@ -270,6 +293,7 @@ function parseDoc(raw: string, fallbackTitle: string): ParsedDoc {
     repos,
     video: video || undefined,
     music,
+    speech,
     play: play || undefined,
     date,
     cover: cover || undefined,
@@ -402,6 +426,7 @@ export function plainMarkdown(options: PlainMarkdownOptions): Loader {
             repos: parsed.repos,
             video: parsed.video,
             music: parsed.music,
+            speech: parsed.speech,
             play: parsed.play,
             cover: parsed.cover,
           },

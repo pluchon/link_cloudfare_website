@@ -18,4 +18,6 @@
 
 > music: https://你的OSS域名/personal_website_music/歌曲名_时间戳.mp3
 
+> speech: https://你的OSS域名/personal_website_speech/篇名_时间戳.mp3
+
 正文……

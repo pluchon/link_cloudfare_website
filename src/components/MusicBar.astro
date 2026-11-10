@@ -1,34 +1,79 @@
 ---
-// 文章伴奏：音频本身和滚动后右下角的小播放条。入口按钮在 ArticleLayout 的日期行里，
-// 带 data-music-toggle 的按钮都由这里的脚本管。
+// 文章伴奏与正文朗读：音频本身和滚动后右下角的小播放条。入口按钮在 ArticleLayout 的日期行里，
+// 带 data-music-toggle / data-speech-toggle 的按钮都由这里的脚本管。
 // 默认不播放，preload=none，点之前不产生任何音频流量。
 // 小条不能放进文章头部：那里有 data-reveal 的 transform，fixed 会变成相对它定位
 import MusicIcon from './MusicIcon.astro';
 
-interface Props {
+interface Track {
   name: string;
   url: string;
 }
 
-const { name, url } = Astro.props;
+interface Props {
+  name?: string;
+  url?: string;
+  music?: Track;
+  speech?: Track;
+}
+
+const { name, url, music = name && url ? { name, url } : undefined, speech } = Astro.props;
+const tracks = [
+  ...(music ? [{ kind: 'music' as const, name: music.name, url: music.url, loop: true, volume: 50 }] : []),
+  ...(speech ? [{ kind: 'speech' as const, name: speech.name, url: speech.url, loop: false, volume: 85 }] : []),
+];
 ---
 
-<audio data-music data-name={name} src={url} preload="none" loop></audio>
+{
+  tracks.map((t) => (
+    <audio data-audio={t.kind} data-name={t.name} src={t.url} preload="none" loop={t.loop ? true : undefined} />
+  ))
+}
 
-<div class="music-bar" data-music-bar>
-  <button class="music-bar__toggle" type="button" data-music-toggle aria-pressed="false" aria-label={`播放：${name}`}>
-    <MusicIcon idle="play" />
-  </button>
-  <span class="music-bar__name" title={name} data-music-name>{name}</span>
-  <input class="music-bar__volume" type="range" min="0" max="100" value="50" aria-label="音量" data-music-volume />
+<div class="music-bar-dock">
+  {
+    tracks.map((t) => (
+      <div class="music-bar" data-audio-bar={t.kind}>
+        <button
+          class="music-bar__toggle"
+          type="button"
+          data-audio-toggle={t.kind}
+          aria-pressed="false"
+          aria-label={`播放：${t.name}`}
+        >
+          <MusicIcon idle={t.kind === 'speech' ? 'speech' : 'play'} />
+        </button>
+        <span class="music-bar__name" title={t.name} data-audio-name={t.kind}>
+          {t.name}
+        </span>
+        <input
+          class="music-bar__volume"
+          type="range"
+          min="0"
+          max="100"
+          value={String(t.volume)}
+          aria-label={`${t.name}音量`}
+          data-audio-volume={t.kind}
+        />
+      </div>
+    ))
+  }
 </div>
 
 <style>
-  .music-bar {
+  .music-bar-dock {
     position: fixed;
     right: 1.25rem;
     bottom: 1.25rem;
     z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.45rem;
+    pointer-events: none;
+  }
+
+  .music-bar {
     display: flex;
     align-items: center;
     gap: 0.6rem;
@@ -41,6 +86,7 @@ const { name, url } = Astro.props;
     color: var(--fg-muted);
     opacity: 0;
     visibility: hidden;
+    pointer-events: none;
     transform: translateY(0.4rem);
     transition:
       opacity var(--dur-2) var(--ease-out),
@@ -51,6 +97,7 @@ const { name, url } = Astro.props;
   .music-bar[data-show='1'] {
     opacity: 1;
     visibility: visible;
+    pointer-events: auto;
     transform: none;
   }
 
@@ -125,102 +172,118 @@ const { name, url } = Astro.props;
 
 <script>
   let teardown: (() => void) | null = null;
-  let mounted: HTMLAudioElement | null = null;
+  let mountedKey = '';
 
   function init() {
-    const audio = document.querySelector<HTMLAudioElement>('[data-music]');
-    const bar = document.querySelector<HTMLElement>('[data-music-bar]');
-    const volume = document.querySelector<HTMLInputElement>('[data-music-volume]');
-    if (!audio || !bar || !volume || audio === mounted) return;
-    mounted = audio;
+    const audios = [...document.querySelectorAll<HTMLAudioElement>('audio[data-audio]')];
+    const key = audios.map((a) => `${a.dataset.audio}:${a.getAttribute('src')}`).join('|');
+    if (!audios.length || key === mountedKey) return;
+    mountedKey = key;
 
-    const toggles = [...document.querySelectorAll<HTMLElement>('[data-music-toggle]')];
-    const names = [...document.querySelectorAll<HTMLElement>('[data-music-name]')];
-    const entry = toggles.find((toggle) => !bar.contains(toggle));
-    const name = audio.dataset.name ?? '';
     const events = new AbortController();
     const { signal } = events;
+    const observers: IntersectionObserver[] = [];
 
-    let started = false;
-    let entryInView = true;
+    for (const audio of audios) {
+      const kind = audio.dataset.audio!;
+      const bar = document.querySelector<HTMLElement>(`[data-audio-bar="${kind}"]`);
+      const volume = document.querySelector<HTMLInputElement>(`[data-audio-volume="${kind}"]`);
+      if (!bar || !volume) continue;
 
-    audio.volume = Number(volume.value) / 100;
+      const toggles = [
+        ...document.querySelectorAll<HTMLElement>(
+          `[data-audio-toggle="${kind}"], [data-${kind}-toggle]`,
+        ),
+      ];
+      const names = [
+        ...document.querySelectorAll<HTMLElement>(
+          `[data-audio-name="${kind}"], [data-${kind}-name]`,
+        ),
+      ];
+      const entry = toggles.find((toggle) => !bar.contains(toggle));
+      const name = audio.dataset.name ?? '';
 
-    const syncBar = () => {
-      bar.dataset.show = started && !entryInView ? '1' : '';
-    };
+      let started = false;
+      let entryInView = true;
 
-    const setPressed = (pressed: boolean) => {
+      audio.volume = Number(volume.value) / 100;
+
+      const syncBar = () => {
+        bar.dataset.show = started && !entryInView ? '1' : '';
+      };
+
+      const setPressed = (pressed: boolean) => {
+        toggles.forEach((toggle) => {
+          toggle.setAttribute('aria-pressed', String(pressed));
+          toggle.setAttribute('aria-label', `${pressed ? '暂停' : '播放'}：${name}`);
+        });
+      };
+
+      const setFailed = (failed: boolean) => {
+        names.forEach((el) => (el.textContent = failed ? '加载失败，点击重试' : name));
+      };
+
       toggles.forEach((toggle) => {
-        toggle.setAttribute('aria-pressed', String(pressed));
-        toggle.setAttribute('aria-label', `${pressed ? '暂停' : '播放'}：${name}`);
+        toggle.addEventListener(
+          'click',
+          () => {
+            if (!audio.paused) {
+              audio.pause();
+              return;
+            }
+            if (audio.error) {
+              setFailed(false);
+              audio.load();
+            }
+            audio.play().catch(() => {});
+          },
+          { signal },
+        );
       });
-    };
 
-    const setFailed = (failed: boolean) => {
-      names.forEach((el) => (el.textContent = failed ? '加载失败，点击重试' : name));
-    };
-
-    toggles.forEach((toggle) => {
-      toggle.addEventListener(
-        'click',
+      audio.addEventListener(
+        'play',
         () => {
-          if (!audio.paused) {
-            audio.pause();
-            return;
-          }
-          // 上次加载失败的话，重新加载一次再放
-          if (audio.error) {
-            setFailed(false);
-            audio.load();
-          }
-          // 真正的失败走 error 事件；这里只防止未处理的 rejection
-          audio.play().catch(() => {});
+          started = true;
+          setPressed(true);
+          syncBar();
         },
         { signal },
       );
-    });
+      audio.addEventListener('pause', () => setPressed(false), { signal });
+      audio.addEventListener('ended', () => setPressed(false), { signal });
+      audio.addEventListener(
+        'error',
+        () => {
+          setPressed(false);
+          setFailed(true);
+        },
+        { signal },
+      );
 
-    audio.addEventListener(
-      'play',
-      () => {
-        started = true;
-        setPressed(true);
-        syncBar();
-      },
-      { signal },
-    );
-    audio.addEventListener('pause', () => setPressed(false), { signal });
-    audio.addEventListener(
-      'error',
-      () => {
-        setPressed(false);
-        setFailed(true);
-      },
-      { signal },
-    );
+      volume.addEventListener('input', () => (audio.volume = Number(volume.value) / 100), { signal });
 
-    volume.addEventListener('input', () => (audio.volume = Number(volume.value) / 100), { signal });
-
-    // 入口滚出视口（顶栏下面也算看不见）才亮出小条
-    const observer = entry
-      ? new IntersectionObserver(
+      if (entry) {
+        const observer = new IntersectionObserver(
           ([item]) => {
             entryInView = item.isIntersecting;
             syncBar();
           },
           { rootMargin: '-64px 0px 0px 0px' },
-        )
-      : null;
-    if (entry) observer?.observe(entry);
+        );
+        observer.observe(entry);
+        observers.push(observer);
+      }
+    }
 
     teardown = () => {
       events.abort();
-      observer?.disconnect();
-      // 换页后旧节点虽然从 DOM 摘掉了，音频还会接着响，必须手动停
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
+      observers.forEach((o) => o.disconnect());
+      audios.forEach((audio) => {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      });
     };
   }
 
@@ -228,8 +291,7 @@ const { name, url } = Astro.props;
   document.addEventListener('astro:before-swap', () => {
     teardown?.();
     teardown = null;
-    mounted = null;
+    mountedKey = '';
   });
-  // 这段脚本可能在第一次 astro:page-load 之后才执行，那次事件就错过了，所以这里先跑一次
   init();
 </script>

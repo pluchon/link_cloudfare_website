@@ -1,7 +1,7 @@
 ---
-// 伴奏按钮的图标：没在放时是音符或三角，放的时候换成暂停。跟着按钮的 aria-pressed 走，脚本不用管图标
+// 伴奏与朗读按钮的图标：没在放时是音符、朗读麦克风或三角，放的时候换成暂停。跟着按钮的 aria-pressed 走，脚本不用管图标
 interface Props {
-  idle?: 'note' | 'play';
+  idle?: 'note' | 'speech' | 'play';
 }
 
 const { idle = 'note' } = Astro.props;
@@ -15,6 +15,11 @@ const { idle = 'note' } = Astro.props;
           <path d="M9 18V5.500l11-2V16" />
           <circle cx="6.500" cy="18" r="2.500" />
           <circle cx="17.500" cy="16" r="2.500" />
+        </>
+      ) : idle === 'speech' ? (
+        <>
+          <rect x="9" y="2.500" width="6" height="11" rx="3" />
+          <path d="M5.500 10a6.500 6.500 0 0 0 13 0M12 16.500v4.500M8.500 21h7" />
         </>
       ) : (
         <path d="M8 5.500v13l10-6.500z" />

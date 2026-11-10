@@ -16,6 +16,8 @@ const schema = z.object({
   video: z.string().optional(),
   // 文章里那行 music: 推出来的伴奏，日期行最右边显示歌名
   music: z.object({ name: z.string(), url: z.string() }).optional(),
+  // 文章里那行 speech: 推出来的正文朗读音频，跟在伴奏按钮右边
+  speech: z.object({ name: z.string(), url: z.string() }).optional(),
   // 游戏说明里那行 play: 推出来的实际游玩路由
   play: z.string().optional(),
   cover: z.string().optional(),
