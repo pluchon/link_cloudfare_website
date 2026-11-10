@@ -33,7 +33,7 @@ const toc = current
 ---
 
 <BaseLayout title={pageTitle} description={description}>
-  <PageBackdrop art={pageBackdrops.notice} quiet />
+  <PageBackdrop art={pageBackdrops.notice} />
   <PixelBackdrop />
 
   <div class="wrap notice" data-view={view}>
@@ -205,7 +205,7 @@ const toc = current
     overflow-y: auto;
     scrollbar-width: none;
     border: var(--hair) solid var(--line);
-    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 46%, transparent);
   }
 
   .side-head {
@@ -313,7 +313,7 @@ const toc = current
     line-height: 1.55;
     color: var(--fg);
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
     transition: color var(--dur-1) var(--ease-out);
   }
 
@@ -356,7 +356,7 @@ const toc = current
   .notice__main,
   .toc {
     border: var(--hair) solid var(--line);
-    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    background: color-mix(in srgb, var(--bg) 46%, transparent);
   }
 
   .notice__main {

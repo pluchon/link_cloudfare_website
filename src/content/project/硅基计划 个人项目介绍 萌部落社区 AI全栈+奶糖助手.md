@@ -10,7 +10,7 @@
 
 > tags: [Spring Boot, Spring Cloud Alibaba, Nacos, MyBatis-Plus, Redis, RabbitMQ, Elasticsearch, XXL-JOB, Python, FastAPI, LangGraph, AI 应用, Vue 3, 前端]
 
-> date: 2026-11-01
+> date: 2026-11-10
 
 > github: https://github.com/pluchon/meng_center
 
@@ -32,13 +32,13 @@ mindmap
     账号与安全
       邮箱或手机号注册
       滑块验证与验证码
-      管理员人工审核
-      多设备登录管理
+      可选的人工审核
+      多设备登录与预设头像
     内容与互动
       Markdown 发帖
       多图上传与封面
       评论、回复与置顶
-      多收藏夹管理
+      多收藏夹与预设封面
     发现与检索
       个性化推荐流
       AI 语义搜索
@@ -56,7 +56,7 @@ mindmap
       看图与日常闲聊
       站内检索与联网搜索
       长期记忆与前情提要
-      气泡语音与动态桌宠
+      气泡语音与十段动态桌宠
 ```
 
 ## 奶糖助手
@@ -136,31 +136,36 @@ flowchart TD
 
 ### 桌面小宠
 
-奶糖平时安静待机，只有遇到明确事件才会切换动作，不会一直在页面上循环乱动。
+![奶糖桌宠动态立绘](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/pet-state-happy.webp?v=20261110-loop)
+
+奶糖平时按权重随机轮播六段待机动作（呼吸眨眼 40%、摇尾巴 15%、洗脸 15%、伸懒腰 10%、东张西望 10%、打盹 10%），遇到对话事件时按 `离线 > 说话 > 思考 > 开心 > 待机` 的优先级切换四段状态动图。
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    state "待机（摆尾、呼吸、眨眼）" as Idle
-    state "说话（切换嘴型）" as Talk
-    state "开心（小跳一下）" as Cheer
+    state "待机轮播（呼吸 / 摇尾 / 洗脸 / 伸懒腰 / 东张西望 / 打盹）" as Idle
+    state "思考（托腮等待首气泡）" as Think
+    state "说话（气泡流式弹出 / 播放语音）" as Talk
+    state "开心（小跳庆祝）" as Happy
+    state "离线（垂耳委屈）" as Offline
 
     [*] --> Idle
-    Idle --> Talk: 生成回复中 / 播放语音中
-    Talk --> Idle: 生成或播放结束
-    Talk --> Cheer: 回复成功（20% 概率触发）
-    Idle --> Cheer: 空闲时每分钟 3% 概率触发
-    Cheer --> Idle: 1.1 秒后恢复
-    Cheer --> Talk: 期间又开始说话
+    Idle --> Think: 发送消息等待响应
+    Think --> Talk: 收到气泡或播放语音
+    Talk --> Happy: 一轮回复顺利完成
+    Happy --> Idle: 1.2 秒后恢复待机
+    Talk --> Idle: 播放结束
+    Idle --> Offline: AI 服务离线或降级
+    Offline --> Idle: 服务恢复
 ```
 
-关掉对话框后，后台回复会继续生成，右下角的她也会继续动嘴说话。素材按身体、尾巴、眼睛、嘴巴以及开心的三个姿势分层切图，全部加起来约 193KB。如果系统开启了「减少动态效果」，则只显示静态站姿。
+关掉对话框后，若后台仍在生成回复，右下角的桌宠会继续播放说话动作。每段动态 WebP 首尾同帧无缝循环、脚底位置对齐，切换动作时人物不会跳动；如果系统开启了「减少动态效果」，则固定显示呼吸动图的第一帧静画。
 
 ## 社区功能
 
 ### 账号与注册审核
 
-注册账号需要先过滑块验证和短信/邮箱验证码，提交后进入待审核状态，等管理员通过后才能正常登录。如果被驳回，登录时能看到具体原因，修改资料后可以重新申请。同一个账号支持在多台设备登录，在个人中心里可以随时让任意一台设备下线。
+注册账号需要先过滑块验证和短信/邮箱验证码。目前默认免审核，注册成功就能直接登录；打开 Nacos 开关 `meng.user.registration.review-required` 后，提交的注册会先进入待审核，等管理员通过才能登录，被驳回时登录能看到原因，修改资料后可以重新申请。同一个账号支持在多台设备登录，在个人中心里可以随时让任意一台设备下线，被下线的设备连私信的实时连接也会立即断开。
 
 ![登录页面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/login.webp)
 
@@ -180,8 +185,12 @@ sequenceDiagram
     S-->>W: 返回票据
     W->>S: 携带票据请求短信/邮箱验证码
     U->>W: 输入验证码并提交注册
-    S->>S: 账号置为「待审核」
-    Note over S: 管理员审核通过
+    alt 开启人工审核
+        S->>S: 账号置为「待审核」
+        Note over S: 管理员审核通过
+    else 默认免审核
+        S->>S: 账号直接置为「正常」
+    end
     S-)I: 发送 user.approved 事件
     I-->>U: 推送欢迎通知
 ```
@@ -193,7 +202,8 @@ stateDiagram-v2
     state "正常使用" as Active
     state "已驳回" as Rejected
 
-    [*] --> Pending: 提交注册申请
+    [*] --> Active: 提交注册（默认免审核）
+    [*] --> Pending: 提交注册（开启人工审核时）
     Pending --> Active: 管理员审核通过
     Pending --> Rejected: 管理员驳回（附原因）
     Rejected --> Pending: 修改资料后重新申请
@@ -203,11 +213,19 @@ stateDiagram-v2
 
 ### 发帖与浏览
 
-帖子分为五个分类，正文用 Markdown 编写，最多可传 10 张配图，支持设置封面和标签，也可以先存草稿。主页提供推荐、最新、热门三种排序（默认按推荐）。评论支持带图和表情包，可以置顶、点赞和 `@` 提到其他用户；收藏帖子时还能归类到不同的收藏夹。
+帖子分为五个分类，正文用 Markdown 编写，最多可传 10 张配图，支持设置封面和标签，也可以先存草稿。主页顶部轮播四张插画横幅，提供推荐、最新、热门三种排序（默认按推荐）。评论支持带图和表情包，可以置顶、点赞和 `@` 提到其他用户；收藏帖子时还能归类到不同的收藏夹，并从 21 张水彩插画封面（默认宝箱封面 + 追番、游戏、攻略、插画、学习、技术、美食等 20 张主题预设封面）和五种贴纸配色中挑选。
+
+![首页日常横幅：先把勺子放开](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/home-comic-sparkle.png)
+
+![首页日常横幅：轮子得是圆的](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/home-comic-partners.png)
 
 ![帖子详情](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/post.webp)
 
 ![发帖页](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/editor.webp)
+
+![默认收藏夹封面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/profile-favourite-background.png)
+
+![收藏夹预设封面：游戏](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/folder-cover-game.png)
 
 帖子发布后会异步交给 AI 分析和审核——发帖本身不用等 AI 跑完，就算 AI 服务暂时不可用也能照常发帖。如果审核判定违规，帖子会自动退回草稿箱，并通过系统通知告知作者原因。
 
@@ -251,15 +269,16 @@ flowchart TD
 
 ![创作中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/creator.webp)
 
-日常签到、发帖、发评论都会增加经验值，经验值决定用户等级；同时还会累积积分（积分是独立的账户，目前只做记录）。成长中心集中展示等级之路、月度签到日历、今日任务和经验明细。
+日常签到、发帖、发评论、给别人的帖子点赞都会增加经验值，经验值决定用户等级；同时还会累积积分（积分是独立的账户，目前只做记录）。成长中心集中展示等级之路、月度签到日历、今日任务和经验明细。
 
 ![成长中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/growth.webp)
 
 ```mermaid
 flowchart LR
-    SIGN([每日签到]) & POST([发帖]) & COMMENT([发评论]) --> XP[增加经验值] & PT[增加积分]
+    SIGN([每日签到]) & POST([发帖]) & COMMENT([发评论]) & LIKE([点赞]) --> XP[增加经验值] & PT[增加积分]
     XP --> LV[计算并提升等级]
-    LV -->|发送 growth.level-changed 事件| USER[user 服务同步展示等级]
+    LV -->|同一事务写入发件箱| OB[(等级事件发件箱)]
+    OB -->|提交后投递，失败定时补发| USER[user 服务同步展示等级]
 ```
 
 ### 消息与个人中心
@@ -268,7 +287,7 @@ flowchart LR
 
 ![消息中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/messages.webp)
 
-个人中心可以修改昵称、签名、头像和用户名，换绑邮箱和手机号，管理登录设备，以及查看关注和粉丝列表。修改后的昵称、签名和头像会交给 AI 审核，未通过的内容会被自动清除，并在消息中心说明原因。
+个人中心可以修改昵称、签名、头像和用户名（裁剪弹窗内置琪露诺、奶糖、小动物与小物件共 20 张萌系预设头像），换绑邮箱和手机号，管理登录设备，以及查看关注和粉丝列表。修改后的昵称、签名和头像会交给 AI 审核，未通过的内容会被自动清除，并在消息中心说明原因。
 
 ![个人中心](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/item_picture/meng_center/readme/profile.webp)
 
@@ -319,7 +338,7 @@ flowchart LR
 核心防耦合规则（详见[架构设计](https://github.com/pluchon/meng_center/blob/main/docs/architecture.md)）：
 
 - **同步调用只读且定死方向**：同步调用只允许出现在固定方向上，全部只读、调用深度为 1。唯一的例外是奶糖对话：`companion` 调 `ai` 后，`ai` 的站内工具会只读调用 `content` 和 `growth`。
-- **跨服务联动全走事件**：一件事发生后需要其他服务跟着反应时，一律在事务提交后发送 RabbitMQ 事件。
+- **跨服务联动全走事件**：一件事发生后需要其他服务跟着反应时，一律在事务提交后发送 RabbitMQ 事件；会改变其他服务状态的事件（AI 分析、等级变化）走事务发件箱，消息队列故障时不丢。
 - **Java 掌握业务权威状态**：权限、额度、计费和最终业务状态全部由 Java 服务决定；Python `ai` 服务只做计算和给建议，不能绕过业务服务直接改数据。
 - **网关统一收口身份**：下游服务只认网关注入的身份请求头，绝不信任前端传来的用户 ID 和角色。
 
@@ -403,6 +422,41 @@ java_backend/
 ├── meng-im/           消息域服务
 └── meng-companion/    奶糖助手服务
 ```
+
+## 故障与降级
+
+任何一个依赖出问题，都尽量只影响它负责的那一块，其余功能照常可用。
+
+```mermaid
+flowchart LR
+    subgraph AI_DEG [AI 与检索降级]
+        A1([Python AI 连续失败 3 次]) --> A2[触发读路径熔断] --> A3[语义搜索退回关键词检索]
+        A1 --> A4[奶糖切离线态并播放离线语音]
+        E1([ES 不可用]) --> E2[搜索退回 MySQL 标题匹配]
+        E1 --> E3[审核结论先落库，定时任务补写向量]
+    end
+
+    subgraph INFRA_DEG [消息与会话韧性]
+        M1([RabbitMQ 故障 / 消费异常]) --> M2[事件留在事务发件箱，恢复后补发]
+        M1 --> M3["1/3/9/27s 指数退避 → 死信队列可回放"]
+        R1([Redis 不可用]) --> R2[网关返回 503，前端保留登录态不误踢]
+    end
+```
+
+下表是逐个停掉依赖后实测的表现：
+
+| 停掉的依赖 | 受影响的功能 | 表现 |
+|---|---|---|
+| Python AI 服务 | 语义搜索、相关推荐 | 自动退回关键词检索和向量顺序；连续失败 3 次后熔断一段时间，不让每个请求都等满超时 |
+| | 发帖 AI 辅助、成长总结、创作复盘 | 返回「AI 暂时没空」，没生成成功的不扣当天次数 |
+| | 奶糖 | 显示离线并播放离线语音；次数用完时只跑一次危机判断，不跑完整链路 |
+| Elasticsearch | 搜索、相关推荐 | 搜索退回 MySQL 标题匹配，相关推荐返回空，页面其他部分不受影响 |
+| | AI 分析结果写向量 | 审核结论照常保存，帖子标为待重审，由定时任务补写向量 |
+| RabbitMQ | 点赞、签到、注册等 | 操作照常成功；等级事件留在发件箱，恢复后补发；消费失败按 1、3、9、27 秒退避重试，仍失败进死信队列，可用 `deploy/scripts/Replay-DeadLetters.ps1` 放回 |
+| Redis | 登录会话 | 网关返回 503「服务暂时不可用」；前端不把这种情况当成未登录，留在当前页面等恢复 |
+| 某个业务服务 | 走它的接口 | 网关连接 2 秒、响应 30 秒超时后返回 503/504，不让卡住的下游一直占着连接 |
+
+另外的几条边界保护：超大页码统一返回 400；发帖配图、私信图片按长边上限解码，超大图片不会耗尽内存；私信长连接每人最多 8 条、刷帧会被断开；昵称和签名去掉零宽字符与文字方向控制符，长度按看得见的字数计算。
 
 ## 快速开始
 
@@ -491,5 +545,5 @@ npm run dev
 - **管理端页面**：管理端前端已经移除，后端的管理员接口仍在，页面规格保留在文档中。
 - **积分消费**：积分目前只做获取和流水记录，还没有兑换或消费场景。
 - **线上部署**：目前只支持本机开发运行，还没做云服务器部署配置。
-- **外部运营条件**：正式用户协议和短信通道需要运营者自行配置，默认关闭注册提交和真实短信发送（见[环境、密钥与约定](https://github.com/pluchon/meng_center/blob/main/docs/setup.md)第 4 节）。
+- **外部运营条件**：默认开放邮箱注册，注册成功后可直接登录使用。正式用户协议和隐私政策仍待运营者提供，短信注册需要先配置并启用短信通道。见[环境、密钥与约定](https://github.com/pluchon/meng_center/blob/main/docs/setup.md)第 4 节。
 - **其他待办**：其余暂不做或待定的事项统一记在[架构设计](https://github.com/pluchon/meng_center/blob/main/docs/architecture.md)第 10 节。

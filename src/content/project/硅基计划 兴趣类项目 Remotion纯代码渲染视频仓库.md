@@ -10,7 +10,7 @@
 
 > tags: [Remotion, React, Three.js, 着色器, 视频制作, AI Coding]
 
-> date: 2026-10-11
+> date: 2026-11-10
 
 > github: https://github.com/pluchon/vedio_studio_remotion_personal
 
@@ -71,7 +71,11 @@ npm run render -- Hello       # 按登记参数渲染到 out/hello.mp4
 | 10 | [`Hello`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/hello/README.md) | 你好，我是 Claude | 约 130 秒 | Claude 的自我介绍：像素小螃蟹从头讲到尾，转场、镜头推拉、分层布景、颜文字，芯片音乐 | 角色、像素、转场、芯片音乐、颜文字 | `--gl=angle --color-space=bt709` |
 | 11 | [`Edge`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/edge/README.md) | 宇宙的尽头 | 约 3 分 37 秒 | 朋友的朗读配一张不断被重画的老地图（全 SVG 墨线）；古地图海怪、哈勃和韦伯的真实照片；深空氛围配乐 | 天文、人声念白、SVG、古地图、真实照片 | `--color-space=bt709` |
 | 12 | [`Nebula`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/nebula/README.md) | 星云 | 约 5 分 48 秒 | 朋友的朗读，放松助眠的科普：体积渲染把地球的云一路画成宇宙的云，目镜、光谱、行星状星云、极光；全是自己算的 3D；摇篮曲配乐 | 天文、人声念白、体积渲染、three.js、着色器、助眠 | `--gl=angle --color-space=bt709 --concurrency=3` |
-| 13 | [`Attractor`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/attractor/README.md) | 巨引源 | 约 6 分 44 秒 | 放松助眠的科普：从床上的夜空升到银河系，用真实的微波背景、2MRS 和 Cosmicflows-4 数据自己建模，论文页上划线标注，讲「巨引源」这三十多年的追寻；你自己录的念白（压低压沉），深邃静谧配乐循环续长 | 天文、真实数据、论文标注、three.js、着色器、助眠 | `--gl=angle --color-space=bt709 --concurrency=3` |
+| 13 | [`Attractor`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/attractor/README.md) | 巨引源 | 约 7 分 57 秒 | 放松助眠的科普：从床上的夜空升到银河系，用真实的微波背景、2MRS 和 Cosmicflows-4 数据自己建模，论文页上划线标注，讲「巨引源」这三十多年的追寻；ElevenLabs 逐句生成的念白，画面按句对上，深邃静谧配乐循环续长 | 天文、真实数据、论文标注、three.js、着色器、助眠 | `--gl=angle --color-space=bt709 --concurrency=3` |
+| 14 | [`MengCenter`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/meng-center/README.md) | 萌部落 | 92 秒 | 萌部落社区的项目演示：网页截图装进会弹的浏览器窗口，琪露诺贴纸踩着拍子蹦，奶糖助手的聊天、记忆、语音和架构都画成小动画；日系可爱配乐用真实乐器采样渲染 | 项目介绍、网页截图、配乐驱动、贴纸、真实采样配乐 | `--color-space=bt709` |
+| 15 | [`Wander`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/wander/README.md) | 宇宙漫游 | 约 4 分 56 秒 | 一个文明从海里的一团分子到点亮半条旋臂，再在意识之海里安静熄灭：没有念白，文字上屏，跟着作者自己的曲子走；Skia 着色器画的插画动画约 70 个镜头，泛光、颗粒、视差和粒子，首尾是同一张真实的哈勃超深场，资料小字标注真实研究 | 天文、文字上屏、配乐驱动、插画动画、Skia、着色器、粒子 | `--gl=angle --color-space=bt709 --concurrency=3` |
+| 17 | [`Ember`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/ember/README.md) | 宇宙漫游（重制） | 约 4 分 56 秒 | 第十五期的重制，同一份稿子和曲子换成电影的拍法：一张 WebGL2 画布逐帧算出体积渲染的星系、带大气散射和城市灯火的行星、算出来的日落和银河、篝火与洞壁、会复制自己的分子、意识之海；60fps、2.4:1 画幅，正文写在黑边里；音效全部用 numpy 合成；首尾是同一张哈勃超深场 | 天文、文字上屏、配乐驱动、着色器、体积渲染、WebGL、合成音效、电影画幅 | `--gl=angle --color-space=bt709 --concurrency=2 --timeout=300000` |
+| 18 | [`Yuwei`](https://github.com/pluchon/vedio_studio_remotion_personal/blob/main/src/videos/yuwei/README.md) | 雨未愁眠 | 约 2 分 | 为什么下雨天特别好睡：一张长纸上叠着海报和贴纸，镜头跟着念白在卡片之间走；雨声、掩蔽、照度、瞭望与庇护 | 科普、纸面海报、贴纸、人声念白、雨 | `--color-space=bt709` |
 
 ## 代码和素材放哪里
 

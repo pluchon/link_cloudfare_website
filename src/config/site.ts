@@ -52,7 +52,7 @@ export const nav = [
 // 首页思维导图的根节点，也是关于页的名片
 // avatar 留空则渲染成占位线框；要换成照片就填 OSS 完整 URL
 export const profile = {
-  avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/profile.webp?v=20261027',
+  avatar: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/profile.webp?v=20261110',
   name: '诺诺',
   bio: '在写代码，也在记笔记。把踩过的坑和读过的东西留在这里',
   // 第三方链接：href 换成自己的即可。图标源文件 viewBox 各不相同
@@ -60,6 +60,7 @@ export const profile = {
   // mono 标记纯单色深色图标：它们在深色模式下会隐形，渲染时整体反色
   links: [
     { label: 'GitHub', href: 'https://github.com/pluchon', icon: '/icons/github.svg', mono: true },
+    { label: 'Bilibili', href: 'https://space.bilibili.com/296741751?spm_id_from=333.1007.0.0', icon: '/icons/bilibili.svg', mono: true },
     { label: 'X', href: 'https://x.com/pluchon200010', icon: '/icons/x.svg', mono: false },
     { label: 'Gmail', href: 'mailto:zlh8232@gmail.com', icon: '/icons/gmail.svg', mono: false },
     { label: 'Outlook', href: 'mailto:zlh8232@outlook.com', icon: '/icons/outlook.svg', mono: false },
@@ -74,35 +75,35 @@ export const branches = [
     label: '项目',
     href: '/project/',
     desc: '做过的项目与笔记',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/project.webp?v=20261027',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/project.webp?v=20261110',
   },
   {
     key: 'tool',
     label: '工具',
     href: '/tool/',
     desc: '对使用的工具进行整理，包含教程清单',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/tool.webp?v=20261027',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/tool.webp?v=20261110',
   },
   {
     key: 'explore',
     label: '探究',
     href: '/explore/',
     desc: '自己奇思妙想或时代的自我研究成果展示',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/explore.webp?v=20261027',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/explore.webp?v=20261110',
   },
   {
     key: 'daily',
     label: '日常',
     href: '/daily/',
     desc: '生活里的碎片记录',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/daily.webp?v=20261027',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/daily.webp?v=20261110',
   },
   {
     key: 'xiaomeng',
     label: '小萌',
     href: '/xiaomeng/',
     desc: '小萌的一些资料与设计构想',
-    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/xiaomeng.webp?v=20261027',
+    cover: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/xiaomeng.webp?v=20261110',
   },
 ] as const;
 

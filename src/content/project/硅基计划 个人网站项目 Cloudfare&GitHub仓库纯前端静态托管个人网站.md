@@ -10,28 +10,25 @@
 
 > tags: [Astro, Cloudflare Pages, 静态网站, 着色器, 前端, AI Coding]
 
-> date: 2026-11-02
+> date: 2026-11-10
 
 > github: https://github.com/pluchon/link_cloudfare_website
 
 ## 站里有什么
 
-每个会话第一次打开首页时，会先经过一个黑洞门户页，做法写在后面。
+每个会话第一次打开首页时，会先经过一个黑洞门户页 `/door/`，做法写在后面。
 
-首页是一张可以拖动、缩放的思维导图，背景是白天和夜里两张小萌的插画，跟着深浅主题切换。点开一个分类，右边长出一块书架，放最新 5 篇文章的卡片，其余内容从「全部 N 篇」进入。手机上用同一套内容排成竖向树，正常向下滚动。
+首页是一张可以拖动、缩放的思维导图，背景是白天和夜里两张小萌的插画，跟着深浅主题切换。点开一个分类，右边长出一块书架，放最新 5 篇文章的竖卡（封面、日期、标题、摘要与底部标签），其余内容从「全部 N 篇」进入。手机上用同一套内容排成竖向树，正常向下滚动。
 
 ```mermaid
 flowchart LR
-    Home[学习基地] --> Project[项目]
-    Home --> Tool[工具]
-    Home --> Explore[探究]
-    Home --> Daily[日常]
-    Home --> Xiaomeng[小萌]
-    Project --> Articles[最新文章]
-    Articles --> Tags[文章标签]
+    Door["门户甲板 /door/"] -->|穿过视界| Home[学习基地首页]
+    Home --> Project[项目] & Tool[工具] & Explore[探究] & Daily[日常] & Xiaomeng[小萌]
+    Project --> Shelf["文章书架（最新 5 篇 + 全部 N 篇）"]
+    TopBar[顶栏入口] --> Game["游戏大厅 /game/"] & Notice["公告栏 /notice/"] & Tags["标签 /tags/"] & About["关于 /about/"]
 ```
 
-图中只展开了「项目」这一支，其余分类结构相同。关于页放个人介绍，标签页把不同分类的文章串起来，右上角的小铃铛通向公告栏。
+图中只展开了「项目」这一支，其余分类结构相同。关于页放个人介绍，标签页把不同分类的文章串起来，右上角的手柄通向游戏大厅、小铃铛通向公告栏、行星图标随时飞回黑洞门户。
 
 列表页可以搜索和翻页。文章页有目录、阅读进度、代码复制、Mermaid 图、前后篇，也能下载 Markdown 原文；配了音乐的文章，日期那一行会多一个歌名按钮，点了才播放。
 
@@ -58,6 +55,7 @@ flowchart LR
 | `xiaomeng/` | 小萌的资料与设计 | `/xiaomeng/` |
 | `profile/` | 个人介绍 | `/about/` |
 | `notice/` | 公告 | `/notice/` |
+| `game/` | 独立小游戏与规则说明 | `/game/` |
 
 **不写 frontmatter。** 标题取第一个一级标题，简介取开头的引用，标签、发布日期、仓库、B 站视频和伴奏音乐各写一行。一个文件可以这样写：
 
@@ -87,7 +85,7 @@ flowchart LR
 
 发布日期优先用 `date:` 这一行，改错字不会动它，觉得改动够大了再手动改；没写就用文件名中的 `YYYY-MM-DD-` 前缀，再没有就用这个文件在 Git 里第一次提交的时间。新文件还没有提交记录时使用文件修改时间，页面按台北时间显示。
 
-图片使用 OSS 完整外链。首页封面走 `thumb` 缩略图样式，列表和文章页使用原图。完整格式见 [文章模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/content_format.md)、[个人介绍模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/profile_format.md) 和 [公告模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/notice_format.md)。
+图片使用 OSS 完整外链。首页封面走 `thumb` 缩略图样式，列表和文章页使用原图。完整格式见 [文章模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/content_format.md)、[个人介绍模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/profile_format.md)、[公告模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/notice_format.md) 和 [游戏模板](https://github.com/pluchon/link_cloudfare_website/blob/main/src/content/game_format.md)。
 
 ## 搜索怎样工作
 
@@ -160,10 +158,11 @@ Cookie 有效时直接放行；两个验证 Secret 未配齐时也会放行，�
 
 门户页用 three.js，只在这一页加载，其他页面不受影响。画面全部由程序生成，没有贴图和模型文件：
 
-- 黑洞是一个全屏着色器。每个像素沿光线一步步走，光线在黑洞附近按引力弯折，所以吸积盘背面会被弯到上下两侧，背后的银河和星云也一起被扭曲
-- 空间站、五个探测器都按开普勒定律绕黑洞运行，离得越远转得越慢
-- 星球、探测器和轨道线不在那个着色器里，所以在顶点着色器里按引力透镜公式改变它们看上去的方向，黑洞背后的东西会被拉成一段弧，另一侧还有一个翻转的小像，挡在吸积盘后面的部分看不到
-- 穿过视界时按相对论的光行差把星空和星球一起往前方收拢，镜头抖动随引力变化越来越猛；加载画面里预取目标页的资源，跳过去之后无缝渐显
+- 黑洞是一个全屏光线步进着色器：吸积盘按黑体温度从内圈炽白过渡到外圈深红，叠多普勒聚束与两道光子环，差速剪切在双相位时间窗内交叠重置；背后的银河（带暗分子云裂谷）、四片星云、多座远方星系和球状星团在同一个着色器里算，一起被引力弯折
+- 空间站、五个旅行者号造型探测器都按开普勒方程绕黑洞运行，外围还有一圈稀疏小行星带与两颗带风化层散射光照的岩质行星
+- 星球、探测器和轨道线不在全屏着色器里，所以在顶点着色器里按点质量引力透镜公式改变它们看上去的方向，黑洞背后的几何体会被切向拉成弧，另一侧还用第二遍绘制画出翻转的次像，深度缓冲由全屏着色器写入 `gl_FragDepth` 自然遮挡
+- 穿过视界时按相对论光行差把星空和星球一起往前方收拢，镜头抖动随潮汐力递增；底部常驻三块遥测操作面板（按住拖动、点击探测器、双击画面），移动端自适应为精简双栏与三列指引卡片
+- 穿过视界后的网格加载画面会按目标页 HTML 预取样式、脚本与首屏图片，落地时与 `BaseLayout` 共用同一套 `warp.css` 网格伪元素无缝渐隐
 
 ```mermaid
 flowchart LR
@@ -178,6 +177,38 @@ flowchart LR
 ```
 
 每个会话第一次打开首页时会先到门户；从文章链接直接进站的，不会被打扰。
+
+## 游戏大厅与果冻 2048
+
+![果冻 2048 封面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/20261105/cover-day.webp)
+
+顶栏手柄图标通向 `/game/` 游戏大厅。每款游戏的标题、日夜双封面、标签、`play:` 入口、小萌提示与玩法规则都写在 `src/content/game/` 的零 frontmatter Markdown 里，最新上线的可玩游戏自动挂上 `HOT · 正热乎` 角标，点击「玩法说明」弹出规则面板。
+
+```mermaid
+flowchart LR
+    MD["src/content/game/*.md<br/>封面 · 标签 · play 入口 · 规则"] --> Lobby["游戏大厅 /game/<br/>日夜封面 · HOT 角标 · 瞄准光标"]
+    Lobby -->|点击玩法说明| Modal["规则弹窗 dialog<br/>小萌提示 + 操作列表"]
+    Lobby -->|点击开始游戏| Play["果冻 2048 /game/jelly-2048/"]
+```
+
+目前上线的是软体物理合成游戏**果冻 2048**（`/game/jelly-2048/`）：数字是会挤压、变形、Q 弹晃动的软体果冻。按住顶部托盘里的果冻往外拉，瞄准虚线抛物线松手弹入井中，相同数字贴合即合成升级（`2 → 8192`），在托盘里也能起跳预合成到 `64`。
+
+```mermaid
+flowchart TD
+    Deal([托盘发牌与盘内预合成]) --> Pull[按住拖拽瞄准抛物线]
+    Pull --> Drop[弹入井中 · 自动补齐托盘]
+    Drop --> PBD["手写 PBD 软体物理<br/>边长抗压 · 面积守恒 · 双谐波保形 · 内核防穿模"]
+    PBD --> Merge{同数果冻接触满阈值？}
+    Merge -->|是| Chain["合成升级 2→8192<br/>连锁慢放 + Web Audio 合成音效"]
+    Chain --> PBD
+    Merge -->|否| Danger{越过顶部警戒虚线？}
+    Danger -->|持续满 2.5s| Over([结算本局并写入本机记录])
+    Danger -->|安全| Deal
+```
+
+- **纯手写软体物理**：基于位置动力学（PBD，`src/game/jelly/physics.ts`），叠加边长抗压、面积守恒、双谐波形状匹配、表面张力、内部硬核（`CORE`）、竖向堆叠压重（`STACK`）与相对侧法向推离，不引入任何第三方物理引擎
+- **现场合成音效与慢放**：音效由 Web Audio 实时合成（`src/game/jelly/sound.ts`），触发多级连锁合成时画面与声音同步进入慢放
+- **断点续玩与离开保护**：局面与最高记录保存在浏览器 `localStorage`，误刷新或切走后 15 分钟内回来可无缝续玩；当局已有得分时点站内链接离开，会先弹出结算确认框
 
 ## 本地运行
 

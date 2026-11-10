@@ -51,7 +51,28 @@ ${tags}
 </a>`;
 }
 
-// ```link：站外链接的视窗，一行一个字段：title / desc / url / cover
+function windowVortex(): string {
+  return `<span class="window__vortex" aria-hidden="true">
+<svg viewBox="0 0 80 80" fill="none">
+  <circle class="window__vortex-orbit" cx="40" cy="40" r="33" />
+  <g class="window__vortex-arms">
+    <path d="M40 10C56 10 68 22 68 38C68 50 58 58 47 58C38 58 32 51 32 43" />
+    <path d="M70 40C70 56 58 68 42 68C30 68 22 58 22 47C22 38 29 32 37 32" />
+    <path d="M40 70C24 70 12 58 12 42C12 30 22 22 33 22C42 22 48 29 48 37" />
+    <path d="M10 40C10 24 22 12 38 12C50 12 58 22 58 33C58 42 51 48 43 48" />
+    <circle class="window__vortex-dot" cx="40" cy="10" r="1.6" />
+    <circle class="window__vortex-dot" cx="70" cy="40" r="1.4" />
+    <circle class="window__vortex-dot" cx="40" cy="70" r="1.6" />
+    <circle class="window__vortex-dot" cx="10" cy="40" r="1.4" />
+  </g>
+  <ellipse class="window__vortex-disk" cx="40" cy="40" rx="26" ry="8.5" transform="rotate(-18 40 40)" />
+  <circle class="window__vortex-photon" cx="40" cy="40" r="11.5" />
+  <circle class="window__vortex-core" cx="40" cy="40" r="8.5" />
+</svg>
+</span>`;
+}
+
+// ```link：站内或站外链接的视窗，一行一个字段：title / desc / url / cover
 function renderLink(value: string): string {
   const fields = new Map<string, string>();
   for (const line of value.split('\n')) {
@@ -61,20 +82,29 @@ function renderLink(value: string): string {
 
   const title = fields.get('title');
   const url = fields.get('url');
-  if (!title || !url?.startsWith('https://')) {
-    throw new Error(`公告里的 link 视窗要有 title 和 https 开头的 url：${value}`);
+  if (!title || (!url?.startsWith('https://') && !url?.startsWith('/'))) {
+    throw new Error(`公告里的 link 视窗要有 title 和 https 或 / 开头的 url：${value}`);
   }
 
-  const desc = fields.get('desc');
+  const siteOrigin = new URL(site.url).origin;
+  const parsed = new URL(url, site.url);
+  const isInternal = url.startsWith('/') || parsed.origin === siteOrigin;
+  const href = isInternal ? `${parsed.pathname}${parsed.search}${parsed.hash}` : url;
+  const targetAttr = isInternal ? '' : ' target="_blank" rel="noopener noreferrer"';
+  const barLabel = fields.get('kind') ?? (isInternal ? '站内链接' : '站外链接');
 
-  return `<a class="window" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
-${windowBar('站外链接')}
+  const desc = fields.get('desc');
+  const cover = fields.get('cover');
+
+  return `<a class="window" href="${escapeHtml(href)}"${targetAttr}>
+${windowBar(barLabel)}
 <span class="window__body">
-${windowCover(fields.get('cover'))}
+${windowCover(cover)}
 <span class="window__text">
 <span class="window__title">${escapeHtml(title)}</span>
 ${desc ? `<span class="window__summary">${escapeHtml(desc)}</span>` : ''}
 </span>
+${!cover ? windowVortex() : ''}
 </span>
 </a>`;
 }

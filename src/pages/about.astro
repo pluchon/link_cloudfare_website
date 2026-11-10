@@ -75,8 +75,27 @@ const skills = doc?.data.skills ?? [];
         </div>
 
         <section class="wrap body">
-          <div class="prose">
-            <Intro />
+          <div class="body__sheet" data-reveal>
+            <i class="body__corner body__corner--tl" aria-hidden="true" />
+            <i class="body__corner body__corner--tr" aria-hidden="true" />
+            <i class="body__corner body__corner--bl" aria-hidden="true" />
+            <i class="body__corner body__corner--br" aria-hidden="true" />
+
+            <header class="body__head" aria-hidden="true">
+              <span class="body__dots"><i /><i /><i /></span>
+              <span class="body__meta">PROFILE · NOTES</span>
+              <span class="body__code">ABOUT // 01</span>
+            </header>
+
+            <div class="prose body__prose">
+              <Intro />
+            </div>
+
+            <footer class="body__foot" aria-hidden="true">
+              <span class="body__foot-line" />
+              <span class="body__foot-mark">✦ NUONUO · BASE ARCHIVE ✦</span>
+              <span class="body__foot-line" />
+            </footer>
           </div>
         </section>
       </>
@@ -203,12 +222,119 @@ const skills = doc?.data.skills ?? [];
   }
 
   .body {
-    padding-block: 2.5rem 4.5rem;
+    padding-block: 2.25rem 4.5rem;
+  }
+
+  .body__sheet {
+    position: relative;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+  }
+
+  .body__corner {
+    position: absolute;
+    width: 0.65rem;
+    height: 0.65rem;
+    pointer-events: none;
+  }
+
+  .body__corner--tl {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid var(--accent);
+    border-left: 2px solid var(--accent);
+  }
+
+  .body__corner--tr {
+    top: -1px;
+    right: -1px;
+    border-top: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+  }
+
+  .body__corner--bl {
+    bottom: -1px;
+    left: -1px;
+    border-bottom: 2px solid var(--accent);
+    border-left: 2px solid var(--accent);
+  }
+
+  .body__corner--br {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+  }
+
+  .body__head {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem clamp(1.25rem, 3vw, 2.25rem);
+    border-bottom: var(--hair) dashed var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    color: var(--fg-faint);
+  }
+
+  .body__dots {
+    display: inline-flex;
+    gap: 0.3rem;
+  }
+
+  .body__dots i {
+    width: 0.45rem;
+    height: 0.45rem;
+    border: var(--hair) solid var(--fg-faint);
+    border-radius: 50%;
+  }
+
+  .body__dots i:first-child {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .body__code {
+    margin-left: auto;
   }
 
   /* 正文与上方名片等宽，不再收进 46rem 的阅读栏宽 */
   .body .prose {
     max-width: none;
+    padding: clamp(1.5rem, 3vw, 2.25rem);
+  }
+
+  .body__prose :global(h2) {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding-bottom: 0.55rem;
+    border-bottom: var(--hair) dashed var(--line);
+  }
+
+  .body__prose :global(h2::before) {
+    content: '§';
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  .body__foot {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0 clamp(1.25rem, 3vw, 2.25rem) 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    color: var(--fg-faint);
+  }
+
+  .body__foot-line {
+    flex: 1;
+    border-top: var(--hair) dashed var(--line);
   }
 
   @media (max-width: 44rem) {
