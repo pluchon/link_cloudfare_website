@@ -48,7 +48,9 @@ const {
 <style>
   .pixels {
     position: fixed;
-    inset: 0;
+    inset: 0 0 auto;
+    height: 100vh;
+    height: 100lvh;
     z-index: 0;
     pointer-events: none;
     opacity: 0;
@@ -304,9 +306,14 @@ const {
         host.style.opacity = dark ? num('opacityDark', 0.26) : num('opacityLight', 0.22);
       }
 
+      var viewportWidth = 0;
+      var viewportHeight = 0;
       function resize() {
         var w = Math.max(1, Math.floor(host.clientWidth * dpr));
         var h = Math.max(1, Math.floor(host.clientHeight * dpr));
+        if (viewportWidth === w && viewportHeight === h) return;
+        viewportWidth = w;
+        viewportHeight = h;
         canvas.width = w;
         canvas.height = h;
         gl.viewport(0, 0, w, h);

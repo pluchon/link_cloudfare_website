@@ -1126,14 +1126,18 @@ for (const branch of branches) {
        窄屏改成固定铺满视口，和列表页那几个背景层的做法一致 */
     .dots {
       position: fixed;
-      height: auto;
+      inset: 0 0 auto;
+      height: 100vh;
+      height: 100lvh;
     }
 
-    /* 插画同样固定铺满视口，不跟着页面滚；竖屏有单独的图就用竖屏的。
+    /* 插画固定在大视口上，地址栏伸缩时不重新定位；竖屏有单独的图就用竖屏的。
        卡片会压在插画上，底色罩得重一点 */
     .backdrop {
       position: fixed;
-      inset: 0;
+      inset: 0 0 auto;
+      height: 100vh;
+      height: 100lvh;
       transform: none;
     }
 
