@@ -22,3 +22,7 @@ ssl/
 
 # temp
 test-output/
+__pycache__/
+*.pyc
+scripts/speech/**/*.mp3
+scripts/speech/**/*.wav
