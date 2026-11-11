@@ -189,7 +189,7 @@ export function entryCover(entry: {
   return html ? html[1] : undefined;
 }
 
-// 首页导图专用的缩略图地址。只对自家 OSS 的图生效，
+// 首页导图和画廊共用的缩略图地址。只对自家 OSS 的图生效，
 // 外链图和已经带了处理参数的地址原样返回，不去猜别人的服务支持什么
 const OSS_HOST = '.oss-cn-guangzhou.aliyuncs.com';
 

@@ -38,6 +38,16 @@ function isActive(href: string): boolean {
     <div class="tools">
       <a
         class="icon-btn bell"
+        href="/gallery/"
+        aria-label="画廊"
+        title="画廊"
+        aria-current={isActive('/gallery/') ? 'page' : undefined}
+      >
+        <KindIcon name="gallery" />
+      </a>
+
+      <a
+        class="icon-btn bell"
         href="/game/"
         aria-label="游戏"
         title="游戏"
@@ -57,6 +67,8 @@ function isActive(href: string): boolean {
         <KindIcon name="notice" />
         {latestNotice && <span class="bell__dot" data-new-since={latestNotice.data.publishedAt.toISOString()} hidden />}
       </a>
+
+      <span class="tools__sep" aria-hidden="true"></span>
 
       <button class="icon-btn" id="theme-toggle" type="button" aria-label="切换深色模式">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">

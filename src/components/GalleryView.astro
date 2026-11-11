@@ -1,0 +1,1000 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageBackdrop from './PageBackdrop.astro';
+import PixelBackdrop from './PixelBackdrop.astro';
+import KindIcon from './KindIcon.astro';
+import { pageBackdrops, site } from '../config/site';
+import galleryItems from '../content/gallery.json';
+import { thumbUrl } from '../lib/content';
+
+interface GalleryItem {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  src: string;
+  publishedAt: string;
+  cutout?: boolean;
+}
+
+const categories = [
+  { label: '全部', icon: 'M3 3h3v3H3zM10 3h3v3h-3zM3 10h3v3H3zM10 10h3v3h-3z' },
+  { label: '插画', icon: 'M2 12.5h12L9.5 6l-2 3-2-2.5-3.5 6Z' },
+  { label: '漫画', icon: 'M2.5 3h11v7.5h-6l-3 2.5v-2.5h-2zM5 6.5h6' },
+  { label: '海报', icon: 'M4 2h8v12H4zM6 5h4M6 8h4M6 11h2.5' },
+  { label: '角色立绘', icon: 'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 13c0-2.5 2-3.5 5-3.5s5 1 5 3.5' },
+  { label: '常服设定', icon: 'M6 3 2 5l2 3 1.5-.8V13h5V7.2L12 8l2-3-4-2a2 2 0 0 1-4 0Z' },
+  { label: '头像特写', icon: 'M2.5 6V2.5H6m4 0h3.5V6m0 4v3.5H10m-4 0H2.5V10M6 7h.01M10 7h.01M6.5 9.5c.8 1 2.2 1 3 0' },
+] as const;
+
+const items: GalleryItem[] = [...galleryItems];
+for (const item of items) {
+  if (!categories.some(({ label }) => label !== '全部' && label === item.category)) {
+    throw new Error(`画廊作品 ${item.id} 的分类无效`);
+  }
+  if (!Number.isFinite(Date.parse(item.publishedAt))) {
+    throw new Error(`画廊作品 ${item.id} 的发布时间无效`);
+  }
+}
+// 同日且未填写时刻的作品沿用 JSON 中的顺序。
+items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+---
+
+<BaseLayout title="画廊" description={site.galleryLine}>
+  <PageBackdrop art={pageBackdrops.about} quiet />
+  <PixelBackdrop />
+
+  <section class="wrap gallery-head">
+    <div class="gallery-head__row" data-reveal>
+      <h1 class="gallery-head__title">
+        <KindIcon name="gallery" class="gallery-head__icon" />
+        画廊
+      </h1>
+      <p class="gallery-head__desc">{site.galleryLine}</p>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="rule-tab" aria-hidden="true"></div>
+  </div>
+
+  <section class="wrap gallery-body" aria-label="画廊相册列表">
+    <div class="gallery-filter" role="group" aria-label="画廊分类筛选" data-reveal style="--reveal-i: 1">
+      {
+        categories.map(({ label, icon }, idx) => (
+          <button
+            type="button"
+            class="gallery-filter__btn"
+            aria-pressed={idx === 0 ? 'true' : 'false'}
+            data-gallery-filter={label}
+          >
+            <svg class="gallery-filter__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <path d={icon} />
+              <circle cx="13.5" cy="2.5" r="1.2" />
+            </svg>
+            <span>{label}</span>
+            <span class="gallery-filter__num">
+              {String(idx === 0 ? items.length : items.filter((item) => item.category === label).length).padStart(2, '0')}
+            </span>
+          </button>
+        ))
+      }
+    </div>
+
+    <ol class="gallery-grid" data-gallery-grid>
+      {
+        items.map((item, i) => (
+          <li
+            class="gallery-cell"
+            data-gallery-item
+            data-category={item.category}
+            data-id={item.id}
+            data-title={item.title}
+            data-summary={item.summary}
+            data-src={item.src}
+          >
+            <article class="gallery-card">
+              <i class="gallery-card__corner gallery-card__corner--tl" aria-hidden="true" />
+              <i class="gallery-card__corner gallery-card__corner--tr" aria-hidden="true" />
+              <i class="gallery-card__corner gallery-card__corner--bl" aria-hidden="true" />
+              <i class="gallery-card__corner gallery-card__corner--br" aria-hidden="true" />
+
+              <header class="gallery-card__bar">
+                <span class="gallery-card__no">
+                  <i class="gallery-card__dot" aria-hidden="true" />
+                  NO.{item.id}
+                </span>
+                <span class="gallery-card__cat">{item.category}</span>
+              </header>
+
+              <div class:list={['gallery-card__stage', item.cutout && 'gallery-card__stage--cutout']}>
+                <img
+                  class="gallery-card__img"
+                  src={thumbUrl(item.src)}
+                  alt={item.title}
+                  decoding="async"
+                  loading={i < 4 ? 'eager' : 'lazy'}
+                />
+              </div>
+
+              <div class="gallery-card__body">
+                <h2 class="gallery-card__title">{item.title}</h2>
+                <p class="gallery-card__summary">{item.summary}</p>
+              </div>
+
+              <button
+                type="button"
+                class="gallery-card__hit"
+                data-open-gallery
+                aria-label={`查看「${item.title}」大图`}
+              />
+            </article>
+          </li>
+        ))
+      }
+    </ol>
+
+    <div class="gallery-empty" data-gallery-empty hidden={items.length > 0}>
+      <img class="gallery-empty__art" src={site.galleryEmptyArt} alt="" width="480" height="480" loading="lazy" decoding="async" />
+      <p class="gallery-empty__text" role="status">这个分类暂时还没有作品</p>
+    </div>
+    <div class="gallery-more" data-gallery-more aria-hidden="true" hidden></div>
+  </section>
+
+  <dialog class="gallery-lightbox" id="gallery-lightbox" aria-label="画廊大图预览">
+    <div class="gallery-lightbox__panel">
+      <header class="gallery-lightbox__head">
+        <div class="gallery-lightbox__meta">
+          <span class="gallery-lightbox__no" data-lb-no></span>
+          <span aria-hidden="true">/</span>
+          <span data-lb-category></span>
+        </div>
+        <button type="button" class="gallery-lightbox__btn gallery-lightbox__close" data-lb-close aria-label="关闭预览">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" /></svg>
+        </button>
+      </header>
+
+      <div class="gallery-lightbox__stage">
+        <div class="gallery-lightbox__media" data-lb-media></div>
+        <p class="gallery-lightbox__status" data-lb-status role="status" hidden></p>
+        <div class="gallery-lightbox__controls">
+          <button type="button" class="gallery-lightbox__btn gallery-lightbox__btn--prev" data-lb-prev aria-label="上一张">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 3-5 5 5 5" /></svg>
+          </button>
+          <button type="button" class="gallery-lightbox__btn gallery-lightbox__btn--next" data-lb-next aria-label="下一张">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+          </button>
+          <a
+            class="gallery-lightbox__btn gallery-lightbox__btn--download"
+            data-lb-download
+            download
+            target="_blank"
+            rel="noopener"
+            referrerpolicy="strict-origin-when-cross-origin"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m-3-3 3 3 3-3M3 11v3h10v-3" /></svg>
+            下载原图
+          </a>
+        </div>
+      </div>
+
+      <footer class="gallery-lightbox__foot">
+        <h2 class="gallery-lightbox__title" data-lb-title></h2>
+        <p class="gallery-lightbox__summary" data-lb-summary></p>
+      </footer>
+    </div>
+  </dialog>
+</BaseLayout>
+
+<script>
+  function wireGallery() {
+    const root = document.querySelector<HTMLElement>('[data-gallery-grid]');
+    if (!root || root.dataset.wired) return;
+    const section = root.closest('.gallery-body');
+    const more = section?.querySelector<HTMLElement>('[data-gallery-more]');
+    const empty = section?.querySelector<HTMLElement>('[data-gallery-empty]');
+    const cells = Array.from(root.querySelectorAll<HTMLElement>('[data-gallery-item]'));
+    const filterBtns = Array.from(section?.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]') ?? []);
+    const dialog = document.querySelector<HTMLDialogElement>('#gallery-lightbox');
+    const media = dialog?.querySelector<HTMLElement>('[data-lb-media]');
+    const lbNo = dialog?.querySelector<HTMLElement>('[data-lb-no]');
+    const lbCategory = dialog?.querySelector<HTMLElement>('[data-lb-category]');
+    const lbTitle = dialog?.querySelector<HTMLElement>('[data-lb-title]');
+    const lbSummary = dialog?.querySelector<HTMLElement>('[data-lb-summary]');
+    const lbStatus = dialog?.querySelector<HTMLElement>('[data-lb-status]');
+    const download = dialog?.querySelector<HTMLAnchorElement>('[data-lb-download]');
+    const prevBtn = dialog?.querySelector<HTMLButtonElement>('[data-lb-prev]');
+    const nextBtn = dialog?.querySelector<HTMLButtonElement>('[data-lb-next]');
+    if (!more || !empty || !dialog || !media || !lbStatus || !download) return;
+    root.dataset.wired = '1';
+
+    const batchSize = 12;
+    let matching = cells;
+    let visibleCount = 0;
+    let activeIndex = 0;
+    let imageRequest = 0;
+    let pendingImage: HTMLImageElement | undefined;
+
+    const observer = 'IntersectionObserver' in window
+      ? new IntersectionObserver(([entry]) => {
+          if (entry?.isIntersecting) showBatch();
+        }, { rootMargin: '0px 0px 160px 0px' })
+      : null;
+
+    const showBatch = () => {
+      observer?.disconnect();
+      const end = observer ? visibleCount + batchSize : matching.length;
+      matching.slice(visibleCount, end).forEach((cell) => { cell.hidden = false; });
+      visibleCount = Math.min(end, matching.length);
+      more.hidden = visibleCount === matching.length;
+      if (!more.hidden) observer?.observe(more);
+    };
+
+    const selectCategory = (category: string) => {
+      matching = category === '全部' ? cells : cells.filter((cell) => cell.dataset.category === category);
+      filterBtns.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.galleryFilter === category)));
+      cells.forEach((cell) => { cell.hidden = true; });
+      empty.hidden = matching.length > 0;
+      visibleCount = 0;
+      showBatch();
+    };
+
+    const openAt = (index: number, direction = 0) => {
+      const target = matching[index];
+      const src = target?.dataset.src;
+      if (!src) return;
+      activeIndex = index;
+      if (lbNo) lbNo.textContent = `NO.${target.dataset.id ?? '01'}`;
+      if (lbCategory) lbCategory.textContent = target.dataset.category ?? '';
+      if (lbTitle) lbTitle.textContent = target.dataset.title ?? '';
+      if (lbSummary) lbSummary.textContent = target.dataset.summary ?? '';
+      if (prevBtn) prevBtn.disabled = matching.length <= 1;
+      if (nextBtn) nextBtn.disabled = matching.length <= 1;
+
+      const request = ++imageRequest;
+      lbStatus.textContent = '正在加载原图…';
+      lbStatus.hidden = false;
+      download.href = src;
+      if (!dialog.open) {
+        media.replaceChildren();
+        dialog.showModal();
+      }
+
+      pendingImage?.removeAttribute('src');
+      const image = new Image();
+      pendingImage = image;
+      image.alt = target.dataset.title ?? '';
+      image.src = src;
+      void image.decode().then(() => {
+        if (request !== imageRequest || !dialog.open) return;
+        pendingImage = undefined;
+        const previous = media.lastElementChild;
+        if (previous instanceof HTMLImageElement) {
+          previous.previousElementSibling?.remove();
+          previous.setAttribute('aria-hidden', 'true');
+          previous.dataset.outgoing = '';
+          previous.style.setProperty('--gallery-image-direction', String(-direction));
+          previous.addEventListener('animationend', () => previous.remove(), { once: true });
+        }
+        image.style.setProperty('--gallery-image-direction', String(previous ? direction : 0));
+        media.append(image);
+        lbStatus.hidden = true;
+      }, () => {
+        if (request !== imageRequest || !dialog.open) return;
+        pendingImage = undefined;
+        media.replaceChildren();
+        lbStatus.textContent = '原图加载失败。';
+      });
+    };
+
+    function step(delta: number) {
+      if (matching.length > 1) openAt((activeIndex + delta + matching.length) % matching.length, delta);
+    }
+
+    filterBtns.forEach((button) => {
+      button.addEventListener('click', () => selectCategory(button.dataset.galleryFilter ?? '全部'));
+    });
+
+    root.addEventListener('click', (event) => {
+      const hit = (event.target as HTMLElement).closest('[data-open-gallery]');
+      const cell = hit?.closest<HTMLElement>('[data-gallery-item]');
+      if (cell) openAt(matching.indexOf(cell));
+    });
+
+    prevBtn?.addEventListener('click', () => step(-1));
+    nextBtn?.addEventListener('click', () => step(1));
+
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog || (e.target as HTMLElement).closest('[data-lb-close]')) {
+        dialog.close();
+      }
+    });
+
+    dialog.addEventListener('close', () => {
+      if (dialog.open) return;
+      imageRequest++;
+      pendingImage?.removeAttribute('src');
+      pendingImage = undefined;
+      media.replaceChildren();
+    });
+
+    dialog.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        step(1);
+      }
+    });
+
+    selectCategory('全部');
+    document.addEventListener('astro:before-swap', () => {
+      observer?.disconnect();
+      if (dialog.open) dialog.close();
+    }, { once: true });
+  }
+
+  wireGallery();
+  document.addEventListener('astro:page-load', wireGallery);
+</script>
+
+<style>
+  .gallery-head,
+  .gallery-body,
+  .rule-tab {
+    position: relative;
+    z-index: 1;
+  }
+
+  .gallery-head {
+    padding-block: clamp(2.5rem, 6vw, 4rem) 1.35rem;
+  }
+
+  .gallery-head__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .gallery-head__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .gallery-head__title :global(.gallery-head__icon) {
+    font-size: 0.8em;
+    color: var(--fg-muted);
+  }
+
+  .gallery-head__desc {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    text-align: right;
+  }
+
+  /* 分类筛选栏 */
+  .gallery-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .gallery-filter__btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.38rem 0.75rem;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 75%, transparent);
+    color: var(--fg-muted);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out),
+      background-color var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-filter__btn:hover {
+    border-color: var(--line-strong);
+    color: var(--fg);
+  }
+
+  .gallery-filter__btn[aria-pressed='true'] {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+  }
+
+  .gallery-filter__btn[aria-pressed='true']::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0.55rem;
+    inset-block-end: -1px;
+    height: var(--hair);
+    background: var(--accent);
+  }
+
+  .gallery-filter__icon {
+    flex: none;
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.15;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .gallery-filter__icon circle {
+    fill: var(--icon-pink);
+    stroke: var(--bg);
+  }
+
+  .gallery-filter__num {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    color: var(--fg-faint);
+  }
+
+  .gallery-filter__btn[aria-pressed='true'] .gallery-filter__num {
+    color: var(--accent);
+  }
+
+  /* 标题下方的虚线 + 左端强调色短横 */
+  .rule-tab {
+    height: var(--hair);
+    background: repeating-linear-gradient(
+      to right,
+      var(--line) 0 5px,
+      transparent 5px 10px
+    );
+  }
+
+  .rule-tab::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -1px;
+    width: 4.5rem;
+    height: 3px;
+    background: var(--accent);
+  }
+
+  /* 画廊四列网格（一行四张） */
+  .gallery-body {
+    padding-block: 1.25rem 4.5rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .gallery-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.15rem;
+  }
+
+  .gallery-cell[hidden] {
+    display: none;
+  }
+
+  .gallery-empty:not([hidden]) {
+    display: grid;
+    min-height: clamp(16rem, 44vh, 24rem);
+    place-content: center;
+    justify-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .gallery-empty__art {
+    display: block;
+    width: clamp(8.5rem, 22vw, 11.25rem);
+    height: auto;
+  }
+
+  .gallery-empty__text {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.875rem;
+  }
+
+  .gallery-more {
+    height: 1px;
+  }
+
+  .gallery-card {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    transition:
+      border-color var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+
+  :root[data-theme='dark'] .gallery-card {
+    background: color-mix(in srgb, var(--bg-elev) 82%, transparent);
+  }
+
+  .gallery-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  /* 四角准星装饰 */
+  .gallery-card__corner {
+    position: absolute;
+    width: 0.45rem;
+    height: 0.45rem;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2;
+    transition: opacity var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-card:hover .gallery-card__corner {
+    opacity: 1;
+  }
+
+  .gallery-card__corner--tl {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid var(--accent);
+    border-left: 2px solid var(--accent);
+  }
+
+  .gallery-card__corner--tr {
+    top: -1px;
+    right: -1px;
+    border-top: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+  }
+
+  .gallery-card__corner--bl {
+    bottom: -1px;
+    left: -1px;
+    border-bottom: 2px solid var(--accent);
+    border-left: 2px solid var(--accent);
+  }
+
+  .gallery-card__corner--br {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 2px solid var(--accent);
+    border-right: 2px solid var(--accent);
+  }
+
+  /* 卡片顶部元信息条 */
+  .gallery-card__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border-bottom: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--fg-faint);
+  }
+
+  .gallery-card__no {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+  }
+
+  .gallery-card__dot {
+    width: 0.38rem;
+    height: 0.38rem;
+    border-radius: 50%;
+    background: var(--icon-pink);
+  }
+
+  .gallery-card__cat {
+    color: var(--fg-muted);
+  }
+
+  /* 画面展示框：统一 4:3 画框 + 细点阵衬底，contain 完整保留猫耳尖、发饰与尾铃 */
+  .gallery-card__stage {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-bottom: var(--hair) solid var(--line);
+    background-color: color-mix(in srgb, var(--bg-sunken) 70%, transparent);
+    background-image: radial-gradient(var(--line) 0.75px, transparent 0.75px);
+    background-size: 12px 12px;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    padding: 0.45rem;
+  }
+
+  .gallery-card__stage--cutout {
+    padding: 0.55rem;
+  }
+
+  .gallery-card__img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    transition: transform var(--dur-3) var(--ease-out);
+  }
+
+  .gallery-card:hover .gallery-card__img {
+    transform: scale(1.03);
+  }
+
+  /* 正文区 */
+  .gallery-card__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.85rem 0.85rem 0.75rem;
+  }
+
+  .gallery-card__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-card:hover .gallery-card__title {
+    color: var(--accent);
+  }
+
+  .gallery-card__summary {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .gallery-card__hit {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 灯箱弹窗 */
+  .gallery-lightbox {
+    --gallery-frame-line: color-mix(in srgb, var(--icon-pink) 58%, var(--line-strong));
+    width: min(64rem, calc(100% - 1.5rem));
+    height: min(46rem, calc(100dvh - 1.5rem));
+    max-width: none;
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    border: var(--hair) solid var(--gallery-frame-line);
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+  }
+
+  .gallery-lightbox::backdrop {
+    background: rgba(10, 12, 18, 0.72);
+  }
+
+  .gallery-lightbox__panel {
+    display: grid;
+    grid-template-rows: 3.25rem minmax(0, 1fr) 4.6rem;
+    height: 100%;
+  }
+
+  .gallery-lightbox__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.65rem 1.1rem;
+    border-bottom: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--fg-muted);
+  }
+
+  .gallery-lightbox__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .gallery-lightbox__no {
+    color: var(--accent);
+  }
+
+  .gallery-lightbox__close {
+    flex: none;
+  }
+
+  .gallery-lightbox__stage {
+    position: relative;
+    min-height: 0;
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    background-color: var(--bg-sunken);
+    background-image: radial-gradient(var(--line) 0.75px, transparent 0.75px);
+    background-size: 14px 14px;
+    overflow: hidden;
+  }
+
+  .gallery-lightbox__media {
+    --gallery-image-step: 0.75rem;
+    position: relative;
+    grid-area: 1 / 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .gallery-lightbox__media :global(img) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    animation: gallery-image-in var(--dur-2) var(--ease-out) both;
+  }
+
+  .gallery-lightbox__media :global([data-outgoing]) {
+    animation-name: gallery-image-out;
+  }
+
+  .gallery-lightbox__controls {
+    --gallery-control-inset: 0.5rem;
+    position: relative;
+    grid-area: 1 / 1;
+    place-self: center;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  @keyframes gallery-image-in {
+    from {
+      opacity: 0;
+      transform: translateX(calc(var(--gallery-image-step) * var(--gallery-image-direction, 0)));
+    }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes gallery-image-out {
+    from { opacity: 1; transform: translateX(0); }
+    to {
+      opacity: 0;
+      transform: translateX(calc(var(--gallery-image-step) * var(--gallery-image-direction, 0)));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gallery-lightbox__media {
+      --gallery-image-step: 0px;
+    }
+  }
+
+  .gallery-lightbox__status {
+    position: relative;
+    grid-area: 1 / 1;
+    place-self: center;
+    margin: 0;
+    padding: 0.45rem 0.7rem;
+    border: var(--hair) solid var(--line);
+    background: var(--bg);
+    color: var(--fg-muted);
+    font-size: 0.8125rem;
+  }
+
+  .gallery-lightbox__foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.65rem 1.1rem;
+    border-top: var(--hair) solid var(--line);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .gallery-lightbox__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .gallery-lightbox__summary {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    text-align: right;
+  }
+
+  .gallery-lightbox__btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: var(--hair) solid var(--gallery-frame-line);
+    background: var(--bg);
+    color: var(--fg-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-lightbox__btn::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 0.2rem;
+    inset-inline-end: 0.2rem;
+    width: 0.3rem;
+    height: 0.3rem;
+    border-block-start: var(--hair) solid var(--icon-pink);
+    border-inline-end: var(--hair) solid var(--icon-pink);
+    pointer-events: none;
+  }
+
+  .gallery-lightbox__btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .gallery-lightbox__btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .gallery-lightbox__btn svg {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .gallery-lightbox__btn--prev,
+  .gallery-lightbox__btn--next,
+  .gallery-lightbox__btn--download {
+    position: absolute;
+    pointer-events: auto;
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    color: var(--fg);
+  }
+
+  .gallery-lightbox__btn.gallery-lightbox__close {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .gallery-lightbox__btn--prev,
+  .gallery-lightbox__btn--next {
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .gallery-lightbox__btn--prev {
+    inset-inline-start: var(--gallery-control-inset);
+  }
+
+  .gallery-lightbox__btn--next,
+  .gallery-lightbox__btn--download {
+    inset-inline-end: var(--gallery-control-inset);
+  }
+
+  .gallery-lightbox__btn--download {
+    bottom: var(--gallery-control-inset);
+    width: auto;
+    padding-inline: 0.65rem;
+  }
+
+  @media (max-width: 68rem) {
+    .gallery-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 52rem) {
+    .gallery-head__row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .gallery-head__desc {
+      text-align: left;
+    }
+
+    .gallery-filter {
+      gap: 0.375rem;
+    }
+
+    .gallery-filter__btn {
+      min-height: 2.75rem;
+      padding-inline: 0.5rem;
+      gap: 0.3rem;
+    }
+
+    .gallery-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .gallery-lightbox {
+      height: min(35rem, calc(100dvh - 1.5rem));
+    }
+
+    .gallery-lightbox__panel {
+      grid-template-rows: 3.25rem minmax(0, 1fr) 6.25rem;
+    }
+
+    .gallery-lightbox__foot {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+      padding-inline: 0.7rem;
+    }
+
+    .gallery-lightbox__controls {
+      --gallery-control-inset: 0.25rem;
+    }
+
+    .gallery-lightbox__btn.gallery-lightbox__close {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+  }
+
+  @media (max-width: 30rem) {
+    .gallery-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

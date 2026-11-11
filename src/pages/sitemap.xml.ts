@@ -17,6 +17,7 @@ export const GET: APIRoute = async () => {
     { loc: '/tags/' },
     { loc: '/about/' },
     { loc: '/notice/' },
+    { loc: '/gallery/' },
     { loc: '/game/' },
     ...notices.map((entry) => ({
       loc: noticeHref(entry.data.slug),

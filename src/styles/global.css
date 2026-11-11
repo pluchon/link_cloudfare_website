@@ -431,6 +431,14 @@ body.is-canvas > main {
   border-left: var(--hair) solid var(--line);
 }
 
+.tools__sep {
+  flex: none;
+  width: var(--hair);
+  height: 0.95rem;
+  margin-inline: clamp(0.1rem, 0.6vw, 0.35rem);
+  background: var(--line-strong);
+}
+
 .icon-btn {
   display: grid;
   place-items: center;
@@ -564,7 +572,7 @@ body.is-canvas > main {
    先切换成短站名并收紧导航间距，保持单行不溢出 */
 .brand__short { display: none; }
 
-@media (max-width: 66.5rem) {
+@media (max-width: 69rem) {
   .site-header__inner { gap: 0.75rem; }
   .brand__full { display: none; }
   .brand__short { display: inline; }
@@ -573,8 +581,8 @@ body.is-canvas > main {
   .tools { margin-left: 0.5rem; padding-left: 0.5rem; }
 }
 
-/* 窄屏（<= 48rem，含竖屏平板与手机）：顶栏分两行。第一行站名（短名）和右边五个图标，第二行七个导航项平均铺满 */
-@media (max-width: 48rem) {
+/* 短站名、七个导航项和六个工具图标放不进一行时，导航换到第二行 */
+@media (max-width: 55rem) {
   .site-header__inner {
     flex-wrap: wrap;
     gap: 0;
