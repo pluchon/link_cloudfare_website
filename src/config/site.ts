@@ -157,6 +157,16 @@ export const pageBackdrops = {
 
 const JELLY_2048_ART_DIR =
   'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/20261105';
+const JELLY_2048_ALBUM_DIR =
+  'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/album/20261113';
+
+export interface GameAlbumEntry {
+  readonly id: string;
+  readonly title: string;
+  readonly caption: string;
+  readonly kind: '实机截图' | '主题插画' | '概念海报';
+  readonly src?: string;
+}
 
 export const jelly2048Art = {
   play: '/game/jelly-2048/',
@@ -169,6 +179,77 @@ export const jelly2048Art = {
     dark: `${JELLY_2048_ART_DIR}/empty-night.webp`,
   },
 } as const;
+
+// 游戏画册条目：每款固定五格，实机截图与待补插画共用同一展陈网格
+export const gameAlbums: Record<string, readonly GameAlbumEntry[]> = {
+  '/game/jelly-2048/': [
+    {
+      id: '01',
+      title: '井底初聚・彩冻落槽',
+      caption: '软弹液体块沿着侧壁堆叠，2 到 32 在玻璃井底挤成一团。',
+      kind: '实机截图',
+      src: `${JELLY_2048_ALBUM_DIR}/shot-01.webp`,
+    },
+    {
+      id: '02',
+      title: '双 64 蓄势・满井博弈',
+      caption: '532 分局面：井口几乎铺满，两枚 64 号果冻正寻找合体时机。',
+      kind: '实机截图',
+      src: `${JELLY_2048_ALBUM_DIR}/shot-02.webp`,
+    },
+    {
+      id: '03',
+      title: '镜像双峰・连锁前夜',
+      caption: '左右对称落位，托盘里还备着 8、4、4、8，一步就能引发连锁坍缩。',
+      kind: '实机截图',
+      src: `${JELLY_2048_ALBUM_DIR}/shot-03.webp`,
+    },
+    {
+      id: '04',
+      title: '双冻相撞・Q 弹合成瞬间',
+      caption: '小萌趴在玻璃槽边屏息围观，两枚 64 在光晕里融成一枚 128。',
+      kind: '主题插画',
+    },
+    {
+      id: '05',
+      title: '深夜桌面・玻璃井微光',
+      caption: '关灯后的暖黄台灯下，一整槽晶莹果冻像迷你物理实验室里的糖果。',
+      kind: '概念海报',
+    },
+  ],
+  '/game/pelican-ride/': [
+    {
+      id: '01',
+      title: '红架单车・鹈鹕出发',
+      caption: '朱红车架配上编织前筐，大嘴鸟蹬起踏板沿着海岸公路热身起跑。',
+      kind: '概念海报',
+    },
+    {
+      id: '02',
+      title: '三档跳台・峡谷飞跃',
+      caption: '冲上红白跳台腾空而起，身下是碧蓝海湾与穿过岩壁的公路隧道。',
+      kind: '主题插画',
+    },
+    {
+      id: '03',
+      title: '红辣椒冲刺・炽热赛道',
+      caption: '吞下一颗红辣椒开启无限冲刺，橘金尾焰擦过棕榈树与霓虹拱门。',
+      kind: '主题插画',
+    },
+    {
+      id: '04',
+      title: '樱花风道・金圈衔鱼',
+      caption: '弹簧垫把车弹入半空，大嘴一张稳稳叼住金环中央的肥美金鱼。',
+      kind: '主题插画',
+    },
+    {
+      id: '05',
+      title: '极光终点・夜航纪念章',
+      caption: '穿过浮冰与青绿极光带，喉囊里装满一路拾来的鱼群与纪念徽章。',
+      kind: '概念海报',
+    },
+  ],
+};
 
 // 游戏大厅条目：每一项都是一个独立的小游戏。cover 填 OSS 完整 URL，留空则显示发丝线点阵占位框；href 填好后即可点击进入该游戏
 export interface GameEntry {

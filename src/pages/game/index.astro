@@ -6,7 +6,7 @@ import PageBackdrop from '../../components/PageBackdrop.astro';
 import PixelBackdrop from '../../components/PixelBackdrop.astro';
 import KindIcon from '../../components/KindIcon.astro';
 import TargetCursor from '../../components/TargetCursor.astro';
-import { games as fallbackGames, jelly2048Art, pageBackdrops, site } from '../../config/site';
+import { gameAlbums, games as fallbackGames, jelly2048Art, pageBackdrops, site } from '../../config/site';
 import { getGames } from '../../lib/content';
 import { resolveEmbeds } from '../../lib/embeds';
 
@@ -15,33 +15,39 @@ const collectionGames = await getGames();
 const items =
   collectionGames.length > 0
     ? await Promise.all(
-        collectionGames.map(async (entry, idx) => ({
-          id: String(idx + 1).padStart(2, '0'),
-          slug: entry.data.slug,
-          title: entry.data.title,
-          summary: entry.data.summary,
-          tag: entry.data.tags.slice(0, 2).join(' / ') || '小游戏',
-          cover: entry.data.play === jelly2048Art.play ? jelly2048Art.cover.light : entry.data.cover ?? '',
-          coverDark: entry.data.play === jelly2048Art.play ? jelly2048Art.cover.dark : '',
-          href: entry.data.play ?? '',
-          rulesHtml: entry.body?.trim()
-            ? await resolveEmbeds(entry.rendered?.html ?? '')
-            : '',
-        })),
+        collectionGames.map(async (entry, idx) => {
+          const href = entry.data.play ?? '';
+          const album = gameAlbums[href] ?? [];
+          return {
+            id: String(idx + 1).padStart(2, '0'),
+            slug: entry.data.slug,
+            title: entry.data.title,
+            summary: entry.data.summary,
+            tag: entry.data.tags.slice(0, 2).join(' / ') || '小游戏',
+            cover: href === jelly2048Art.play ? jelly2048Art.cover.light : entry.data.cover ?? '',
+            coverDark: href === jelly2048Art.play ? jelly2048Art.cover.dark : '',
+            href,
+            rulesHtml: entry.body?.trim()
+              ? await resolveEmbeds(entry.rendered?.html ?? '')
+              : '',
+            album,
+          };
+        }),
       )
     : fallbackGames.map((item) => ({
         ...item,
         slug: item.id,
         coverDark: '',
         rulesHtml: '',
+        album: gameAlbums[item.href] ?? [],
       }));
 ---
 
 <BaseLayout title="游戏" description={site.gameLine}>
   <PageBackdrop art={pageBackdrops.game} />
   <PixelBackdrop />
-  <!-- 和首页导图同一套瞄准光标，只在正文里接管（和首页只管画布一样，顶栏、页脚是普通鼠标）：瞄准游戏卡片和规则按钮。具体游戏页不用 -->
-  <TargetCursor area="main" targets=".game-card, .game-card__rules-btn" />
+  <!-- 和首页导图同一套瞄准光标，只在正文里接管（和首页只管画布一样，顶栏、页脚是普通鼠标）：瞄准游戏卡片、规则按钮与画册按钮。具体游戏页不用 -->
+  <TargetCursor area="main" targets=".game-card, .game-card__rules-btn, .game-card__album-btn" />
 
   <section class="wrap game-head">
     <div class="game-head__row" data-reveal>
@@ -63,6 +69,8 @@ const items =
         items.map((item, i) => {
           const ready = Boolean(item.href);
           const hasRules = Boolean(item.rulesHtml);
+          const hasAlbum = item.album.length > 0;
+          const albumReadyCount = item.album.filter((shot) => Boolean(shot.src)).length;
           // 最新上架、能玩的那一款挂一枚「正热乎」小印章
           const hot = ready && i === items.length - 1;
           return (
@@ -107,19 +115,37 @@ const items =
                 </div>
 
                 <footer class="game-card__foot">
-                  {hasRules ? (
-                    <button
-                      type="button"
-                      class="game-card__rules-btn"
-                      data-open-rules={`game-rules-${item.slug}`}
-                    >
-                      <svg class="game-card__rules-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M3.5 5.5c2.8-1 5.6-.8 8.5.8v13c-2.9-1.6-5.7-1.8-8.5-.8z" />
-                        <path d="M20.5 5.5c-2.8-1-5.6-.8-8.5.8v13c2.9-1.6 5.7-1.8 8.5-.8z" />
-                        <path class="game-card__rules-mark" d="M15.5 5.6v5.2l1.4-1 1.4 1V5.4" />
-                      </svg>
-                      游戏规则
-                    </button>
+                  {(hasRules || hasAlbum) ? (
+                    <div class="game-card__actions">
+                      {hasRules && (
+                        <button
+                          type="button"
+                          class="game-card__rules-btn"
+                          data-open-rules={`game-rules-${item.slug}`}
+                        >
+                          <svg class="game-card__rules-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3.5 5.5c2.8-1 5.6-.8 8.5.8v13c-2.9-1.6-5.7-1.8-8.5-.8z" />
+                            <path d="M20.5 5.5c-2.8-1-5.6-.8-8.5.8v13c2.9-1.6 5.7-1.8 8.5-.8z" />
+                            <path class="game-card__rules-mark" d="M15.5 5.6v5.2l1.4-1 1.4 1V5.4" />
+                          </svg>
+                          游戏规则
+                        </button>
+                      )}
+                      {hasAlbum && (
+                        <button
+                          type="button"
+                          class="game-card__album-btn"
+                          data-open-album={`game-album-${item.slug}`}
+                        >
+                          <svg class="game-card__album-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="3.5" y="5" width="17" height="14" />
+                            <path d="M4.5 16.2l4.4-4.2 3.3 3 3-3.5 4.3 4.7" />
+                            <circle class="game-card__album-dot" cx="8.6" cy="9.4" r="1.2" />
+                          </svg>
+                          游戏画册
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <span />
                   )}
@@ -154,6 +180,108 @@ const items =
                   </div>
                 </dialog>
               )}
+
+              {hasAlbum && (
+                <dialog class="game-album-modal" id={`game-album-${item.slug}`} aria-label={`${item.title} 游戏画册`}>
+                  <div class="game-album-modal__panel" data-album-panel data-view="grid">
+                    <header class="game-album-modal__head">
+                      <div class="game-album-modal__head-meta">
+                        <span class="game-album-modal__kicker">
+                          GAME ALBUM · {String(albumReadyCount).padStart(2, '0')} / {String(item.album.length).padStart(2, '0')}
+                        </span>
+                        <h3 class="game-album-modal__title">{item.title} · 游戏画册</h3>
+                      </div>
+                      <div class="game-album-modal__head-tools">
+                        <button type="button" class="game-album__back-btn" data-album-back hidden>
+                          ← 返回画册
+                        </button>
+                        <button type="button" class="game-album-modal__close" data-close-album aria-label="关闭画册">
+                          ×
+                        </button>
+                      </div>
+                    </header>
+
+                    <div class="game-album-modal__body">
+                      <ol class="game-album__grid" data-album-grid>
+                        {item.album.map((shot, shotIdx) => {
+                          const hasSrc = Boolean(shot.src);
+                          return (
+                            <li
+                              class:list={[
+                                'game-album-card',
+                                shotIdx < 2 ? 'game-album-card--wide' : 'game-album-card--std',
+                                !hasSrc && 'game-album-card--empty',
+                              ]}
+                            >
+                              <header class="game-album-card__bar">
+                                <span class="game-album-card__no">FRAME {shot.id}</span>
+                                <span class="game-album-card__kind">{shot.kind}</span>
+                              </header>
+
+                              {hasSrc ? (
+                                <button
+                                  type="button"
+                                  class="game-album-card__stage"
+                                  data-album-open={shotIdx}
+                                  data-album-src={shot.src}
+                                  data-album-title={shot.title}
+                                  data-album-caption={shot.caption}
+                                  data-album-kind={shot.kind}
+                                  data-album-no={shot.id}
+                                  aria-label={`查看大图：${shot.title}`}
+                                >
+                                  <img
+                                    class="game-album-card__img"
+                                    src={shot.src}
+                                    alt={`${item.title} — ${shot.title}`}
+                                    loading="lazy"
+                                  />
+                                  <span class="game-album-card__zoom" aria-hidden="true">查看大图 ↗</span>
+                                </button>
+                              ) : (
+                                <div class="game-album-card__stage game-album-card__stage--ph cover-ph">
+                                  <svg class="game-album-card__ph-svg" viewBox="0 0 72 46" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                                    <rect x="8" y="6" width="56" height="34" />
+                                    <path d="M12 34l13-12 9 8.5 9.5-10.5L60 34" />
+                                    <circle class="game-album-card__ph-dot" cx="22" cy="15" r="2.2" />
+                                  </svg>
+                                  <span class="game-album-card__ph-label">插画绘制中 · 待上传 OSS</span>
+                                </div>
+                              )}
+
+                              <div class="game-album-card__meta">
+                                <h4 class="game-album-card__title">{shot.title}</h4>
+                                <p class="game-album-card__caption">{shot.caption}</p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ol>
+
+                      <div class="game-album__viewer" data-album-viewer hidden>
+                        <figure class="game-album__stage">
+                          <img class="game-album__full" data-album-full src="" alt="" />
+                        </figure>
+                        <div class="game-album__viewer-foot">
+                          <div class="game-album__viewer-copy">
+                            <span class="game-album__viewer-meta" data-album-meta />
+                            <h4 class="game-album__viewer-title" data-album-vtitle />
+                            <p class="game-album__viewer-caption" data-album-vcaption />
+                          </div>
+                          <div class="game-album__viewer-nav">
+                            <button type="button" class="game-album__nav-btn" data-album-prev aria-label="上一张">
+                              ← 上一张
+                            </button>
+                            <button type="button" class="game-album__nav-btn" data-album-next aria-label="下一张">
+                              下一张 →
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </dialog>
+              )}
             </li>
           );
         })
@@ -163,15 +291,18 @@ const items =
 </BaseLayout>
 
 <script>
-  function wireGameRules() {
-    document.querySelectorAll<HTMLButtonElement>('[data-open-rules]').forEach((btn) => {
+  function wireGameModals() {
+    document.querySelectorAll<HTMLButtonElement>('[data-open-rules], [data-open-album]').forEach((btn) => {
       if (btn.dataset.wired) return;
       btn.dataset.wired = '1';
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const id = btn.dataset.openRules;
+        const id = btn.dataset.openRules || btn.dataset.openAlbum;
         const dialog = id ? (document.getElementById(id) as HTMLDialogElement | null) : null;
-        dialog?.showModal();
+        if (!dialog) return;
+        const resetAlbum = (dialog as HTMLDialogElement & { __resetAlbum?: () => void }).__resetAlbum;
+        resetAlbum?.();
+        dialog.showModal();
       });
     });
 
@@ -184,10 +315,99 @@ const items =
         }
       });
     });
+
+    document.querySelectorAll<HTMLDialogElement>('.game-album-modal').forEach((dialog) => {
+      if (dialog.dataset.wired) return;
+      dialog.dataset.wired = '1';
+
+      const panel = dialog.querySelector<HTMLElement>('[data-album-panel]');
+      const grid = dialog.querySelector<HTMLElement>('[data-album-grid]');
+      const viewer = dialog.querySelector<HTMLElement>('[data-album-viewer]');
+      const backBtn = dialog.querySelector<HTMLButtonElement>('[data-album-back]');
+      const fullImg = dialog.querySelector<HTMLImageElement>('[data-album-full]');
+      const metaEl = dialog.querySelector<HTMLElement>('[data-album-meta]');
+      const titleEl = dialog.querySelector<HTMLElement>('[data-album-vtitle]');
+      const captionEl = dialog.querySelector<HTMLElement>('[data-album-vcaption]');
+      const prevBtn = dialog.querySelector<HTMLButtonElement>('[data-album-prev]');
+      const nextBtn = dialog.querySelector<HTMLButtonElement>('[data-album-next]');
+      const triggers = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[data-album-open]'));
+
+      let activePos = -1;
+
+      const setGridMode = () => {
+        activePos = -1;
+        if (panel) panel.dataset.view = 'grid';
+        if (grid) grid.hidden = false;
+        if (viewer) viewer.hidden = true;
+        if (backBtn) backBtn.hidden = true;
+        if (fullImg) fullImg.removeAttribute('src');
+      };
+
+      const showItem = (pos: number) => {
+        if (!triggers.length) return;
+        const wrapped = ((pos % triggers.length) + triggers.length) % triggers.length;
+        activePos = wrapped;
+        const btn = triggers[wrapped];
+        if (!btn) return;
+        if (panel) panel.dataset.view = 'viewer';
+        if (grid) grid.hidden = true;
+        if (viewer) viewer.hidden = false;
+        if (backBtn) backBtn.hidden = false;
+        if (fullImg) {
+          fullImg.src = btn.dataset.albumSrc || '';
+          fullImg.alt = btn.dataset.albumTitle || '';
+        }
+        if (metaEl) {
+          metaEl.textContent = `FRAME ${btn.dataset.albumNo || ''} · ${btn.dataset.albumKind || ''}`;
+        }
+        if (titleEl) titleEl.textContent = btn.dataset.albumTitle || '';
+        if (captionEl) captionEl.textContent = btn.dataset.albumCaption || '';
+        if (prevBtn) prevBtn.disabled = triggers.length <= 1;
+        if (nextBtn) nextBtn.disabled = triggers.length <= 1;
+      };
+
+      (dialog as HTMLDialogElement & { __resetAlbum?: () => void }).__resetAlbum = setGridMode;
+
+      triggers.forEach((btn, pos) => {
+        btn.addEventListener('click', () => showItem(pos));
+      });
+
+      backBtn?.addEventListener('click', setGridMode);
+      prevBtn?.addEventListener('click', () => {
+        if (activePos >= 0) showItem(activePos - 1);
+      });
+      nextBtn?.addEventListener('click', () => {
+        if (activePos >= 0) showItem(activePos + 1);
+      });
+
+      dialog.addEventListener('cancel', (e) => {
+        if (panel?.dataset.view === 'viewer') {
+          e.preventDefault();
+          setGridMode();
+        }
+      });
+
+      dialog.addEventListener('keydown', (e) => {
+        if (panel?.dataset.view !== 'viewer') return;
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          showItem(activePos - 1);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          showItem(activePos + 1);
+        }
+      });
+
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog || (e.target as HTMLElement).closest('[data-close-album]')) {
+          dialog.close();
+        }
+      });
+    });
   }
 
-  wireGameRules();
-  document.addEventListener('astro:page-load', wireGameRules);
+  wireGameModals();
+  document.addEventListener('astro:page-load', wireGameModals);
 </script>
 
 <style>
@@ -522,8 +742,18 @@ const items =
     gap: 0.4rem;
   }
 
-  /* 规则按钮：一本小书加粉色书签，左上角一个粉色折角 */
-  .game-card__rules-btn {
+  .game-card__actions {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  /* 规则与画册按钮：统一样式的 1px 发丝框，左上角粉色折角 */
+  .game-card__rules-btn,
+  .game-card__album-btn {
     position: relative;
     z-index: 2;
     display: inline-flex;
@@ -542,7 +772,8 @@ const items =
       color var(--dur-1) var(--ease-out);
   }
 
-  .game-card__rules-btn::before {
+  .game-card__rules-btn::before,
+  .game-card__album-btn::before {
     content: "";
     position: absolute;
     top: -1px;
@@ -553,7 +784,8 @@ const items =
     border-left: 1.5px solid var(--icon-pink);
   }
 
-  .game-card__rules-icon {
+  .game-card__rules-icon,
+  .game-card__album-icon {
     width: 0.95rem;
     height: 0.95rem;
     fill: none;
@@ -562,12 +794,14 @@ const items =
     stroke-linejoin: round;
   }
 
-  .game-card__rules-mark {
+  .game-card__rules-mark,
+  .game-card__album-dot {
     stroke: var(--icon-pink);
     fill: var(--icon-pink);
   }
 
-  .game-card__rules-btn:hover {
+  .game-card__rules-btn:hover,
+  .game-card__album-btn:hover {
     border-color: var(--accent);
     color: var(--accent);
   }
@@ -606,8 +840,9 @@ const items =
     z-index: 1;
   }
 
-  /* 游戏规则弹窗：和内容区差不多宽，规则写成一格一格的特性卡，不出滚动条 */
-  .game-rules-modal {
+  /* 游戏规则 / 游戏画册弹窗：共享外观与快速渐显渐隐过渡，不出滚动条 */
+  .game-rules-modal,
+  .game-album-modal {
     margin: auto;
     padding: 0;
     width: min(calc(var(--page-max) - 2 * var(--gut)), calc(100vw - 2 * var(--gut)));
@@ -617,15 +852,44 @@ const items =
     background: var(--bg);
     color: var(--fg);
     scrollbar-width: none;
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+    transition:
+      opacity var(--dur-1) var(--ease-out),
+      transform var(--dur-1) var(--ease-out),
+      overlay var(--dur-1) allow-discrete,
+      display var(--dur-1) allow-discrete;
+  }
+
+  .game-rules-modal[open],
+  .game-album-modal[open] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  @starting-style {
+    .game-rules-modal[open],
+    .game-album-modal[open] {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+
+    .game-rules-modal[open]::backdrop,
+    .game-album-modal[open]::backdrop {
+      opacity: 0;
+    }
   }
 
   .game-rules-modal::-webkit-scrollbar,
-  .game-rules-modal__body::-webkit-scrollbar {
+  .game-rules-modal__body::-webkit-scrollbar,
+  .game-album-modal::-webkit-scrollbar,
+  .game-album-modal__body::-webkit-scrollbar {
     display: none;
   }
 
-  /* 左上粉色折角，和卡片上的规则按钮呼应 */
-  .game-rules-modal__panel::before {
+  /* 左上粉色折角，和卡片上的按钮呼应 */
+  .game-rules-modal__panel::before,
+  .game-album-modal__panel::before {
     content: "";
     position: absolute;
     top: -1px;
@@ -722,19 +986,32 @@ const items =
     background: var(--icon-pink);
   }
 
-  .game-rules-modal::backdrop {
+  .game-rules-modal::backdrop,
+  .game-album-modal::backdrop {
     background: color-mix(in srgb, var(--bg) 65%, transparent);
     backdrop-filter: blur(2px);
+    opacity: 0;
+    transition:
+      opacity var(--dur-1) var(--ease-out),
+      overlay var(--dur-1) allow-discrete,
+      display var(--dur-1) allow-discrete;
   }
 
-  .game-rules-modal__panel {
+  .game-rules-modal[open]::backdrop,
+  .game-album-modal[open]::backdrop {
+    opacity: 1;
+  }
+
+  .game-rules-modal__panel,
+  .game-album-modal__panel {
     position: relative;
     display: flex;
     flex-direction: column;
     max-height: calc(100dvh - 3rem);
   }
 
-  .game-rules-modal__head {
+  .game-rules-modal__head,
+  .game-album-modal__head {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -743,15 +1020,38 @@ const items =
     border-bottom: var(--hair) solid var(--line);
   }
 
-  .game-rules-modal__title {
+  .game-album-modal__head-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .game-album-modal__kicker {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    color: var(--fg-faint);
+  }
+
+  .game-rules-modal__title,
+  .game-album-modal__title {
     margin: 0;
     font-family: var(--font-serif);
     font-size: 1.25rem;
     font-weight: 600;
   }
 
-  /* 关闭：一个方形小框里一个 ×，悬停时变强调色 */
-  .game-rules-modal__close {
+  .game-album-modal__head-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-shrink: 0;
+  }
+
+  /* 关闭 / 返回 / 上下张统一方形或发丝线控件 */
+  .game-rules-modal__close,
+  .game-album-modal__close {
     display: grid;
     place-items: center;
     width: 1.9rem;
@@ -769,19 +1069,272 @@ const items =
       color var(--dur-1) var(--ease-out);
   }
 
-  .game-rules-modal__close:hover {
+  .game-album__back-btn,
+  .game-album__nav-btn {
+    padding: 0.32rem 0.72rem;
+    border: var(--hair) solid var(--line);
+    background: transparent;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .game-rules-modal__close:hover,
+  .game-album-modal__close:hover,
+  .game-album__back-btn:hover,
+  .game-album__nav-btn:hover:not(:disabled) {
     border-color: var(--accent);
     color: var(--accent);
   }
 
-  /* 正文版心宽度不变，在弹窗里水平居中 */
+  .game-album__nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
   /* 正文铺满弹窗宽度（不受文章版心限制），格子更宽、左右不留大片空白 */
-  .game-rules-modal__body {
+  .game-rules-modal__body,
+  .game-album-modal__body {
     width: 100%;
     max-width: none;
     padding: 1.25rem 1.5rem 1.75rem;
     overflow-y: auto;
     scrollbar-width: none;
+  }
+
+  /* 游戏画册：6 列展陈网格，前 2 张各占半行，后 3 张均分第二行 */
+  .game-album__grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .game-album-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .game-album-card--wide {
+    grid-column: span 3;
+  }
+
+  .game-album-card--std {
+    grid-column: span 2;
+  }
+
+  .game-album-card:not(.game-album-card--empty):hover {
+    border-color: var(--accent);
+  }
+
+  .game-album-card__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-bottom: var(--hair) solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    color: var(--fg-faint);
+  }
+
+  .game-album-card__kind {
+    color: var(--fg-muted);
+  }
+
+  .game-album-card__stage {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-bottom: var(--hair) solid var(--line);
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background-color: color-mix(in srgb, var(--fg) 2.5%, transparent);
+    background-image: radial-gradient(color-mix(in srgb, var(--fg) 10%, transparent) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+
+  button.game-album-card__stage {
+    cursor: zoom-in;
+  }
+
+  .game-album-card__img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  button.game-album-card__stage:hover .game-album-card__img {
+    transform: scale(1.025);
+  }
+
+  .game-album-card__zoom {
+    position: absolute;
+    right: 0.6rem;
+    bottom: 0.55rem;
+    padding: 0.18rem 0.45rem;
+    border: var(--hair) solid var(--line);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    opacity: 0;
+    transform: translateY(3px);
+    transition:
+      opacity var(--dur-1) var(--ease-out),
+      transform var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out),
+      border-color var(--dur-1) var(--ease-out);
+  }
+
+  button.game-album-card__stage:hover .game-album-card__zoom {
+    opacity: 1;
+    transform: translateY(0);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .game-album-card__stage--ph {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    color: var(--fg-faint);
+  }
+
+  .game-album-card__ph-svg {
+    width: 3.1rem;
+    height: 2rem;
+    opacity: 0.65;
+  }
+
+  .game-album-card__ph-dot {
+    fill: var(--icon-pink);
+    stroke: none;
+  }
+
+  .game-album-card__ph-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+  }
+
+  .game-album-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.75rem 0.85rem 0.85rem;
+  }
+
+  .game-album-card__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .game-album-card__caption {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--fg-muted);
+  }
+
+  /* 单图放大浏览态 */
+  .game-album__viewer {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: opacity var(--dur-1) var(--ease-out);
+  }
+
+  .game-album__viewer[hidden],
+  .game-album__grid[hidden],
+  .game-album__back-btn[hidden] {
+    display: none;
+  }
+
+  .game-album__stage {
+    margin: 0;
+    border: var(--hair) solid var(--line);
+    background-color: color-mix(in srgb, var(--fg) 2.5%, transparent);
+    background-image: radial-gradient(color-mix(in srgb, var(--fg) 10%, transparent) 1px, transparent 1px);
+    background-size: 18px 18px;
+    display: grid;
+    place-items: center;
+    padding: 0.75rem;
+  }
+
+  .game-album__full {
+    max-width: 100%;
+    max-height: min(62dvh, 520px);
+    width: auto;
+    height: auto;
+    display: block;
+    object-fit: contain;
+  }
+
+  .game-album__viewer-foot {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 0.75rem;
+    border-top: var(--hair) dashed var(--line);
+  }
+
+  .game-album__viewer-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+    min-width: 0;
+  }
+
+  .game-album__viewer-meta {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    color: var(--fg-faint);
+  }
+
+  .game-album__viewer-title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.08rem;
+    font-weight: 600;
+  }
+
+  .game-album__viewer-caption {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+
+  .game-album__viewer-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   /* 平板端：两列排布 */
@@ -792,6 +1345,15 @@ const items =
 
     .game-rules-modal__body :global(ul) {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .game-album__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .game-album-card--wide,
+    .game-album-card--std {
+      grid-column: span 1;
     }
 
     .game-head__row {
@@ -830,19 +1392,37 @@ const items =
     }
 
     .game-rules-modal__head,
-    .game-rules-modal__body {
+    .game-rules-modal__body,
+    .game-album-modal__head,
+    .game-album-modal__body {
       padding-inline: 1.1rem;
     }
 
-    /* 手机：规则从底部升起的一张抽屉，铺满宽度，最多占屏幕 85%，特性一条一行 */
-    .game-rules-modal {
+    /* 手机：规则与画册从底部升起的一张抽屉，铺满宽度，最多占屏幕 85% */
+    .game-rules-modal,
+    .game-album-modal {
       width: 100%;
       max-height: 85dvh;
       margin: auto 0 0;
       border-width: var(--hair) 0 0;
+      transform: translateY(14px);
     }
 
-    .game-rules-modal__panel {
+    .game-rules-modal[open],
+    .game-album-modal[open] {
+      transform: translateY(0);
+    }
+
+    @starting-style {
+      .game-rules-modal[open],
+      .game-album-modal[open] {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+    }
+
+    .game-rules-modal__panel,
+    .game-album-modal__panel {
       max-height: 85dvh;
     }
 
@@ -860,6 +1440,30 @@ const items =
 
     .game-rules-modal__body :global(li:last-child) {
       border-bottom: 0;
+    }
+
+    .game-album__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .game-album__viewer-foot {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .game-rules-modal,
+    .game-album-modal {
+      transform: none;
+    }
+
+    @starting-style {
+      .game-rules-modal[open],
+      .game-album-modal[open] {
+        opacity: 0;
+        transform: none;
+      }
     }
   }
 </style>
