@@ -1,0 +1,796 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageBackdrop from '../../components/PageBackdrop.astro';
+import { pageBackdrops } from '../../config/site';
+import { getGames } from '../../lib/content';
+
+const PLAY = '/game/pelican-ride/';
+const entry = (await getGames()).find((item) => item.data.play === PLAY);
+const title = entry?.data.title ?? '鹈鹕骑车';
+const summary = entry?.data.summary ?? '';
+---
+
+<BaseLayout title={title} description={summary}>
+  <PageBackdrop art={pageBackdrops.game} />
+
+  <section class="wrap pelican-page">
+    <header class="pelican-head">
+      <h1 class="pelican-head__title">{title}</h1>
+      <a class="pelican-head__back" href="/game/"><span aria-hidden="true">←</span> 游戏大厅</a>
+    </header>
+
+    <div class="pelican" data-pelican data-state="ready" data-title={title}>
+      <div class="pelican__stage" data-stage>
+        <canvas class="pelican__canvas" data-canvas aria-label="鹈鹕骑车游戏画面：左右压车，空格起跳，按住上方向键或长按空格冲刺"></canvas>
+
+        <!-- 路程：贴着画面上沿的一根细线 -->
+        <div class="pelican__progress" aria-hidden="true"><i data-progress></i></div>
+
+        <div class="pelican__hud">
+          <p class="pelican__score pelican__panel">
+            <span class="pelican__label">分数</span>
+            <b data-score>0</b>
+          </p>
+          <div class="pelican__tools">
+            <button type="button" class="pelican-btn pelican-btn--icon pelican-btn--sound" data-mute aria-pressed="true" aria-label="声音开关">
+              <svg class="pelican-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
+                <path class="pelican-btn__wave" d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+                <path class="pelican-btn__mute" d="M16 9.5l5 5M21 9.5l-5 5" />
+              </svg>
+            </button>
+            <button type="button" class="pelican-btn pelican-btn--icon" data-pause aria-pressed="false" aria-label="暂停或继续">
+              <svg class="pelican-btn__icon pelican-btn__icon--on" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 6v12M15 6v12" />
+              </svg>
+              <svg class="pelican-btn__icon pelican-btn__icon--off" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5.5v13l10.5-6.5z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 进新场景时报一次站名，几秒后自己淡掉 -->
+        <p class="pelican__toast pelican__panel" data-toast aria-live="polite"></p>
+
+        <!-- 左下角两条线：冲刺还剩多少，现在骑多快。每条线分四格：i 是长度，三个 b 是刻度 -->
+        <div class="pelican__meters pelican__panel" data-boost-box data-level="high" aria-hidden="true">
+          <div class="pelican__meter pelican__meter--boost">
+            <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M13.5 2.5 5.5 13.5h5.5l-1 8 8.5-11.5h-5.5z" /></svg>
+            <span class="pelican__label">冲刺</span>
+            <span class="pelican__meter-line"><i data-boost></i><b></b><b></b><b></b></span>
+          </div>
+          <div class="pelican__meter pelican__meter--speed">
+            <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M4 17a8.5 8.5 0 1 1 16 0M12 16l4.5-6" /></svg>
+            <span class="pelican__label">速度</span>
+            <span class="pelican__meter-line"><i data-speed></i><b></b><b></b><b></b></span>
+            <em class="pelican__meter-num" data-speed-num>0</em>
+          </div>
+        </div>
+
+        <!-- 只在触屏上出现：左右半屏压车，这两个按钮管跳和冲刺 -->
+        <div class="pelican__touch">
+          <button type="button" class="pelican-btn pelican-btn--pad" data-dash>冲</button>
+          <button type="button" class="pelican-btn pelican-btn--pad" data-jump>跳</button>
+        </div>
+
+        <div class="pelican__overlay" data-overlay hidden>
+          <div class="pelican__card pelican__panel">
+            <p class="pelican__overlay-title" data-overlay-title></p>
+            <dl class="pelican__stats" data-overlay-stats hidden>
+              <div>
+                <dt>分数</dt>
+                <dd data-stat-score>0</dd>
+              </div>
+              <div>
+                <dt>用时</dt>
+                <dd data-stat-time>00:00</dd>
+              </div>
+            </dl>
+            <p class="pelican__overlay-text" data-overlay-text></p>
+            <button type="button" class="pelican-btn pelican-btn--main" data-overlay-btn></button>
+          </div>
+        </div>
+
+        <p class="pelican__nogl" data-nogl hidden>这台设备的浏览器不支持 WebGL2，暂时玩不了这个游戏。</p>
+      </div>
+
+      <!-- 画面下面一行：左边是成绩，右边是按键说明 -->
+      <div class="pelican__foot">
+        <p class="pelican__record" data-record aria-live="polite"></p>
+        <p class="pelican__keys">
+          <span><kbd>←</kbd><kbd>→</kbd> 压车</span>
+          <span><kbd>空格</kbd> 起跳</span>
+          <span><kbd>↑</kbd> 或长按 <kbd>空格</kbd> 冲刺</span>
+          <span><kbd>P</kbd> 暂停</span>
+          <span><kbd>M</kbd> 静音</span>
+        </p>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { mountPelican, supportsWebGL2 } from '../../game/pelican/game';
+
+  let destroy: (() => void) | null = null;
+
+  function boot() {
+    const root = document.querySelector<HTMLElement>('[data-pelican]');
+    if (!root || root.dataset.mounted) return;
+    root.dataset.mounted = '1';
+    if (!supportsWebGL2()) {
+      root.querySelector<HTMLElement>('[data-nogl]')!.hidden = false;
+      root.dataset.state = 'nogl';
+      return;
+    }
+    destroy = mountPelican(root);
+  }
+
+  // 这段脚本可能在第一次 astro:page-load 之后才执行，所以先跑一次
+  boot();
+  document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:before-swap', () => {
+    destroy?.();
+    destroy = null;
+  });
+</script>
+
+<style>
+  .pelican-page {
+    position: relative;
+    z-index: 1;
+    padding-block: 1rem 1.25rem;
+  }
+
+  .pelican-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.65rem;
+    margin-bottom: 1rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .pelican-head__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(1.4rem, 3.6vw, 1.9rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .pelican-head__back {
+    padding: 0.3rem 0.7rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .pelican-head__back:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .pelican-head__back span {
+    display: inline-block;
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+
+  .pelican-head__back:hover span {
+    transform: translateX(-3px);
+  }
+
+  /* 画面里的面板和按钮跟着场景换颜色（用户要求）：底色取这个场景地平线的颜色，字按底色深浅取黑或白，
+     强调色取这个场景路沿的颜色。三个值由脚本在进新场景时写到 .pelican 上，没写之前先用站点自己的颜色 */
+  .pelican {
+    --hud-paper: var(--bg);
+    --hud-ink: var(--fg);
+    --hud-accent: var(--accent);
+    --hud-line: color-mix(in srgb, var(--hud-ink) 32%, transparent);
+    --hud-soft: color-mix(in srgb, var(--hud-ink) 66%, transparent);
+  }
+
+  .pelican__panel,
+  .pelican__stage .pelican-btn {
+    border: var(--hair) solid var(--hud-line);
+    background: color-mix(in srgb, var(--hud-paper) 80%, transparent);
+    color: var(--hud-ink);
+    transition:
+      background-color var(--dur-3) var(--ease-out),
+      border-color var(--dur-3) var(--ease-out),
+      color var(--dur-3) var(--ease-out);
+  }
+
+  /* 画面占满一整块，界面只在四个角各放一样东西 */
+  .pelican__stage {
+    position: relative;
+    /* 顶栏、标题行、按键说明和上下留白加起来约 15rem，剩下的都给画面 */
+    /* 用 svh 不用 dvh：手机滑动时地址栏收起、展开，dvh 跟着变，画面会被一下一下地缩放 */
+    height: clamp(20rem, calc(100svh - 15rem), 46rem);
+    border: var(--hair) solid var(--line-strong);
+    background: var(--bg-sunken);
+    overflow: hidden;
+    /* 按住画面压车时不让浏览器当成滚动或缩放手势 */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .pelican__canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .pelican__progress {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: color-mix(in srgb, var(--hud-ink) 14%, transparent);
+  }
+
+  .pelican__progress i,
+  .pelican__meter-line i {
+    display: block;
+    height: 100%;
+    background: var(--hud-accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: background-color var(--dur-3) var(--ease-out);
+  }
+
+  .pelican__hud {
+    position: absolute;
+    inset: 0 0 auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 1rem 1.1rem;
+    pointer-events: none;
+  }
+
+  .pelican__hud > * {
+    pointer-events: auto;
+  }
+
+  .pelican__label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    color: var(--hud-soft);
+    transition: color var(--dur-3) var(--ease-out);
+  }
+
+  .pelican__score {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0.35rem 0.7rem;
+  }
+
+  .pelican__score b {
+    min-width: 2.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pelican__meters {
+    position: absolute;
+    left: 1.1rem;
+    bottom: 1rem;
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.5rem 0.7rem;
+    pointer-events: none;
+  }
+
+  /* 一行：图标、名字、线、数字，两行的每一列对齐 */
+  .pelican__meter {
+    display: grid;
+    grid-template-columns: 0.85rem auto clamp(5.5rem, 17vw, 9.5rem) 1.5rem;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  /* 冲刺条的颜色跟着余量走：多是青绿，不多是琥珀，快没了是红。速度条用场景的强调色 */
+  .pelican__meter--boost {
+    --meter: #3fae9c;
+  }
+
+  .pelican__meters[data-level="mid"] .pelican__meter--boost {
+    --meter: #e0a02a;
+  }
+
+  .pelican__meters[data-level="low"] .pelican__meter--boost {
+    --meter: #e0563e;
+  }
+
+  .pelican__meter--speed {
+    --meter: var(--hud-accent);
+  }
+
+  .pelican__meter-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+    fill: none;
+    stroke: var(--meter);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition:
+      fill var(--dur-2) var(--ease-out),
+      stroke var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__meter-line {
+    position: relative;
+    display: block;
+    height: 5px;
+    background: color-mix(in srgb, var(--hud-ink) 16%, transparent);
+  }
+
+  .pelican__meter-line i {
+    background: var(--meter);
+    transition: background-color var(--dur-2) var(--ease-out);
+  }
+
+  /* 两头各一道竖线收口，中间三道刻度把线分成四格 */
+  .pelican__meter-line::before,
+  .pelican__meter-line::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: var(--hair);
+    background: var(--hud-line);
+  }
+
+  .pelican__meter-line::before {
+    left: -2px;
+  }
+
+  .pelican__meter-line::after {
+    right: -2px;
+  }
+
+  .pelican__meter-line b {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: color-mix(in srgb, var(--hud-paper) 82%, transparent);
+  }
+
+  .pelican__meter-line b:nth-of-type(1) {
+    left: 25%;
+  }
+
+  .pelican__meter-line b:nth-of-type(2) {
+    left: 50%;
+  }
+
+  .pelican__meter-line b:nth-of-type(3) {
+    left: 75%;
+  }
+
+  .pelican__meter-num {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--hud-soft);
+  }
+
+  /* 正在冲刺：闪电填满，「冲刺」两个字也换成冲刺条的颜色 */
+  .pelican__meters[data-active] .pelican__meter--boost .pelican__label {
+    color: var(--meter);
+  }
+
+  .pelican__meters[data-active] .pelican__meter--boost .pelican__meter-icon {
+    fill: var(--meter);
+  }
+
+  .pelican-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.42rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pelican__stage .pelican-btn:hover,
+  .pelican__stage .pelican-btn:focus-visible {
+    border-color: var(--hud-accent);
+    color: var(--hud-accent);
+  }
+
+  .pelican-btn:active {
+    transform: translateY(1px);
+  }
+
+  .pelican-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .pelican-btn[hidden] {
+    display: none;
+  }
+
+  .pelican-btn--icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+  }
+
+  .pelican-btn__icon {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* 暂停键：进行中显示两竖，暂停时换成三角 */
+  .pelican-btn[aria-pressed="true"] .pelican-btn__icon--on,
+  .pelican-btn[aria-pressed="false"] .pelican-btn__icon--off {
+    display: none;
+  }
+
+  /* 声音键：开着画声波，关了画叉。这颗按钮的 aria-pressed 表示「声音开着」 */
+  .pelican-btn--sound[aria-pressed="true"] .pelican-btn__mute,
+  .pelican-btn--sound[aria-pressed="false"] .pelican-btn__wave {
+    display: none;
+  }
+
+  .pelican__tools {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .pelican-btn--main {
+    padding: 0.6rem 1.9rem;
+    font-size: 0.8125rem;
+  }
+
+  /* 触屏上的跳和冲刺：右下角两个方块，鼠标设备上不出现 */
+  .pelican__touch {
+    position: absolute;
+    right: 1.1rem;
+    bottom: 1rem;
+    display: none;
+    gap: 0.6rem;
+  }
+
+  .pelican-btn--pad {
+    width: 3.5rem;
+    height: 3.5rem;
+    padding: 0;
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    touch-action: none;
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    .pelican[data-state="playing"] .pelican__touch {
+      display: flex;
+    }
+
+    .pelican__keys {
+      display: none;
+    }
+  }
+
+  /* 面板这一层本身不接点击：暂停时点画面任何空白处都能继续，四角的按钮也照常能点 */
+  .pelican__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    pointer-events: none;
+  }
+
+  .pelican__overlay[hidden] {
+    display: none;
+  }
+
+  /* 出发前标题放在画面下方，把中间让给鹈鹕；暂停和结算都在正中 */
+  .pelican[data-state="ready"] .pelican__overlay {
+    align-items: flex-end;
+    padding-bottom: clamp(1.25rem, 5vh, 2.5rem);
+  }
+
+  /* 面板弹出来：从下面一点、小一点的地方浮上来，顶上一道强调色的线从左画到右 */
+  .pelican__card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+    max-width: 100%;
+    padding: 1.3rem 2.4rem 1.4rem;
+    background: color-mix(in srgb, var(--hud-paper) 88%, transparent);
+    text-align: center;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(0.9rem) scale(0.97);
+    transition:
+      opacity var(--dur-3) var(--ease-out),
+      transform var(--dur-3) var(--ease-out),
+      background-color var(--dur-3) var(--ease-out),
+      border-color var(--dur-3) var(--ease-out),
+      color var(--dur-3) var(--ease-out);
+  }
+
+  .pelican__card::before {
+    content: "";
+    position: absolute;
+    inset: -1px -1px auto;
+    height: 2px;
+    background: var(--hud-accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform var(--dur-3) var(--ease-out) var(--dur-2);
+  }
+
+  .pelican__overlay[data-open] .pelican__card {
+    opacity: 1;
+    transform: none;
+  }
+
+  .pelican__overlay[data-open] .pelican__card::before {
+    transform: scaleX(1);
+  }
+
+  /* 暂停时面板上没有按钮，整块都不挡点击 */
+  .pelican[data-state="paused"] .pelican__card {
+    pointer-events: none;
+  }
+
+  /* 出发前没有面板（用户要求）：标题和提示直接写在画面上，字外面描一圈底色，压在什么景色上都看得清 */
+  .pelican[data-state="ready"] .pelican__card {
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .pelican[data-state="ready"] .pelican__card::before {
+    display: none;
+  }
+
+  /* 出发前画面上只留标题、提示和右上角的声音键，分数和两条线等骑起来再出现 */
+  .pelican[data-state="ready"] .pelican__score,
+  .pelican[data-state="ready"] .pelican__meters {
+    visibility: hidden;
+  }
+
+  .pelican[data-state="ready"] .pelican__overlay-title,
+  .pelican[data-state="ready"] .pelican__overlay-text {
+    -webkit-text-stroke: 0.14em var(--hud-paper);
+    paint-order: stroke fill;
+  }
+
+  .pelican[data-state="ready"] .pelican__overlay-title {
+    font-size: clamp(1.9rem, 5vw, 2.8rem);
+    letter-spacing: 0.2em;
+  }
+
+  .pelican[data-state="ready"] .pelican__overlay-text {
+    -webkit-text-stroke-width: 0.09em;
+    font-size: 0.875rem;
+    letter-spacing: 0.24em;
+    color: var(--hud-ink);
+  }
+
+  /* 结算是一块横着的长方形：左边标题，中间两格成绩，右边按钮 */
+  .pelican[data-state="finished"] .pelican__card {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.2rem 2.4rem;
+    padding: 1.7rem 2.6rem;
+  }
+
+  .pelican__overlay-title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(1.35rem, 3.4vw, 1.75rem);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+  }
+
+  .pelican__stats {
+    display: flex;
+    margin: 0;
+  }
+
+  .pelican__stats[hidden] {
+    display: none;
+  }
+
+  .pelican__stats div {
+    min-width: 6.5rem;
+    padding: 0.1rem 1.6rem;
+    border-left: var(--hair) solid var(--hud-line);
+  }
+
+  .pelican__stats div:last-child {
+    border-right: var(--hair) solid var(--hud-line);
+  }
+
+  .pelican__stats dt {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    color: var(--hud-soft);
+  }
+
+  .pelican__stats dd {
+    margin: 0.3rem 0 0;
+    font-family: var(--font-mono);
+    font-size: clamp(1.3rem, 3vw, 1.7rem);
+    font-weight: 500;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pelican__overlay-text {
+    margin: 0;
+    max-width: 28rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    line-height: 1.8;
+    color: var(--hud-soft);
+  }
+
+  .pelican__overlay-text:empty {
+    display: none;
+  }
+
+  .pelican__toast {
+    position: absolute;
+    top: 1.15rem;
+    left: 50%;
+    margin: 0;
+    padding: 0.4rem 1rem;
+    font-family: var(--font-serif);
+    font-size: 0.9375rem;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, -0.4rem);
+    transition:
+      opacity var(--dur-3) var(--ease-out),
+      transform var(--dur-3) var(--ease-out),
+      background-color var(--dur-3) var(--ease-out),
+      border-color var(--dur-3) var(--ease-out),
+      color var(--dur-3) var(--ease-out);
+    pointer-events: none;
+  }
+
+  .pelican__toast[data-show] {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .pelican__nogl {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 1.5rem;
+    font-size: 0.875rem;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
+  .pelican__nogl[hidden] {
+    display: none;
+  }
+
+  .pelican[data-state="nogl"] .pelican__hud,
+  .pelican[data-state="nogl"] .pelican__meters,
+  .pelican[data-state="nogl"] .pelican__progress {
+    display: none;
+  }
+
+  .pelican__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.6rem;
+    margin-top: 0.9rem;
+  }
+
+  .pelican__record {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-muted);
+  }
+
+  .pelican__keys {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem 1.6rem;
+    margin: 0 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--fg-faint);
+  }
+
+  .pelican__keys kbd {
+    display: inline-block;
+    min-width: 1.35rem;
+    margin-right: 0.25rem;
+    padding: 0.05rem 0.3rem;
+    border: var(--hair) solid var(--line-strong);
+    font: inherit;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
+  @media (max-width: 40rem) {
+    .pelican__stage {
+      height: clamp(22rem, calc(100svh - 13rem), 40rem);
+    }
+
+    .pelican__hud {
+      padding: 0.7rem 0.75rem;
+    }
+
+    .pelican__meters {
+      left: 0.75rem;
+      bottom: 0.75rem;
+    }
+
+    .pelican__touch {
+      right: 0.75rem;
+      bottom: 0.75rem;
+    }
+
+    .pelican[data-state="finished"] .pelican__card {
+      padding: 1.3rem 1.2rem;
+    }
+
+    .pelican__stats div {
+      min-width: 0;
+      padding-inline: 1.1rem;
+    }
+  }
+</style>

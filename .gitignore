@@ -28,3 +28,4 @@ scripts/speech/**/*.mp3
 scripts/speech/**/*.wav
 nuonuo_role/**/*.png
 nuonuo_role/**/*.webp
+scripts/game-audio/out/
