@@ -1,8 +1,8 @@
 # 游戏画册与站内画廊扩展绘图提示词（GPT 专用）
 
 > 本文件用于指导 GPT 生成并上传两类美术资源：
-> 1. **游戏画册（`/game/` 各 5 格）**：补齐《果冻 2048》最后 2 格主题插画/海报（前 3 格已接入实机满井截图），以及《鹈鹕骑车》全套 5 格主题插画/概念海报。
-> 2. **主站画廊（`/gallery/`）**：新增 5 组诺诺插画、四格漫画、常服设定与游戏厅海报提示词，严格沿用 `nuonuo_role` 既有角色锚点。
+> 1. **游戏画册（《果冻 2048》第 04–05 格）**：前 3 格已接入新版实机截图，补齐最后 2 格主题插画/海报（《鹈鹕骑车》画册待游戏主体开发定版后再单独生成）。
+> 2. **主站画廊（`/gallery/`）**：新增 5 组诺诺插画、四格漫画、常服设定与海报提示词，严格沿用 `nuonuo_role` 既有角色锚点。
 
 ---
 
@@ -55,78 +55,7 @@ Minimalist geometric aesthetic with subtle hairline framing feeling, luminous su
 
 ---
 
-## 二、游戏画册：《鹈鹕骑车》全套 5 张（Slots 01–05）
-
-> 说明：以下 5 张严格对照 `src/game/pelican/` 真实玩法与美术设定编写：**朱红（`#C6462F`）车架单车 + 编织前筐、白羽深灰翼尖（`#3D3F49`）圆润胖鹈鹕、橙黄大嘴与伸缩喉囊（`#F2A23A` / `#F8C766`）、三车道海滨/峡谷/樱花/霓虹/极光赛道、红白三档跳台、弹簧垫、红辣椒无限冲刺、金环与金鱼**。上传后依次写入 `gameAlbums['/game/pelican-ride/'][0..4].src`。
-
-### Slot 01｜红架单车・鹈鹕出发（概念海报）
-
-- **对应条目标题**：`红架单车・鹈鹕出发`
-- **推荐 OSS 对象路径**：`personal_website_picture/game/pelican-ride/album/20261113/art-01.webp`
-
-```text
-Use case: stylized-concept (16:10 widescreen clean stylized 3D-inspired editorial illustration / game key art poster).
-Subject: A plump, expressive white pelican riding a bright vermilion-red steel-framed classic bicycle (`#C6462F`) fitted with a rustic woven wicker front basket and shiny silver handlebars.
-The pelican has crisp geometric low-poly-inspired clean planes with smooth stylized shading: snowy white rounded body, dark charcoal-slate wingtips (`#3D3F49`) gripping the handlebars, determined cute round eyes, and a long golden-orange beak (`#F2A23A`) with a cheerful soft-yellow throat pouch holding one tiny shimmering gold fish sticking halfway out.
-Pose & Camera: Dynamic three-quarter front-right heroic tracking shot on a sunlit coastal three-lane asphalt road with crisp white dashed lane dividers and red-and-white curbstones.
-Background: Sparkling turquoise ocean on the left, warm sandstone coastal cliffs on the right, bright clear daytime sky with crisp sunlit clouds and subtle speed-wind lines around the spinning spoked wheels.
-Clean refined Japanese stylized vector-3D hybrid aesthetic, vibrant focal vermilion red against cool sea cyan, ZERO text, ZERO title logo, ZERO HUD overlay.
-```
-
-### Slot 02｜三档跳台・峡谷飞跃
-
-- **对应条目标题**：`三档跳台・峡谷飞跃`
-- **推荐 OSS 对象路径**：`personal_website_picture/game/pelican-ride/album/20261113/art-02.webp`
-
-```text
-Use case: stylized-concept (16:10 widescreen dynamic action illustration for "Pelican Ride").
-Scene: Mid-air stunt jump! The plump white pelican on its vermilion-red bicycle with woven wicker basket has just launched high off a sleek three-tier striped launch ramp painted in teal, amber, and vermilion chevron markings along a cliffside coastal highway.
-Right below the soaring bicycle and pelican stretches a dramatic sunlit canyon road curve beside bright cerulean sea waves, leading straight toward a stone cliff tunnel archway in the distance.
-The pelican leans forward excitedly over the handlebars, wing feathers fanned out for balance, wind streaming past its red bike frame, and a row of floating shiny silver souvenir tokens arcing through the air along the jump trajectory right ahead of the front wheel.
-Crisp sunlit shadows, fresh geometric stylized modeling feel, exhilarating height and motion blur only on the background cliff edges, ZERO text, ZERO watermark.
-```
-
-### Slot 03｜红辣椒冲刺・炽热赛道
-
-- **对应条目标题**：`红辣椒冲刺・炽热赛道`
-- **推荐 OSS 对象路径**：`personal_website_picture/game/pelican-ride/album/20261113/art-03.webp`
-
-```text
-Use case: stylized-concept (16:10 widescreen high-speed arcade illustration for "Pelican Ride").
-Scene: Sunset neon-palm highway sprint! The plump white pelican on its vermilion-red bicycle has just chomped a glowing bright red chili pepper, triggering blazing infinite-sprint mode.
-From the rear wheel and exhaust trail burst sleek stylized orange-gold and crimson comic flame ribbons (`#FF5A2E`, `#FFB74D`), propelling the bicycle past a row of tall tropical palm silhouettes and sleek minimalist glowing sunset arches lining the three-lane track.
-The pelican puffs its cheeks slightly while wide-eyed with thrilled determination, pedals spinning in a bright blur, while floating golden energy soda cans glitter just ahead in the center lane.
-Warm dusk gradient sky from apricot-coral to deep twilight violet (`#2B233D`), sharp clean stylized lighting, dynamic radial speed streaks, ZERO text, ZERO UI counters.
-```
-
-### Slot 04｜樱花风道・金圈衔鱼
-
-- **对应条目标题**：`樱花风道・金圈衔鱼`
-- **推荐 OSS 对象路径**：`personal_website_picture/game/pelican-ride/album/20261113/art-04.webp`
-
-```text
-Use case: stylized-concept (16:10 widescreen whimsical spring-airborne illustration for "Pelican Ride").
-Scene: Bouncing straight off a bright striped roadside spring pad below, the white pelican and its vermilion-red bicycle soar gracefully through a fluttering cloud of soft pink sakura blossoms alongside a sunlit cherry-tree boulevard.
-Directly ahead in mid-air floats a gleaming circular golden ring hoop with a plump sparkling gold fish hovering right at its center. The pelican stretches its neck forward and opens its huge golden-orange beak and elastic throat pouch wide, mere inches from snapping up the flying gold fish cleanly inside the hoop.
-Soft spring afternoon light, drifting pink flower petals catching sunlit rim highlights against crisp blue sky and gentle pastel clouds, joyful whimsical rhythm-arcade charm, ZERO text, ZERO watermark.
-```
-
-### Slot 05｜极光终点・夜航纪念章（概念海报）
-
-- **对应条目标题**：`极光终点・夜航纪念章`
-- **推荐 OSS 对象路径**：`personal_website_picture/game/pelican-ride/album/20261113/art-05.webp`
-
-```text
-Use case: stylized-concept (16:10 widescreen serene night-stage finale concept poster for "Pelican Ride").
-Scene: Under a sweeping velvet night sky lit by shimmering emerald-green and violet aurora ribbons (`#3CE3B5`, `#8E6CEB`) above calm polar sea water dotted with crisp faceted icebergs, the white pelican coasts smoothly along the illuminated starry roadway on its vermilion-red bicycle.
-The bike's round chrome headlight beam cuts gently forward onto the asphalt lane markings. Inside the bicycle's front woven wicker basket sit three shiny metallic gold souvenir badges and two cute plump goldfish tails peeking up cozily, while the pelican's orange pouch looks contentedly full.
-A peaceful finish archway glows softly ahead on the horizon with twinkling festival string lights.
-Refined atmospheric night contrast, crisp faceted low-poly charm blended with smooth painterly sky glow, ZERO text, ZERO watermark.
-```
-
----
-
-## 三、主站画廊 `/gallery/` 扩展插画提示词（5 张）
+## 二、主站画廊 `/gallery/` 扩展插画提示词（5 张）
 
 > 说明：主站 `src/content/gallery.json` 目前支持六个分类标签：`插画`、`漫画`、`海报`、`角色立绘`、`常服设定`、`头像特写`。以下 5 张涵盖场景插画、四格漫画、常服三件套设定、活动海报与日系氛围图。上传后写入 `personal_website_picture/nuonuo_gallery/<日期>/...webp` 并追加条目到 `src/content/gallery.json`。
 
@@ -193,31 +122,28 @@ Pose & Layout: Center main standing full-body pose looking warmly forward with o
 Crisp uniform purple ink contours, flat clean cel shading, pure transparent background, ZERO text labels.
 ```
 
-### 5. 【海报】诺诺的游戏厅周末特辑海报（3:4 竖版印刷风海报）
+### 5. 【海报】诺诺的基地游戏夜特辑海报（3:4 竖版印刷风海报）
 
 - **分类 (`category`)**：`海报`
 - **推荐 OSS 路径**：`personal_website_picture/nuonuo_gallery/20261113/arcade-weekend-poster.webp`
-- **设计思路**：串联本轮《果冻 2048》与《鹈鹕骑车》两款小游戏，为画廊添一张高完成度 3:4 竖版手账印刷风宣传海报。
+- **设计思路**：联动《果冻 2048》与诺诺经典的像素掌机元素，为画廊添一张高完成度 3:4 竖版手账印刷风宣传海报。
 
 ```text
 Use case: editorial-poster (3:4 vertical Japanese independent magazine / zine exhibition poster composition, hairline geometric grid layout on warm cream paper `#FBF8F3`).
 Input 1 is the character reference for Nuonuo (`character/standard.png`): preserve her exact pale lilac-white long hair, large violet eyes, pink five-petal blossom clip + lavender ribbon on her anatomical right (viewer-left), ONLY top cat ears (NO human ears), white-and-lavender sailor uniform, and white tail with pink bow + rose-pink bell.
 Poster Composition: Clean minimalist 1px vermilion-red (`#C6462F`) and slate-ink editorial framing with subtle dot-matrix corner registration marks and clean paper whitespace.
-Centerpiece: Cheerful waist-up pose of Nuonuo in an energetic showcase gesture—one hand cradling a miniature glossy glass cube jar filled with tiny colorful smiling jelly blocks (`Jelly 2048` homage), and the other hand presenting a cute miniature red-framed toy bicycle carrying a tiny round white-and-orange plush pelican figurine (`Pelican Ride` homage).
-Surrounding framing vignettes in tidy crisp rectangular hairline boxes along the corners show simple iconic silhouettes of four-point stars, a cat paw stamp, pixel sparkles, and dashed race-track stripes.
+Centerpiece: Cheerful waist-up pose of Nuonuo in an energetic showcase gesture—one hand cradling a miniature glossy glass cube jar filled with tiny colorful smiling jelly blocks (`Jelly 2048` homage), and the other hand playfully raising her signature pastel-lilac retro handheld console wrapped in cat-ear charms.
+Surrounding framing vignettes in tidy crisp rectangular hairline boxes along the corners show simple iconic silhouettes of four-point stars, a cat paw stamp, pixel sparkles, and minimalist directional cross-pad icons.
 Crisp purple line-art, fresh coral-vermilion + pastel-lavender + cream palette, zero garbled faux-typography, ZERO unreadable small text, clean print-poster graphic elegance.
 ```
 
 ---
 
-## 四、GPT 生成完图片后的接入速查清单
+## 三、GPT 生成完图片后的接入速查清单
 
 1. **《果冻 2048》画册第 04、05 格**：
    - 将图片转为 WebP 后上传至 `personal_website_picture/game/jelly-2048/album/20261113/art-04.webp`、`art-05.webp`。
    - 打开 [`src/config/site.ts`](../src/config/site.ts)，在 `gameAlbums['/game/jelly-2048/']` 第 4、5 个对象里分别加上 `src: '${JELLY_2048_ALBUM_DIR}/art-04.webp'` 和 `art-05.webp`。
-2. **《鹈鹕骑车》画册第 01–05 格**：
-   - 上传 5 张 WebP 至 `personal_website_picture/game/pelican-ride/album/20261113/art-01.webp` ～ `art-05.webp`。
-   - 在 [`src/config/site.ts`](../src/config/site.ts) 新增 `PELICAN_ALBUM_DIR` 常量，并将地址依次填入 `gameAlbums['/game/pelican-ride/']` 的 5 个条目的 `src`。
-3. **主站画廊 `/gallery/` 扩展**：
+2. **主站画廊 `/gallery/` 扩展**：
    - 上传 5 张 WebP 至 `personal_website_picture/nuonuo_gallery/20261113/...webp`。
    - 按 `src/content/gallery.json` 现有格式追加作品对象（注意 `秋日焦糖开衫与贝雷帽设定页` 若为透明底 PNG 转 lossless/alpha WebP，可设 `"cutout": true`）。
