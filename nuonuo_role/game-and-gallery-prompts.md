@@ -22,7 +22,7 @@
 
 ## 一、游戏画册：《果冻 2048》待补 2 张（Slots 04–05）
 
-> 说明：Slots `01`、`02`、`03` 已使用 `shot-01.webp`～`shot-03.webp` 三张实机高密度果冻截图接入 `src/config/site.ts`。以下 2 张补足第 `04`、`05` 格，上传后直接把 URL 填进 `gameAlbums['/game/jelly-2048/'][3].src` 与 `[4].src`。
+> 说明：Slots `01`、`02`、`03` 已使用新版实机截图 `live-01.webp`～`live-03.webp` 接入 `src/config/site.ts`。以下 2 张补足第 `04`、`05` 格，上传后直接把 URL 填进 `gameAlbums['/game/jelly-2048/'][3].src` 与 `[4].src`。
 
 ### Slot 04｜双冻相撞・Q 弹合成瞬间
 
