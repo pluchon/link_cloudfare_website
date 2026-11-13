@@ -100,5 +100,37 @@
     "category": "头像特写",
     "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/character/closeup-square.webp",
     "publishedAt": "2026-11-11"
+  },
+  {
+    "id": "16",
+    "title": "黑洞观测甲板的下午茶",
+    "summary": "诺诺在观测甲板上吃草莓芭菲，桌上摊着笔记本，窗外是黑洞的金橙色吸积盘。",
+    "category": "插画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/aurora-tea-deck.webp",
+    "publishedAt": "2026-11-13"
+  },
+  {
+    "id": "17",
+    "title": "半夜调 Bug 四格：从破防到绿灯",
+    "summary": "诺诺从盯着报错发愁，到看懂便签上的示意图。测试亮起绿勾，她抱着金鱼玩偶在桌上睡着了。",
+    "category": "漫画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/midnight-debug-4koma.webp",
+    "publishedAt": "2026-11-13"
+  },
+  {
+    "id": "18",
+    "title": "梅雨书店檐下的透明伞",
+    "summary": "诺诺撑着透明伞，在书店檐下伸手接雨滴。窗里的暖光映在湿润的石板上。",
+    "category": "插画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/rainy-eaves-umbrella.webp",
+    "publishedAt": "2026-11-13"
+  },
+  {
+    "id": "20",
+    "title": "诺诺的基地游戏夜特辑海报",
+    "summary": "诺诺一手托着彩色果冻罐，一手举起淡紫掌机，朱红细线框内点缀猫爪和像素星星。",
+    "category": "海报",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/arcade-weekend-poster.webp",
+    "publishedAt": "2026-11-13"
   }
 ]

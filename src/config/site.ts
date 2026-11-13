@@ -204,11 +204,13 @@ export const gameAlbums: Record<string, readonly GameAlbumEntry[]> = {
       id: '04',
       title: '双冻相撞',
       caption: '六四融成一二八',
+      src: `${JELLY_2048_ALBUM_DIR}/art-04.webp`,
     },
     {
       id: '05',
       title: '桌面静隅',
       caption: '玻璃井边歇口气',
+      src: `${JELLY_2048_ALBUM_DIR}/art-05.webp`,
     },
   ],
   '/game/pelican-ride/': [
