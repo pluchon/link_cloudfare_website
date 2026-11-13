@@ -5,12 +5,14 @@
 
     python scripts/game-audio/pelican.py
 
-产出三个文件。两个 mp3 在 scripts/game-audio/out/（不入库，传到 OSS 才会被网页用到），audio.json 进 src/game/pelican/audio/：
-    sfx.mp3    所有音效拼成一条
-    bgm.mp3    背景音乐，循环段前后各多留了半秒
-    audio.json 每个音效从第几秒开始、多长，背景音乐的循环点，文件名里的 stamp，还有这次生成的时刻 version
+    python scripts/game-audio/pelican.py cave neon   只重渲这几首配乐（音效每次都重渲）
 
-两个 mp3 生成以后要传到 OSS 才会被网页用到：python scripts/game-audio/upload.py。
+产出这些文件。mp3 在 scripts/game-audio/out/（不入库，传到 OSS 才会被网页用到），audio.json 进 src/game/pelican/audio/：
+    sfx.mp3          所有音效拼成一条
+    bgm_<短名>.mp3   每个场景一首配乐，循环段前后各多留了半秒
+    audio.json       每个音效从第几秒开始、多长，每首配乐的循环点，哪个场景用哪首，文件名里的 stamp，这次生成的时刻 version
+
+mp3 生成以后要传到 OSS 才会被网页用到：python scripts/game-audio/upload.py。
 OSS 上的文件名不变（用户要求同名替换，stamp 沿用 audio.json 里已有的），网页请求时在地址后面带 ?v=version，
 每次重新生成 version 都变，浏览器才不会拿着旧文件去配新的时间点。
 
@@ -221,6 +223,8 @@ def shape(samples: array.array, target: float, longest: float) -> array.array:
     return out
 
 
+# 音效混完都过一道低通，再看要不要混响（用户嫌过尖）
+SOFT = ",lowpass=f=5600"
 REVERB = ",aecho=0.8:0.85:70|130:0.22|0.14"
 
 
@@ -229,12 +233,12 @@ def effects() -> dict[str, tuple[list[Part], bool, float, float]]:
     table: dict[str, tuple[list[Part], bool, float, float]] = {}
     # 吃鱼：连着吃的时候一条比一条高，六个音是一组五声音阶
     for i, name in enumerate(["E4", "G4", "A4", "B4", "D5", "E5"]):
-        table[f"fish{i}"] = ([("kalimba", [(0, 0.6, key(name), 104)], 0.0), ("glock", [(0, 0.4, key(name) + 24, 60)], -12.0)], False, -6.0, 0.7)
-    table["gold"] = ([("glock", [(0, 0.5, key("E6"), 100), (0.16, 0.5, key("G6"), 104), (0.32, 1.2, key("C7"), 110)], 0.0), ("chimes", [(0, 1.4, key("C5"), 80)], -8.0)], True, -5.0, 1.6)
+        table[f"fish{i}"] = ([("kalimba", [(0, 0.6, key(name), 104)], 0.0), ("glock", [(0, 0.4, key(name) + 12, 48)], -16.0)], False, -6.0, 0.7)
+    table["gold"] = ([("glock", [(0, 0.5, key("E5"), 90), (0.16, 0.5, key("G5"), 94), (0.32, 1.2, key("C6"), 100)], -3.0), ("chimes", [(0, 1.4, key("C5"), 80)], -5.0)], True, -5.0, 1.6)
     table["bolt"] = (
         [
             ("chimes", [(0, 1.6, key("C5"), 96), (0, 1.6, key("G5"), 90)], 0.0),
-            ("glock", [(0.2, 0.4, key("C6"), 96), (0.4, 0.4, key("G6"), 100), (0.6, 1.2, key("C7"), 108)], -3.0),
+            ("glock", [(0.2, 0.4, key("C5"), 90), (0.4, 0.4, key("G5"), 94), (0.6, 1.2, key("C6"), 100)], -6.0),
             ("kit", [(0, 2, 62, 84)], -6.0),
         ],
         True,
@@ -254,7 +258,7 @@ def effects() -> dict[str, tuple[list[Part], bool, float, float]]:
     table["land"] = ([("kit", [(0, 0.5, 36, 84), (0, 0.3, 46, 60)], 0.0)], False, -9.0, 0.5)
     table["dash"] = ([("kit", [(0, 1.2, 60, 100), (0, 0.8, 56, 80)], 0.0)], True, -7.0, 1.3)
     # 穿过奖励圈：两声往上的钟琴，底下垫一下竖琴
-    table["ring"] = ([("glock", [(0, 0.3, key("G6"), 100), (0.12, 0.9, key("D7"), 108)], 0.0), ("harp", [(0, 0.9, key("G4"), 90), (0.06, 0.9, key("D5"), 92)], -5.0)], True, -6.0, 1.1)
+    table["ring"] = ([("glock", [(0, 0.3, key("G5"), 90), (0.12, 0.9, key("D6"), 96)], -3.0), ("harp", [(0, 0.9, key("G4"), 90), (0.06, 0.9, key("D5"), 92)], -3.0)], True, -6.0, 1.1)
     # 弹簧垫：马林巴从低到高很快地滑上去，像「嘣」的一下
     table["spring"] = (
         [
@@ -267,6 +271,27 @@ def effects() -> dict[str, tuple[list[Part], bool, float, float]]:
     )
     # 撞上路障：木箱鼓闷的一下，加一声铃鼓，像撞翻了什么
     table["bump"] = ([("kit", [(0, 0.5, 36, 110), (0.02, 0.4, 38, 96), (0.04, 0.5, 54, 92), (0.03, 0.3, 65, 84)], 0.0), ("marimba", [(0, 0.3, key("C3"), 100)], -4.0)], False, -6.0, 0.7)
+    # 掉下悬崖：马林巴从高往低一路滑下去，最后箱鼓闷的一下
+    table["fall"] = (
+        [
+            ("marimba", [(i * 0.07, 0.3, key(name), 100 - i * 4) for i, name in enumerate(["C5", "A4", "F4", "D4", "C4", "A3", "F3"])], 0.0),
+            ("kit", [(0.55, 0.5, 36, 100), (0.56, 0.4, 54, 70)], -4.0),
+        ],
+        False,
+        -7.0,
+        1.1,
+    )
+    # 超级加速：竖琴一口气刮上去，接一串风铃，像一下子被风推走
+    table["super"] = (
+        [
+            ("harp", [(i * 0.035, 0.6, key(name), 80 + i * 2) for i, name in enumerate(["C4", "E4", "G4", "A4", "C5", "D5", "E5", "G5", "A5", "C6"])], 0.0),
+            ("chimes", [(0.36, 1.6, key("C5"), 84), (0.36, 1.6, key("G5"), 78)], -5.0),
+            ("kit", [(0, 2, 62, 90), (0.36, 1.2, 60, 76)], -5.0),
+        ],
+        True,
+        -6.0,
+        2.0,
+    )
     table["gate"] = ([("chimes", [(0, 1.4, key("E4"), 76), (0.5, 1.4, key("G4"), 80), (1.0, 2.4, key("C5"), 86)], 0.0)], True, -9.0, 2.6)
     table["bell"] = ([("kit", [(0, 0.5, 81, 100), (0.36, 1.2, 81, 108)], 0.0)], True, -7.0, 1.6)
     run_up = [(i * 0.25, 0.3, key(name), 96 + i * 4) for i, name in enumerate(["C5", "E5", "G5", "C6"])]
@@ -274,7 +299,7 @@ def effects() -> dict[str, tuple[list[Part], bool, float, float]]:
     table["finish"] = (
         [
             ("marimba", run_up + chord, 0.0),
-            ("glock", [(start, dur, note + 12, 84) for start, dur, note, _ in run_up + chord], -8.0),
+            ("glock", [(start, dur, note, 72) for start, dur, note, _ in run_up + chord], -12.0),
             ("chimes", [(1.25, 3, key("C4"), 90), (1.25, 3, key("G4"), 84)], -5.0),
             ("kit", [(1.25, 3, 64, 90)], -5.0),
         ],
@@ -291,7 +316,7 @@ def build_effects() -> dict[str, list[float]]:
     marks: dict[str, list[float]] = {}
     sprite.extend(gap)
     for name, (parts, reverb, target, longest) in effects().items():
-        clip = shape(load(mix(name, 120, parts, REVERB if reverb else "")), target, longest)
+        clip = shape(load(mix(name, 120, parts, SOFT + (REVERB if reverb else ""))), target, longest)
         marks[name] = [round(len(sprite) / 2 / RATE, 4), round(len(clip) / 2 / RATE, 4)]
         logger.info("音效 %-7s 长 %.2f 秒，平均响度 %.1f dB", name, marks[name][1], rms_db(clip))
         sprite.extend(clip)
@@ -302,89 +327,219 @@ def build_effects() -> dict[str, list[float]]:
     return marks
 
 
-# 背景音乐：C 大调，108 拍，16 小节一圈
-BPM = 108
+# 背景音乐：每个场景一首（用户要求「每个场景最好有不同的音乐」），调、速度、领奏乐器、伴奏和节奏型都不同，旋律按场景自己的种子生成。
+# 用户嫌过早先那首「有点尖锐」：领奏是中音区的马林巴，后半圈还有钟琴在高八度跟着。现在领奏压在中音区、不用钟琴，混完再削一刀高频
 BARS = 16
-CHORDS = {"C": (48, 52, 55), "Am": (45, 48, 52), "F": (41, 45, 48), "G": (43, 47, 50), "Em": (40, 43, 47)}
-PROGRESSION = ["C", "C", "Am", "Am", "F", "F", "G", "G", "C", "Em", "F", "G", "Am", "F", "G", "G"]
-# 旋律：两小节一句，每个音是（句内第几拍，几拍长，音名）
-MELODY = [
-    [(0, 0.5, "E5"), (0.5, 0.5, "G5"), (1, 1, "A5"), (2, 0.5, "G5"), (2.5, 0.5, "E5"), (3, 1, "D5"), (4, 1.5, "C5"), (5.5, 0.5, "D5"), (6, 2, "E5")],
-    [(0, 0.5, "C5"), (0.5, 0.5, "E5"), (1, 1, "G5"), (2, 0.5, "E5"), (2.5, 0.5, "C5"), (3, 1, "A4"), (4, 1.5, "C5"), (5.5, 0.5, "A4"), (6, 2, "G4")],
-    [(0, 0.5, "A4"), (0.5, 0.5, "C5"), (1, 1, "F5"), (2, 0.5, "E5"), (2.5, 0.5, "C5"), (3, 1, "A4"), (4, 1, "C5"), (5, 1, "D5"), (6, 2, "C5")],
-    [(0, 0.5, "B4"), (0.5, 0.5, "D5"), (1, 1, "G5"), (2, 0.5, "A5"), (2.5, 0.5, "G5"), (3, 1, "D5"), (4, 1, "E5"), (5, 1, "D5"), (6, 1.5, "G5"), (7.5, 0.5, "A5")],
-    [(0, 1, "C6"), (1, 0.5, "A5"), (1.5, 0.5, "G5"), (2, 1, "E5"), (3, 1, "G5"), (4, 1, "B5"), (5, 0.5, "G5"), (5.5, 0.5, "E5"), (6, 2, "G5")],
-    [(0, 1, "A5"), (1, 0.5, "F5"), (1.5, 0.5, "C5"), (2, 1, "F5"), (3, 1, "A5"), (4, 1, "G5"), (5, 0.5, "D5"), (5.5, 0.5, "B4"), (6, 2, "D5")],
-    [(0, 0.5, "E5"), (0.5, 0.5, "A5"), (1, 1, "C6"), (2, 0.5, "A5"), (2.5, 0.5, "E5"), (3, 1, "C5"), (4, 0.5, "F5"), (4.5, 0.5, "A5"), (5, 1, "C6"), (6, 2, "A5")],
-    [(0, 1, "G5"), (1, 1, "B5"), (2, 1, "D6"), (3, 1, "B5"), (4, 0.5, "G5"), (4.5, 0.5, "A5"), (5, 0.5, "B5"), (5.5, 0.5, "D6"), (6, 1, "E6"), (7, 1, "D6")],
+# 和弦级数 -> 根音离主音几个半音、大三还是小三
+DEGREES = {
+    "I": (0, "maj"), "ii": (2, "min"), "iii": (4, "min"), "IV": (5, "maj"), "V": (7, "maj"), "vi": (9, "min"),
+    "i": (0, "min"), "iv": (5, "min"), "v": (7, "min"), "III": (3, "maj"), "VI": (8, "maj"), "VII": (10, "maj"),
+}
+PROGRESSIONS = {
+    "maj": [
+        ["I", "I", "vi", "vi", "IV", "IV", "V", "V", "I", "iii", "IV", "V", "vi", "IV", "V", "V"],
+        ["I", "V", "vi", "IV", "I", "V", "IV", "IV", "vi", "IV", "I", "V", "vi", "IV", "ii", "V"],
+        ["I", "IV", "I", "V", "vi", "IV", "ii", "V", "I", "IV", "iii", "vi", "ii", "IV", "V", "V"],
+    ],
+    "min": [
+        ["i", "i", "VI", "VI", "III", "III", "VII", "VII", "i", "iv", "VI", "VII", "i", "iv", "v", "v"],
+        ["i", "VII", "VI", "VII", "i", "VII", "VI", "v", "iv", "VI", "III", "VII", "iv", "VI", "v", "v"],
+    ],
+}
+# 旋律用五声音阶（相对主音的半音数），不会有刺耳的半音
+PENTA = {"maj": [0, 2, 4, 7, 9], "min": [0, 3, 5, 7, 10]}
+# 两小节一句的节奏型：（句内第几拍，几拍长）。慢歌用后两种，音少一点
+RHYTHMS = [
+    [(0, 1), (1, 0.5), (1.5, 0.5), (2, 1), (3, 1), (4, 1.5), (5.5, 0.5), (6, 2)],
+    [(0, 0.5), (0.5, 0.5), (1, 1), (2, 0.5), (2.5, 0.5), (3, 1), (4, 1), (5, 1), (6, 2)],
+    [(0, 1.5), (1.5, 0.5), (2, 1), (3, 1), (4, 0.5), (4.5, 0.5), (5, 1), (6, 1.5), (7.5, 0.5)],
+    [(0, 2), (2, 1), (3, 1), (4, 3), (7, 1)],
+    [(0, 1), (1, 1), (2, 2), (4, 1.5), (5.5, 0.5), (6, 2)],
 ]
-# 各轨用什么乐器、相对音量（dB）。乐器都校准过了，这里的数字就是真正的大小关系
-LAYOUT = [("lead", "marimba", 0.0), ("harp", "harp", -6.0), ("bass", "marimba", -5.0), ("comp", "kalimba", -10.0), ("bells", "glock", -12.0), ("drums", "kit", -5.0)]
+
+# 每个场景一首：场景名（和 scenes.ts 里的 name 一样）、文件名里用的短名、主音（领奏那个八度的键号）、大调小调、速度、
+# 领奏、伴奏、节奏型、种子
+SONGS = [
+    ("海滨晨光", "beach", 62, "maj", 104, "marimba", "harp", "light", 11),
+    ("花田风车", "flower", 65, "maj", 112, "kalimba", "harp", "folk", 23),
+    ("樱花大道", "sakura", 57, "min", 92, "harp", "kalimba", "soft", 37),
+    ("松林小屋", "pine", 55, "maj", 96, "harp", "marimba", "folk", 41),
+    ("秋日山谷", "autumn", 64, "min", 98, "marimba", "harp", "light", 53),
+    ("沙漠峡谷", "desert", 62, "min", 100, "kalimba", "marimba", "dance", 67),
+    ("棕榈晚霞", "palm", 58, "maj", 94, "marimba", "kalimba", "light", 71),
+    ("灯塔夜海", "lighthouse", 56, "maj", 84, "harp", "chimes", "sparse", 83),
+    ("霓虹都市", "neon", 57, "min", 116, "marimba", "kalimba", "dance", 97),
+    ("极光雪原", "aurora", 64, "maj", 80, "harp", "chimes", "sparse", 101),
+    ("雪山黎明", "dawn", 60, "maj", 88, "harp", "chimes", "soft", 113),
+    ("气球之丘", "balloon", 67, "maj", 120, "kalimba", "marimba", "folk", 127),
+    ("高山峡谷", "canyon", 62, "maj", 100, "harp", "marimba", "folk", 131),
+    ("溪谷飞瀑", "creek", 65, "maj", 92, "kalimba", "harp", "soft", 139),
+    ("水晶洞穴", "cave", 54, "min", 82, "harp", "chimes", "sparse", 149),
+]
+# 各轨相对音量（dB）。乐器都校准过了，这里的数字就是真正的大小关系
+GAINS = {"lead": 0.0, "comp": -7.0, "bass": -5.0, "drums": -7.0}
+# 混完接的滤镜：混响、削高频（尖不尖主要在这一刀）、统一响度。响度比早先那首低一点
+MUSIC_CHAIN = ",aecho=0.85:0.9:90|173|287:0.22|0.16|0.1,lowpass=f=4800,treble=g=-3:f=3000,loudnorm=I=-21:TP=-3:LRA=8,alimiter=limit=0.85"
 
 
-def one_loop(offset: float) -> dict[str, list[Note]]:
+def chord_notes(tonic: int, degree: str) -> list[int]:
+    """这个和弦的三个音，放在主音往下一个八度那一组。"""
+    root, quality = DEGREES[degree]
+    base = tonic - 12 + root
+    return [base, base + (4 if quality == "maj" else 3), base + 7]
+
+
+def write_melody(tonic: int, mode: str, chords: list[str], slow: bool, random) -> list[Note]:
+    """生成十六小节的旋律：八句、两小节一句，按 A A' B C A A' B' 尾 排。强拍落在和弦音上，其余按音阶一步一步走。"""
+    scale = sorted({tonic + octave * 12 + step for octave in (-1, 0, 1) for step in PENTA[mode]})
+    scale = [note for note in scale if tonic - 3 <= note <= tonic + 16]
+
+    def phrase(start_bar: int, rhythm: list[tuple[float, float]], last: int) -> list[tuple[float, float, int]]:
+        out: list[tuple[float, float, int]] = []
+        for index, (beat, dur) in enumerate(rhythm):
+            bar = start_bar + int(beat // 4)
+            tones = {note % 12 for note in chord_notes(tonic, chords[bar])}
+            strong = beat % 2 == 0
+            if strong or index == len(rhythm) - 1:
+                near = sorted((note for note in scale if note % 12 in tones), key=lambda note: abs(note - last) + random() * 3)
+                pick = near[0]
+                # 句尾落在和弦根音上，听着像说完了一句
+                if index == len(rhythm) - 1:
+                    root = (chord_notes(tonic, chords[bar])[0]) % 12
+                    roots = [note for note in scale if note % 12 == root]
+                    # 根音不在五声音阶里（比如四级和弦）就落在最近的和弦音上
+                    if roots:
+                        pick = min(roots, key=lambda note: abs(note - last))
+            else:
+                at = min(range(len(scale)), key=lambda i: abs(scale[i] - last))
+                move = random.choice([-2, -1, -1, 1, 1, 2])
+                pick = scale[max(0, min(len(scale) - 1, at + move))]
+            out.append((beat, dur, pick))
+            last = pick
+        return out
+
+    pool = [3, 4] if slow else [0, 1, 2, 4]
+    pick_rhythm = lambda: RHYTHMS[pool[int(random() * len(pool))]]
+    a = phrase(0, pick_rhythm(), tonic + 4)
+    # A' 前一小节和 A 一样，后一小节换个说法
+    head = [note for note in a if note[0] < 4]
+    a2 = head + [note for note in phrase(2, pick_rhythm(), head[-1][2]) if note[0] >= 4]
+    b = phrase(4, pick_rhythm(), tonic + 7)
+    c = phrase(6, pick_rhythm(), b[-1][2])
+    b2 = phrase(12, pick_rhythm(), tonic + 9)
+    end = phrase(14, pick_rhythm(), b2[-1][2])
+    notes: list[Note] = []
+    for at, body in [(0, a), (8, a2), (16, b), (24, c), (32, a), (40, a2), (48, b2), (56, end)]:
+        for beat, dur, note in body:
+            notes.append((at + beat, dur, note, 78 if beat % 2 == 0 else 68))
+    return notes
+
+
+class Seeded:
+    """固定种子的随机数，同一个场景每次生成都是同一首。"""
+
+    def __init__(self, seed: int) -> None:
+        self.state = seed * 2654435761 % 4294967296
+
+    def __call__(self) -> float:
+        self.state = (self.state * 1664525 + 1013904223) % 4294967296
+        return self.state / 4294967296
+
+    def choice(self, items: list[int]) -> int:
+        return items[int(self() * len(items))]
+
+
+def one_loop(offset: float, tonic: int, chords: list[str], melody: list[Note], comp: str, groove: str) -> dict[str, list[Note]]:
     """一圈 16 小节里每一轨弹什么，offset 是这一圈从第几拍开始。"""
-    harp: list[Note] = []
     bass: list[Note] = []
-    comp: list[Note] = []
-    lead: list[Note] = []
-    bells: list[Note] = []
+    backing: list[Note] = []
     drums: list[Note] = []
-    for bar, name in enumerate(PROGRESSION):
-        low, mid, top = CHORDS[name]
+    for bar, degree in enumerate(chords):
+        low, mid, top = chord_notes(tonic, degree)
         start = offset + bar * 4
-        # 竖琴：八分音符的分解和弦
-        for step, note in enumerate([low + 12, top + 12, mid + 24, top + 12, low + 24, top + 12, mid + 24, top + 12]):
-            harp.append((start + step * 0.5, 1.5, note, 70 if step % 2 == 0 else 58))
-        # 低音：马林巴的低音区，一拍和三拍，三拍前垫一个小切分
-        bass += [(start, 1.5, low - 12, 92), (start + 2.5, 0.5, low - 12, 70), (start + 3, 1, low - 12, 84)]
-        # 卡林巴：反拍上的和弦
-        for beat in (1.5, 3.5):
-            comp += [(start + beat, 0.5, note + 12, 64) for note in (low, mid, top)]
-        # 沙锤一直摇，箱鼓一三拍低音、二四拍拍边
-        for step in range(8):
-            drums.append((start + step * 0.5, 0.25, 42 if step % 2 == 0 else 44, 62 if step % 2 == 0 else 44))
-        drums += [(start, 0.5, 36, 84), (start + 2.5, 0.5, 36, 66), (start + 1, 0.5, 38, 60), (start + 3, 0.5, 38, 64)]
-        if bar % 4 == 3:
-            drums += [(start + 3, 0.25, 75, 70), (start + 3.5, 0.25, 75, 78)]
-        if bar % 2 == 1:
-            drums.append((start + 2, 0.5, 54, 50))
-    for phrase, notes in enumerate(MELODY):
-        for beat, dur, name in notes:
-            at = offset + phrase * 8 + beat
-            lead.append((at, dur, key(name), 96))
-            # 后半圈加钟琴在高八度轻轻跟着
-            if phrase >= 4:
-                bells.append((at, dur, key(name) + 12, 60))
-    return {"harp": harp, "bass": bass, "comp": comp, "lead": lead, "bells": bells, "drums": drums}
+        # 低音：再往下一个八度，一拍和三拍
+        bass += [(start, 1.5, low - 12, 80), (start + 2.5, 0.5, low - 12, 60), (start + 3, 1, low - 12, 72)]
+        if comp == "harp":
+            # 竖琴：八分音符的分解和弦
+            for step, note in enumerate([low, top, mid + 12, top, low + 12, top, mid + 12, top]):
+                backing.append((start + step * 0.5, 1.5, note, 64 if step % 2 == 0 else 52))
+        elif comp == "kalimba":
+            # 卡林巴：反拍上的和弦
+            for beat in (1.5, 3.5):
+                backing += [(start + beat, 0.5, note + 12, 58) for note in (low, mid, top)]
+        elif comp == "marimba":
+            # 马林巴：每拍滚一个和弦音，第一拍重一点
+            for beat, note in enumerate((low, top, mid, top)):
+                backing.append((start + beat, 0.9, note + 12, 66 if beat == 0 else 52))
+        else:
+            # 手钟：每小节一个长长的和弦，垫在底下
+            backing += [(start, 4, note + 12, 56) for note in (low, mid, top)]
+        if groove == "light":
+            for step in range(8):
+                drums.append((start + step * 0.5, 0.25, 42 if step % 2 == 0 else 44, 54 if step % 2 == 0 else 38))
+            drums += [(start, 0.5, 36, 76), (start + 2.5, 0.5, 36, 58), (start + 1, 0.5, 38, 52), (start + 3, 0.5, 38, 56)]
+        elif groove == "folk":
+            drums += [(start, 0.5, 36, 78), (start + 1.5, 0.5, 36, 56), (start + 2, 0.5, 36, 70)]
+            drums += [(start + beat, 0.25, 65, 52) for beat in (0.5, 1.5, 2.5, 3.5)]
+            if bar % 2 == 1:
+                drums.append((start + 3, 0.5, 54, 48))
+        elif groove == "dance":
+            drums += [(start + beat, 0.5, 36, 76) for beat in range(4)]
+            drums += [(start + 1, 0.5, 38, 60), (start + 3, 0.5, 38, 64)]
+            drums += [(start + beat + 0.5, 0.25, 56, 46) for beat in range(4)]
+        elif groove == "soft":
+            drums += [(start, 0.5, 36, 62), (start + 1, 0.25, 44, 40), (start + 3, 0.25, 44, 44)]
+            if bar % 4 == 0:
+                drums.append((start, 2, 64, 60))
+        else:
+            if bar % 2 == 0:
+                drums.append((start, 0.5, 36, 56))
+            if bar % 4 == 0:
+                drums.append((start, 2, 64, 58))
+            if bar % 4 == 2:
+                drums.append((start + 2, 1, 81, 44))
+    lead = [(offset + beat, dur, note, vel) for beat, dur, note, vel in melody]
+    return {"lead": lead, "comp": backing, "bass": bass, "drums": drums}
 
 
-def build_music() -> dict[str, float]:
+def build_song(slug: str, tonic: int, mode: str, bpm: float, lead: str, comp: str, groove: str, seed: int) -> dict[str, float]:
+    random = Seeded(seed)
+    chords = PROGRESSIONS[mode][int(random() * len(PROGRESSIONS[mode]))]
+    melody = write_melody(tonic, mode, chords, bpm < 92, random)
     beats = BARS * 4
-    length = beats * 60 / BPM
-    # 我听不到声音，所以把一圈里的每一轨单独渲出来量响度，核对有没有哪一轨盖过了别的
-    solo = one_loop(0)
-    for track, instrument, gain in LAYOUT:
-        stem = load(mix(f"stem_{track}", BPM, [(instrument, solo[track], gain)], ""))
-        logger.info("背景音乐 %-5s 单轨 平均 %.1f dB，峰值 %.1f dB", track, rms_db(stem), peak_db(stem))
+    length = beats * 60 / bpm
     # 连着渲三圈，取中间那一圈：它的开头带着上一圈的余音，接起来才没有缝
     tracks: dict[str, list[Note]] = {}
     for turn in range(3):
-        for name, notes in one_loop(turn * beats).items():
+        for name, notes in one_loop(turn * beats, tonic, chords, melody, comp, groove).items():
             tracks.setdefault(name, []).extend(notes)
-    parts: list[Part] = [(instrument, tracks[track], gain) for track, instrument, gain in LAYOUT]
-    full = mix("bgm_full", BPM, parts, ",aecho=0.85:0.9:90|173|287:0.22|0.16|0.1,loudnorm=I=-19:TP=-2:LRA=8,alimiter=limit=0.9")
-    cut = WORK / "bgm_cut.wav"
+    instruments = {"lead": lead, "comp": comp, "bass": "marimba", "drums": "kit"}
+    parts: list[Part] = [(instruments[name], tracks[name], GAINS[name]) for name in ("lead", "comp", "bass", "drums")]
+    full = mix(f"bgm_{slug}_full", bpm, parts, MUSIC_CHAIN)
+    cut = WORK / f"bgm_{slug}_cut.wav"
     run(["ffmpeg", "-v", "error", "-y", "-ss", f"{length - BGM_PAD:.5f}", "-t", f"{length + BGM_PAD * 2:.5f}", "-i", str(full), "-c:a", "pcm_s16le", "-ac", "2", "-ar", str(RATE), str(cut)])
-    run(["ffmpeg", "-v", "error", "-y", "-i", str(cut), "-c:a", "libmp3lame", "-b:a", "112k", str(WORK / "bgm.mp3")])
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(cut), "-c:a", "libmp3lame", "-b:a", "96k", str(WORK / f"bgm_{slug}.mp3")])
     samples = load(cut)
-    # 循环点前后各取 50 毫秒比一比，差得多就说明接缝对不上
     edge = int(RATE * 0.05) * 2
     head = int(RATE * BGM_PAD) * 2
     tail = head + int(RATE * length) * 2
-    logger.info("背景音乐 一圈 %.3f 秒，整体平均 %.1f dB，峰值 %.1f dB", length, rms_db(samples), peak_db(samples))
-    logger.info("循环点 开头 %.1f dB，结尾 %.1f dB", rms_db(samples[head : head + edge]), rms_db(samples[tail : tail + edge]))
+    logger.info(
+        "配乐 %-10s 一圈 %.1f 秒，平均 %.1f dB，峰值 %.1f dB，循环点 %.1f / %.1f dB",
+        slug, length, rms_db(samples), peak_db(samples), rms_db(samples[head : head + edge]), rms_db(samples[tail : tail + edge]),
+    )
     return {"loopStart": BGM_PAD, "loopEnd": round(BGM_PAD + length, 5)}
+
+
+def build_music(only: set[str] | None = None, old: dict | None = None) -> tuple[dict[str, dict[str, float]], dict[str, str]]:
+    songs: dict[str, dict[str, float]] = {}
+    scenes: dict[str, str] = {}
+    for name, slug, tonic, mode, bpm, lead, comp, groove, seed in SONGS:
+        scenes[name] = slug
+        if only and slug not in only and old and slug in old:
+            songs[slug] = old[slug]
+            continue
+        songs[slug] = build_song(slug, tonic, mode, bpm, lead, comp, groove, seed)
+    return songs, scenes
 
 
 def main() -> None:
@@ -393,15 +548,18 @@ def main() -> None:
         raise SystemExit(f"没有 {mr.SFIZZ}，先在 video-studio 里装好 sfizz")
     WORK.mkdir(parents=True, exist_ok=True)
     DEST.mkdir(parents=True, exist_ok=True)
+    # 后面跟几首的短名就只重渲这几首，其余沿用上次的循环点
+    only = set(sys.argv[1:]) or None
+    target = DEST / "audio.json"
+    previous = json.loads(target.read_text(encoding="utf8")) if target.exists() else {}
     prepare()
     marks = build_effects()
-    loop = build_music()
-    target = DEST / "audio.json"
+    songs, scenes = build_music(only, previous.get("songs"))
     now = time.strftime("%Y%m%d%H%M")
-    stamp = json.loads(target.read_text(encoding="utf8")).get("stamp", now) if target.exists() else now
-    target.write_text(json.dumps({"stamp": stamp, "version": now, "sfx": marks, "bgm": loop}, ensure_ascii=False, indent=2) + "\n", encoding="utf8")
-    for name in ("sfx.mp3", "bgm.mp3"):
-        logger.info("%s  %d KB", name, (WORK / name).stat().st_size // 1024)
+    stamp = previous.get("stamp", now)
+    target.write_text(json.dumps({"stamp": stamp, "version": now, "sfx": marks, "songs": songs, "scenes": scenes}, ensure_ascii=False, indent=2) + "\n", encoding="utf8")
+    for path in sorted(WORK.glob("*.mp3")):
+        logger.info("%s  %d KB", path.name, path.stat().st_size // 1024)
 
 
 if __name__ == "__main__":

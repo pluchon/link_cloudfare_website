@@ -32,6 +32,8 @@ export interface Spring {
   len: number;
   width: number;
   tilt: boolean;
+  // 高跳弹簧：横着铺满整条路，把车弹上前面那道这么高（米）的台阶。不写就是普通弹簧
+  high?: number;
 }
 
 type Pattern = 'line' | 'weave' | 'block' | 'spring' | 'launch' | 'ramp' | 'token' | 'pad' | 'bolt';
@@ -45,7 +47,7 @@ export interface Obstacle {
 
 // 路上能捡的东西：小鱼、金鱼、能量罐（把冲刺条加满）、半空中的奖励圈（飞起来从中间穿过去）、
 // 辣椒（一小段时间冲刺条不掉、骑得更快）、纪念品（每个场景自己的一样小东西）
-export type ItemKind = 'fish' | 'gold' | 'bolt' | 'ring' | 'chili' | 'token';
+export type ItemKind = 'fish' | 'gold' | 'bolt' | 'ring' | 'chili' | 'token' | 'rocket';
 
 export interface Item {
   s: number;
@@ -87,6 +89,13 @@ const SPRINGS_PER_SCENE = 2;
 export const LAUNCH_UP = 13;
 export const LAUNCH_SPEED = 35;
 const LAUNCH_HOLD = 32;
+// 高跳弹簧：离台阶这么远（米）；弹起来最高比台阶顶还高出这么多；起跳时速度不够就补到这么快，在空中一直往加速带的速度上靠。
+// 这几个数是配着算的：不管压上去时多快（24 到 42 米每秒），飞到台阶正上方时都比台阶高，落下来时都已经过了台阶
+export const HIGH_RUN = 20;
+export const HIGH_CLEAR = 2.7;
+export const HIGH_SPEED = 24;
+// 冲刺的速度，和 bike.ts 的 SPRINT 是同一个数：断路上的圈按冲着过去的弧线排
+const SPRINT = 28;
 // 两个要选车道的东西（跳台、弹簧、路障）之间至少隔这么远（米），大约三秒的路
 const FEATURE_GAP = 60;
 // 跳台、弹簧、路障前面先排一串鱼，把人领到该走的车道上；这是鱼打头到那样东西的距离
@@ -97,6 +106,8 @@ const LOW = 0.95;
 // 每段场景放几个纪念品，有几成的场景会掉一根辣椒
 const TOKENS_PER_SCENE = 3;
 const CHILI_CHANCE = 0.6;
+// 火箭（超级加速）：有几成的场景会掉一个
+const ROCKET_CHANCE = 0.5;
 
 // 这一局经过哪些场景、按什么顺序：全部打乱以后取前面 RUN_SCENES 个，所以每一局不光顺序不同，碰到的场景也不全一样
 export function shuffledOrder(random: () => number = Math.random): number[] {
@@ -149,25 +160,75 @@ export class Course {
       let clearFrom = s;
       // 这一段掉不掉辣椒、掉在哪
       let chiliAt = random() < CHILI_CHANCE ? s + (0.15 + random() * 0.6) * (end - s) : Infinity;
-      // 这一段有没有断层
-      const fault = this.scenes[scene].fault;
-      let faultAt = fault ? scene * SCENE_LENGTH + fault.at : Infinity;
+      let rocketAt = random() < ROCKET_CHANCE ? s + (0.2 + random() * 0.65) * (end - s) : Infinity;
+      // 这一段路面一步变高变低的地方（断层、断路、台阶），按先后排好，一个一个地布置
+      const steps = [...(this.scenes[scene].steps ?? [])].sort((a, b) => a.at - b.at);
+      const base = scene * SCENE_LENGTH;
 
       while (s < end - 30) {
-        if (fault && s > faultAt - 130) {
-          // 断层：路在这里断开，落到下面一截。前后都不放要躲的东西，只在中间那条车道排一串鱼把人领到崖边，
-          // 半空中三个圈，落地的地方等着一条金鱼
-          row(scene, faultAt - 66, 0, 9, 7);
-          const air = Math.sqrt((2 * fault.drop) / GRAVITY);
-          for (const u of [0.3, 0.55, 0.8]) {
-            const t = air * u;
-            items.push({ s: faultAt + CRUISE * t, x: 0, y: fault.drop - 0.5 * GRAVITY * t * t + 0.8, kind: 'ring', scene });
+        const step = steps[0];
+        // 这些地方前后都不放要躲的东西：断层和断路提前一百来米，台阶提前五十多米
+        if (step && s > base + step.at - (step.drop < 0 ? HIGH_RUN + 36 : step.deep ? 110 : 100)) {
+          steps.shift();
+          const at = base + step.at;
+          if (step.drop < 0) {
+            // 台阶：迎面一道石坎，前面横着一整条高跳弹簧，压上去就被弹上台阶。鱼把人领过去，弧线上一条鱼、一个圈，落地的地方一条金鱼
+            const rise = -step.drop;
+            const pad = at - HIGH_RUN;
+            row(scene, pad - 30, 0, 5, 5.6);
+            springs.push({ s: pad, x: 0, len: SPRING.len, width: ROAD_WIDTH + 2, tilt: false, high: rise });
+            const up = Math.sqrt(2 * GRAVITY * (rise + HIGH_CLEAR));
+            // 落到台阶上面那一刻
+            const air = (up + Math.sqrt(up * up - 2 * GRAVITY * rise)) / GRAVITY;
+            const along = (t: number) => LAUNCH_HOLD * t - ((LAUNCH_HOLD - HIGH_SPEED) * (1 - Math.exp(-4 * t))) / 4;
+            const arc: Array<[number, ItemKind]> = [
+              [0.2, 'fish'],
+              [0.45, 'ring'],
+              [0.7, tokens < TOKENS_PER_SCENE ? 'token' : 'gold'],
+            ];
+            if (tokens < TOKENS_PER_SCENE) tokens += 1;
+            for (const [u, kind] of arc) {
+              const t = air * u;
+              const from = pad + SPRING.len / 2 + along(t);
+              // 东西的高度是相对它脚下的路面记的，过了台阶路面高了一截
+              items.push({ s: from, x: 0, y: up * t - 0.5 * GRAVITY * t * t + 0.8 - (from >= at ? rise : 0), kind, scene });
+            }
+            s = pad + along(air) + 12;
+            clearFrom = s + FEATURE_GAP / 2;
+          } else if (step.deep) {
+            // 断路：一道深沟，照平常的速度直着骑刚好飞得过去，慢一点、歪一点就会掉下去，冲刺过去最稳。
+            // 前面先给一个能量罐，再排一串鱼把人领到崖边；两个圈按冲刺的弧线排，对岸等着一条金鱼
+            const air = Math.sqrt((2 * step.drop) / GRAVITY);
+            items.push({ s: at - 84, x: 0, y: LOW + 0.15, kind: 'bolt', scene });
+            bolts += 1;
+            row(scene, at - 62, 0, 8, 7);
+            for (const u of [0.35, 0.7]) {
+              const t = air * u;
+              items.push({ s: at + SPRINT * t, x: 0, y: step.drop - 0.5 * GRAVITY * t * t + 0.8, kind: 'ring', scene });
+            }
+            items.push({ s: at + SPRINT * air + 4, x: 0, y: LOW, kind: 'gold', scene });
+            s = at + SPRINT * air + 22;
+            clearFrom = s + FEATURE_GAP / 2;
+          } else {
+            // 断层：路在这里断开，落到下面一截，照常骑一定飞得过去。只在中间那条车道排一串鱼把人领到崖边，
+            // 半空中三个圈，落地的地方等着一条金鱼
+            row(scene, at - 66, 0, 9, 7);
+            const air = Math.sqrt((2 * step.drop) / GRAVITY);
+            for (const u of [0.3, 0.55, 0.8]) {
+              const t = air * u;
+              items.push({ s: at + CRUISE * t, x: 0, y: step.drop - 0.5 * GRAVITY * t * t + 0.8, kind: 'ring', scene });
+            }
+            items.push({ s: at + CRUISE * air + 5, x: 0, y: LOW, kind: 'gold', scene });
+            s = at + CRUISE * air + 30;
+            clearFrom = s + FEATURE_GAP / 2;
           }
-          items.push({ s: faultAt + CRUISE * air + 5, x: 0, y: LOW, kind: 'gold', scene });
-          s = faultAt + CRUISE * air + 30;
-          clearFrom = s + FEATURE_GAP / 2;
-          faultAt = Infinity;
           continue;
+        }
+        // 火箭不放在断路、台阶跟前：那里要的是看准了再冲
+        if (s >= rocketAt && !(step && s > base + step.at - 260)) {
+          items.push({ s, x: lane(), y: LOW + 0.25, kind: 'rocket', scene });
+          rocketAt = Infinity;
+          s += 30;
         }
         if (s >= chiliAt) {
           items.push({ s, x: lane(), y: LOW + 0.2, kind: 'chili', scene });
@@ -188,7 +249,9 @@ export class Course {
         if (pattern === 'ramp' && jumps >= RAMPS_PER_SCENE) pattern = 'line';
         if (bounce && (bounces >= SPRINGS_PER_SCENE || roofed)) pattern = 'line';
         // 跳台、弹簧、路障之间要隔开，不然刚落地又来一个，来不及换道（用户嫌过）。离上一个太近就改成鱼
-        if ((pattern === 'ramp' || pattern === 'block' || pattern === 'spring' || pattern === 'launch') && s < clearFrom) pattern = random() < 0.5 ? 'line' : 'weave';
+        // 快到断路、台阶的时候也一样：那里要的是车贴着地、速度没被撞掉
+        const calm = step !== undefined && s > base + step.at - 190;
+        if ((pattern === 'ramp' || pattern === 'block' || pattern === 'spring' || pattern === 'launch') && (s < clearFrom || calm)) pattern = random() < 0.5 ? 'line' : 'weave';
 
         if (pattern === 'block') {
           // 路障：挡住一条或两条车道。没挡的那条上先排一串鱼，隔着二十多米就告诉人往哪边绕
@@ -324,7 +387,8 @@ export class Course {
   onSpring(s: number, x: number): Spring | null {
     for (const spring of this.springs) {
       if (s < spring.s) break;
-      if (s <= spring.s + spring.len && Math.abs(x - spring.x) <= spring.width / 2) return spring;
+      // 高跳弹簧不看左右：骑在路外面也一样被弹上去，不然就要一头撞在台阶上
+      if (s <= spring.s + spring.len && (spring.high || Math.abs(x - spring.x) <= spring.width / 2)) return spring;
     }
     return null;
   }
@@ -339,6 +403,6 @@ export class Course {
   }
 }
 
-export const SCORE: Record<ItemKind, number> = { fish: 10, gold: 50, bolt: 20, ring: 40, chili: 30, token: 80 };
+export const SCORE: Record<ItemKind, number> = { fish: 10, gold: 50, bolt: 20, ring: 40, chili: 30, token: 80, rocket: 30 };
 // 吃到一样东西给冲刺条加多少
-export const REFILL: Record<ItemKind, number> = { fish: 0.07, gold: 0.3, bolt: 1, ring: 0.12, chili: 1, token: 0.15 };
+export const REFILL: Record<ItemKind, number> = { fish: 0.07, gold: 0.3, bolt: 1, ring: 0.12, chili: 1, token: 0.15, rocket: 0.3 };

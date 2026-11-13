@@ -285,7 +285,8 @@ export function buildRider(): Rider {
       // 腾空时张开翅膀扑腾；到了终点也张开，算是庆祝
       const flying = !bike.grounded || bike.finished;
       spread += ((flying ? 1 : 0) - spread) * Math.min(1, dt * 9);
-      const flap = flying ? Math.sin(clock * (bike.finished ? 10 : 16)) * (bike.finished ? 0.3 : 0.16) : 0;
+      // 掉进深沟往上飞的时候扑得又大又急
+      const flap = bike.rescue > 0 ? Math.sin(clock * 22) * 0.55 : flying ? Math.sin(clock * (bike.finished ? 10 : 16)) * (bike.finished ? 0.3 : 0.16) : 0;
       // 贴地时两只翅膀往前下方伸，翅尖搭在车把上；腾空就往两边张开
       const reach = HOLD.forward * (1 - spread);
       const droop = HOLD.down * (1 - spread) + 0.2 * spread + flap;

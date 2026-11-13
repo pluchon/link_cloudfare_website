@@ -29,12 +29,16 @@ const ORBIT = { seconds: 4.6, sweep: Math.PI * 2 + 2.3, radius: 5.4, height: 1.9
 // 离地不到这么高才会撞上路障（米）；撞上之后镜头抖多久（秒）
 const BLOCK_HEIGHT = 0.85;
 const SHAKE_SECONDS = 0.3;
+// 血条（用户要的，先轻一点）：三颗心，每颗两半。撞一次路障掉半颗，掉进深沟掉一颗，每进一个新场景回半颗；掉光了这一趟就到此为止
+const HEARTS = 3;
+const HURT = { block: 1, fall: 2 };
 const FOV = 64;
 const FOV_DASH = 12;
 // 捡到东西时弹框里的小图标：24 格的线条画，和顶栏那些图标一个画法。这里写的是 svg 里面的内容
 const ring = (count: number, rx: number, ry: number, cy: number) =>
   Array.from({ length: count }, (_, i) => `<ellipse cx="12" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${(360 / count) * i} 12 12)"/>`).join('');
-const ICONS: Record<TokenKind | 'chili', string> = {
+const ICONS: Record<TokenKind | 'chili' | 'rocket', string> = {
+  rocket: '<path d="M14.5 4.5c3-1.6 5-1.5 5-1.5s.1 2-1.5 5l-6.5 6.5-3.5-3.5zM9.5 10.5 6 10l-2.5 2.5 3.5 1M13.5 14.5l.5 3.5-2.5 2.5-1-3.5M8 16c-1.6.4-3 1.6-3.5 3.5 1.9-.5 3.1-1.9 3.5-3.5z"/>',
   shell: '<path d="M12 20 4.5 10.5a8 8 0 0 1 15 0zM12 20V6.6M12 20 8 7.6M12 20l4-12.4"/>',
   sunflower: `${ring(10, 1.5, 3, 5.2)}<circle cx="12" cy="12" r="3.2"/>`,
   blossom: `${ring(5, 2.9, 3.8, 6.6)}<circle cx="12" cy="12" r="1.3"/>`,
@@ -135,13 +139,21 @@ function shade(hex: number, factor: number): number {
 export function mountPelican(root: HTMLElement): () => void {
   const stage = pick<HTMLElement>(root, '[data-stage]');
   const canvas = pick<HTMLCanvasElement>(root, '[data-canvas]');
+  const rushCanvas = pick<HTMLCanvasElement>(root, '[data-rush]');
   const scoreNode = pick<HTMLElement>(root, '[data-score]');
+  const eatenNode = pick<HTMLElement>(root, '[data-eaten]');
+  const keepsakeNode = pick<HTMLElement>(root, '[data-keepsake]');
+  const keepsakeTotal = pick<HTMLElement>(root, '[data-keepsake-total]');
   const progressNode = pick<HTMLElement>(root, '[data-progress]');
   const boostNode = pick<HTMLElement>(root, '[data-boost]');
   const boostBox = pick<HTMLElement>(root, '[data-boost-box]');
+  const boostLabel = pick<HTMLElement>(root, '[data-boost-label]');
+  const boostNum = pick<HTMLElement>(root, '[data-boost-num]');
   const flameBox = pick<HTMLElement>(root, '[data-flames]');
   const flames = Array.from(flameBox.children) as HTMLElement[];
   const recordNode = pick<HTMLElement>(root, '[data-record]');
+  const heartBox = pick<HTMLElement>(root, '[data-hearts]');
+  const hearts = Array.from(heartBox.querySelectorAll<SVGElement>('[data-heart]'));
   const toastNode = pick<HTMLElement>(root, '[data-toast]');
   const toastIcon = pick<SVGElement>(root, '[data-toast-icon]');
   const toastText = pick<HTMLElement>(root, '[data-toast-text]');
@@ -230,6 +242,8 @@ export function mountPelican(root: HTMLElement): () => void {
     taken = new Uint8Array(course.items.length);
     knocked = new Uint8Array(course.obstacles.length);
     fresh = true;
+    // 头两段场景的配乐先下着，后面的骑到前一段时再下
+    sound.fetchScenes(course.scenes.slice(0, 2).map((item) => item.name));
     themed = -1;
   };
   build();
@@ -249,12 +263,40 @@ export function mountPelican(root: HTMLElement): () => void {
   let blockFrom = 0;
   // 撞到路障后镜头还要抖多久
   let shake = 0;
+  // 还剩几个半颗心；是不是没血了才停下来的；掉血后那几颗心还要放大多久
+  let health = HEARTS * 2;
+  let out = false;
+  let hurtTimer = 0;
+
+  // 掉血。掉光了车慢慢停下来，过一会儿出结算面板
+  const hurt = (halves: number) => {
+    if (out || bike.finished) return;
+    health = Math.max(0, health - halves);
+    hurtTimer = 0.45;
+    shake = SHAKE_SECONDS;
+    if (health > 0) return;
+    out = true;
+    bike.stop();
+    finishTimer = 2.2;
+  };
 
   const onBikeEvent = (event: BikeEvent) => {
+    // 掉进深沟：扣一颗心，鹈鹕自己会飞回对岸
+    if (event === 'fall') {
+      hurt(HURT.fall);
+      sound.play('fall');
+      if (!out) showToast('掉下去了 · 冲刺才飞得过去');
+      return;
+    }
     // 到终点后先让镜头绕一圈再出结算面板；减少动态效果时不绕，等一下就出
     if (event === 'finish') finishTimer = still ? 1.4 : ORBIT.seconds;
     // 落地声的大小跟着摔得多重走，轻轻一颠就很小声
     if (event === 'land') sound.play('land', 0.35 + bike.squash * 0.65);
+    // 吃到火箭：整屏一闪
+    else if (event === 'blast') {
+      flash = 1;
+      sound.play('super');
+    }
     // 猛冲没有单独的声音，再响一次冲刺那一声
     else sound.play(event === 'turbo' ? 'dash' : event);
   };
@@ -313,11 +355,12 @@ export function mountPelican(root: HTMLElement): () => void {
     if (record) saveBest({ score, fish: eaten, seconds: Math.round(elapsed) });
     // 面板上只写分数和用时；吃了多少鱼、是不是新纪录写在画面下面那一行的左边
     const notes = [`本局小鱼 ${eaten} / ${total}`, `纪念品 ${keepsakes.size} / ${course.scenes.length}`];
+    if (out) notes.unshift(`骑到第 ${track.sceneAt(bike.s) + 1} / ${course.scenes.length} 段`);
     if (record && best) notes.push(`新纪录，之前最好 ${best.score}`);
     else if (record) notes.push('新纪录');
     else if (best) notes.push(`最好成绩 ${best.score}`);
     recordNode.textContent = notes.join('　');
-    showOverlay('抵达终点', '再骑一次', '', [score, clock(elapsed)]);
+    showOverlay(out ? '骑不动了' : '抵达终点', '再骑一次', '', [score, clock(elapsed)]);
   };
 
   // 画面下面那一行左边：平常写最好成绩，没有记录就空着
@@ -351,6 +394,9 @@ export function mountPelican(root: HTMLElement): () => void {
     itemFrom = 0;
     blockFrom = 0;
     shake = 0;
+    health = HEARTS * 2;
+    out = false;
+    hurtTimer = 0;
     showBest();
     score = 0;
     eaten = 0;
@@ -362,6 +408,7 @@ export function mountPelican(root: HTMLElement): () => void {
     // 从出发前的环绕镜头接过来时不硬切，让镜头自己绕回车后面；再骑一次才直接跳过去
     snapCamera = state !== 'ready';
     setState('playing');
+    sound.setScene(course.scenes[0].name);
     sound.play('bell');
   };
 
@@ -513,6 +560,10 @@ export function mountPelican(root: HTMLElement): () => void {
     if (!width || !height) return;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].ratio));
     renderer.setSize(width, height, false);
+    // 速度线那张画布不用太细，像素比最多 1.5
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+    rushCanvas.width = Math.round(width * ratio);
+    rushCanvas.height = Math.round(height * ratio);
     composer.setPixelRatio(renderer.getPixelRatio());
     composer.setSize(width, height);
     world?.setViewport(canvas.height);
@@ -562,7 +613,11 @@ export function mountPelican(root: HTMLElement): () => void {
       bike.refill(REFILL[item.kind]);
       world?.collect(i, time);
       rider.gulp();
-      if (item.kind === 'chili') {
+      if (item.kind === 'rocket') {
+        // 火箭：三秒多的超级加速
+        bike.launch();
+        showToast('捡到“火箭”', ICONS.rocket);
+      } else if (item.kind === 'chili') {
         // 辣椒：一小段时间里冲刺条不掉，骑得也更快
         bike.ignite();
         showToast('捡到“辣椒”', ICONS.chili);
@@ -591,6 +646,7 @@ export function mountPelican(root: HTMLElement): () => void {
       world?.knock(i, time);
       sound.play('bump');
       shake = SHAKE_SECONDS;
+      hurt(HURT.block);
     }
   };
 
@@ -612,7 +668,7 @@ export function mountPelican(root: HTMLElement): () => void {
       const radius = 6.6 + (still ? 0 : Math.sin(time * 0.33) * 0.9);
       wantPos.set(p.x - Math.sin(around) * radius, p.y + 2 + (still ? 0 : Math.sin(time * 0.27) * 0.5), p.z + Math.cos(around) * radius);
       wantLook.set(p.x, p.y + 0.5, p.z);
-    } else if (bike.finished && !still) {
+    } else if (bike.finished && !still && !out) {
       // 冲过终点：镜头绕着鹈鹕转一圈多，最后停在它的侧前方，结算面板出在画面下半
       const u = Math.min(1, Math.max(0, 1 - finishTimer / ORBIT.seconds));
       const ease = u * u * (3 - 2 * u);
@@ -627,7 +683,8 @@ export function mountPelican(root: HTMLElement): () => void {
       // 骑行中：镜头跟着路走而不是跟着车头走，车左右晃的时候画面不跟着甩。
       // 镜头横着只跟一小半：跟得太紧的话车永远在画面正中，换了车道也看不出自己挪了
       camSide += (bike.x * CAM_FOLLOW - camSide) * Math.min(1, dt * 4);
-      const height = Math.max(bike.h, p.y);
+      // 掉进深沟时镜头留在崖上，视线往沟里压，看得见鹈鹕扑腾着飞上来
+      const height = bike.rescue > 0 ? bike.h : Math.max(bike.h, p.y);
       track.at(bike.s - CAM_BACK, p);
       wantPos.set(p.x + Math.cos(p.yaw) * camSide, Math.max(p.y, height - 1.2) + CAM_UP, p.z + Math.sin(p.yaw) * camSide);
       track.at(bike.s + CAM_AHEAD, p);
@@ -651,7 +708,7 @@ export function mountPelican(root: HTMLElement): () => void {
     }
 
     // 冲刺时视野稍微拉宽一点
-    const rush = Math.min(1.3,Math.max(0, (bike.v - BIKE_SPEED.cruise) / (BIKE_SPEED.sprint - BIKE_SPEED.cruise)));
+    const rush = Math.min(1.6, Math.max(0, (bike.v - BIKE_SPEED.cruise) / (BIKE_SPEED.sprint - BIKE_SPEED.cruise)));
     const fov = FOV + (still ? 0 : rush * FOV_DASH) + (camera.aspect < 1 ? 14 : 0);
     camFov += (fov - camFov) * Math.min(1, dt * 5);
     if (Math.abs(camera.fov - camFov) > 0.01) {
@@ -661,26 +718,123 @@ export function mountPelican(root: HTMLElement): () => void {
     world?.update(bike.s, camPos, rider.group.position, time);
   };
 
+  // 冲刺时屏幕上的速度线（用户要的「按方向键、按空格、捡了火箭三种特效不一样」）：画在盖在画面上的一张 2D 画布上。
+  // 冲刺是边上几根细白线；猛冲更密更长、偏橙色，四周压一圈暖色；超级加速是满屏的青白色线，四周一圈青光，刚吃到那一下整屏一闪
+  const rushCtx = rushCanvas.getContext('2d');
+  const STREAKS = 90;
+  const streaks = Array.from({ length: STREAKS }, () => ({ angle: Math.random() * Math.PI * 2, r: 0.3 + Math.random() * 0.9, speed: 0.6 + Math.random() * 0.8 }));
+  let rushLevel = 0;
+  let rushMode: '' | 'dash' | 'turbo' | 'super' = '';
+  let flash = 0;
+  const RUSH_LOOK = {
+    dash: { count: 26, length: 0.12, width: 1, color: '255,255,255', alpha: 0.38, edge: '', edgeAlpha: 0 },
+    turbo: { count: 54, length: 0.2, width: 1.4, color: '255,214,170', alpha: 0.5, edge: '255,110,40', edgeAlpha: 0.26 },
+    super: { count: 90, length: 0.3, width: 1.8, color: '200,248,255', alpha: 0.62, edge: '70,210,255', edgeAlpha: 0.34 },
+  } as const;
+  const paintRush = (dt: number) => {
+    if (!rushCtx) return;
+    const mode = state !== 'playing' || bike.finished ? '' : bike.blast > 0 ? 'super' : bike.turbo ? 'turbo' : bike.rushing ? 'dash' : '';
+    if (mode) rushMode = mode;
+    rushLevel += ((mode ? 1 : 0) - rushLevel) * Math.min(1, dt * (mode ? 6 : 4));
+    flash = Math.max(0, flash - dt * 3.2);
+    const width = rushCanvas.width;
+    const height = rushCanvas.height;
+    rushCtx.clearRect(0, 0, width, height);
+    if (rushLevel < 0.01 && flash <= 0) return;
+    const look = RUSH_LOOK[rushMode || 'dash'];
+    const cx = width / 2;
+    const cy = height * 0.42;
+    const reach = Math.hypot(width, height) / 2;
+    if (look.edge) {
+      // 四周一圈光：中间透明，越往边上越浓
+      const glow = rushCtx.createRadialGradient(cx, cy, reach * 0.45, cx, cy, reach * 1.05);
+      glow.addColorStop(0, `rgba(${look.edge},0)`);
+      glow.addColorStop(1, `rgba(${look.edge},${(look.edgeAlpha * rushLevel).toFixed(3)})`);
+      rushCtx.fillStyle = glow;
+      rushCtx.fillRect(0, 0, width, height);
+    }
+    if (flash > 0) {
+      rushCtx.fillStyle = `rgba(220,250,255,${(flash * 0.35).toFixed(3)})`;
+      rushCtx.fillRect(0, 0, width, height);
+    }
+    // 减少动态效果时只留四周那圈光，不画飞过去的线
+    if (still) return;
+    const pace = 0.55 + bike.v / 30;
+    rushCtx.lineCap = 'round';
+    rushCtx.lineWidth = look.width * (width / Math.max(1, rushCanvas.clientWidth));
+    rushCtx.strokeStyle = `rgb(${look.color})`;
+    for (let i = 0; i < look.count; i += 1) {
+      const streak = streaks[i];
+      streak.r += dt * streak.speed * pace * (0.4 + streak.r);
+      if (streak.r > 1.25) {
+        streak.r = 0.3 + Math.random() * 0.15;
+        streak.angle = Math.random() * Math.PI * 2;
+      }
+      // 越靠近中间越淡，中间那一块（鹈鹕在的地方）几乎看不见
+      const fade = Math.min(1, Math.max(0, (streak.r - 0.38) / 0.3));
+      if (fade <= 0) continue;
+      const dx = Math.cos(streak.angle);
+      const dy = Math.sin(streak.angle);
+      const from = streak.r * reach;
+      const to = from + look.length * reach * (0.6 + streak.speed * 0.4);
+      rushCtx.globalAlpha = look.alpha * fade * rushLevel;
+      rushCtx.beginPath();
+      rushCtx.moveTo(cx + dx * from, cy + dy * from);
+      rushCtx.lineTo(cx + dx * to, cy + dy * to);
+      rushCtx.stroke();
+    }
+    rushCtx.globalAlpha = 1;
+  };
+
   let shownScore = -1;
   let shownSpeed = -1;
+  let shownHealth = -1;
+  let shownEaten = -1;
+  let shownKeepsakes = -1;
   const paint = (dt: number) => {
     if (score !== shownScore) {
       shownScore = score;
       scoreNode.textContent = String(score);
     }
+    if (eaten !== shownEaten) {
+      shownEaten = eaten;
+      eatenNode.textContent = String(eaten);
+    }
+    if (keepsakes.size !== shownKeepsakes) {
+      shownKeepsakes = keepsakes.size;
+      keepsakeNode.textContent = String(keepsakes.size);
+      keepsakeTotal.textContent = `/${course.scenes.length}`;
+    }
+    if (health !== shownHealth) {
+      shownHealth = health;
+      hearts.forEach((heart, i) => {
+        heart.dataset.fill = String(Math.max(0, Math.min(2, health - i * 2)));
+      });
+      heartBox.setAttribute('aria-label', `生命 ${health / 2} 颗心`);
+    }
+    if (hurtTimer > 0) {
+      hurtTimer -= dt;
+      heartBox.toggleAttribute('data-hurt', hurtTimer > 0);
+    }
     progressNode.style.transform = `scaleX(${Math.min(1, Math.max(0, bike.s / track.finish)).toFixed(4)})`;
-    boostNode.style.transform = `scaleX(${bike.boost.toFixed(3)})`;
+    boostNode.style.transform = `scaleX(${(bike.blast > 0 ? bike.blastLeft : bike.boost).toFixed(3)})`;
     boostBox.toggleAttribute('data-active', bike.rushing);
     // 冲刺时冲刺条上烧着一排火苗，猛冲时烧得更高（用户要求）。火苗的高矮每帧在这里算，不用自己循环的动画
     // 吃了辣椒的那几秒一直烧着，冲刺条是金色的
-    const burn = bike.fever > 0 ? '3' : bike.turbo ? '2' : bike.dashing ? '1' : '';
+    // 火箭那几秒是第四种：青色，冲刺条变成倒计时
+    const burn = bike.blast > 0 ? '4' : bike.fever > 0 ? '3' : bike.turbo ? '2' : bike.dashing ? '1' : '';
+    // 状态栏上那两个字和右边的小字也跟着换：冲刺 / 猛冲（耗双倍）/ 辣椒（不掉）/ 超级加速（还剩几秒）
+    const label = burn === '4' ? '超速' : burn === '3' ? '辣椒' : burn === '2' ? '猛冲' : '冲刺';
+    if (boostLabel.textContent !== label) boostLabel.textContent = label;
+    const note = burn === '4' ? (bike.blast).toFixed(1) : burn === '3' ? '∞' : burn === '2' ? '×2' : '';
+    if (boostNum.textContent !== note) boostNum.textContent = note;
     if ((boostBox.dataset.burn ?? '') !== burn) {
       if (burn) boostBox.dataset.burn = burn;
       else delete boostBox.dataset.burn;
     }
     if (burn) {
-      flameBox.style.width = `${(bike.boost * 100).toFixed(1)}%`;
-      const tall = burn === '1' ? 0.55 : 1;
+      flameBox.style.width = `${((bike.blast > 0 ? bike.blastLeft : bike.boost) * 100).toFixed(1)}%`;
+      const tall = burn === '1' ? 0.55 : burn === '4' ? 1.25 : 1;
       flames.forEach((flame, i) => {
         // 越靠近冲刺条的头上烧得越高；几个不成倍数的正弦叠起来，每根火苗各跳各的
         const lead = 0.4 + 0.6 * (i / (flames.length - 1));
@@ -710,7 +864,15 @@ export function mountPelican(root: HTMLElement): () => void {
     }
     if (state === 'playing' && current !== sceneShown && !bike.finished) {
       // 一出发报的那一次不敲钟，后面每进一个新场景敲一下
-      if (sceneShown >= 0) sound.play('gate');
+      // 每个场景一首配乐，过门时交叉淡过去；顺手把下一段的先下载下来
+      sound.setScene(course.scenes[current].name);
+      const next = course.scenes[current + 1];
+      if (next) sound.fetchScenes([next.name]);
+      if (sceneShown >= 0) {
+        sound.play('gate');
+        // 每进一个新场景回半颗心
+        health = Math.min(HEARTS * 2, health + 1);
+      }
       sceneShown = current;
       showToast(course.scenes[current].name);
     }
@@ -762,6 +924,7 @@ export function mountPelican(root: HTMLElement): () => void {
 
     place(dt);
     paint(dt);
+    paintRush(dt);
     if (QUALITY[quality].bloom) composer.render();
     else renderer.render(scene, camera);
   };

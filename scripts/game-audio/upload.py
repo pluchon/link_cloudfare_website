@@ -1,7 +1,7 @@
 """把鹈鹕骑车的音效和背景音乐传到 OSS 的 personal_website_other/ 下面。
 
-    python scripts/game-audio/upload.py          上传 scripts/game-audio/out/ 里的两个 mp3
-    python scripts/game-audio/upload.py --check  只看：桶里有没有这两个文件、桶的跨域规则配了没有
+    python scripts/game-audio/upload.py          上传 scripts/game-audio/out/ 里的音效和每个场景的配乐
+    python scripts/game-audio/upload.py --check  只看：桶里有没有这些文件、桶的跨域规则配了没有
 
 文件名用 audio.json 里的 stamp，重新生成音频以后名字不变，直接覆盖桶里的同名文件（用户要求同名替换；桶开了版本控制，旧的找得回来）。
 网页请求时地址后面带 ?v=生成时刻，所以浏览器可以永久缓存，换了音频也不会用到旧的。
@@ -35,7 +35,6 @@ BUCKET = "zlhimage"
 ENDPOINT = "oss-cn-guangzhou.aliyuncs.com"
 HOST = f"{BUCKET}.{ENDPOINT}"
 PREFIX = "personal_website_other/game/pelican-ride"
-NAMES = ("sfx", "bgm")
 
 
 def credentials() -> tuple[str, str]:
@@ -67,8 +66,11 @@ def call(method: str, key: str, query: str = "", body: bytes | None = None, head
 
 
 def targets() -> list[tuple[Path, str]]:
-    stamp = json.loads(MARKS.read_text(encoding="utf8"))["stamp"]
-    return [(SOURCE / f"{name}.mp3", f"{PREFIX}/{name}_{stamp}.mp3") for name in NAMES]
+    """要传的文件：音效一条，加上 audio.json 里列着的每一首配乐。"""
+    marks = json.loads(MARKS.read_text(encoding="utf8"))
+    stamp = marks["stamp"]
+    names = ["sfx", *(f"bgm_{slug}" for slug in marks["songs"])]
+    return [(SOURCE / f"{name}.mp3", f"{PREFIX}/{name}_{stamp}.mp3") for name in names]
 
 
 def public_size(key: str) -> int | None:

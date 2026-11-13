@@ -35,7 +35,14 @@ export type PropKind =
   | 'parasol'
   | 'mesa'
   | 'snowman'
-  | 'aurora'
+  | 'crystalPool'
+  | 'mineCart'
+  | 'lanternFloat'
+  | 'neonSign'
+  | 'foodCart'
+  | 'picnic'
+  | 'pagoda'
+  | 'adobe'
   | 'bushDry'
   | 'bushSnow'
   | 'towerSlim'
@@ -216,6 +223,8 @@ export interface Scene extends TrackStyle {
   sun: { color: number; height: number; turn: number; size: number };
   // 星星有多亮，0 到 1
   stars: number;
+  // 天上有没有极光、多亮，0 到 1。不写就是没有
+  aurora?: number;
   // 雾从多远开始、到多远全白（米），颜色就是地平线的颜色
   fog: [number, number];
   light: { sun: number; sunPower: number; sky: number; ground: number; power: number };
@@ -240,8 +249,9 @@ export interface Scene extends TrackStyle {
   props: PropRule[];
 }
 
-// 每个场景骑多长（米）。必须是 4 的倍数：崖壁是按 4 米一排建的，两段场景要在同一排上接缝
-export const SCENE_LENGTH = 560;
+// 每个场景骑多长（米）。必须是 4 的倍数：崖壁是按 4 米一排建的，两段场景要在同一排上接缝。
+// 用户两次要「每个场景路程长一点」：380 -> 560 -> 700。场景里按几成写的位置（cover、widen、part）会跟着伸缩，按米写的（climb、steps）不会
+export const SCENE_LENGTH = 700;
 // 一局经过几个场景
 export const RUN_SCENES = 12;
 
@@ -354,6 +364,8 @@ export const SCENES: readonly Scene[] = [
       { kind: 'flowerPink', per100: 12, near: 8.6, far: 30, scale: [0.8, 1.4] },
       { kind: 'grass', per100: 10, near: 8.6, far: 26, scale: [0.9, 1.4] },
       { kind: 'bush', per100: 4, near: 9, far: 40 },
+      { kind: 'picnic', per100: 1.2, near: 11, far: 22 },
+      { kind: 'pagoda', per100: 0.5, near: 30, far: 60, face: true, clear: 4, scale: [1, 1.4] },
       { kind: 'hillPink', per100: 1.5, near: 95, far: 240, clear: 46, scale: [0.7, 1.5] },
       { kind: 'birds', per100: 0.6, near: 15, far: 120, lift: [36, 80], scale: [1, 1.5] },
       { kind: 'groveCherry', per100: 2.2, near: 78, far: 200, clear: 12, scale: [0.9, 1.5] },
@@ -475,6 +487,7 @@ export const SCENES: readonly Scene[] = [
       { kind: 'mesa', per100: 1.6, near: 34, far: 72, clear: 9, scale: [0.9, 1.9] },
       { kind: 'bushDry', per100: 4, near: 8.6, far: 40, scale: [0.6, 1.1] },
       { kind: 'grassDry', per100: 9, near: 8.6, far: 30, scale: [0.9, 1.4] },
+      { kind: 'adobe', per100: 0.8, near: 16, far: 40, face: true, clear: 4, scale: [0.9, 1.2] },
       { kind: 'dune', per100: 1.5, near: 95, far: 240, clear: 46, scale: [0.7, 1.5] },
       { kind: 'mountainWarm', per100: 0.6, near: 250, far: 400, clear: 86, scale: [0.8, 1.3] },
       { kind: 'birds', per100: 0.5, near: 15, far: 120, lift: [40, 85], scale: [1, 1.5] },
@@ -551,6 +564,7 @@ export const SCENES: readonly Scene[] = [
       { kind: 'palm', per100: 2.5, near: 9, far: 22, scale: [0.9, 1.3] },
       { kind: 'foamNight', per100: 6, near: 31, far: 85, face: true, float: true, scale: [0.8, 1.6] },
       { kind: 'buoy', per100: 1.8, near: 36, far: 110, float: true },
+      { kind: 'lanternFloat', per100: 6, near: 32, far: 80, float: true, scale: [0.9, 1.4] },
       { kind: 'sailboatLit', per100: 1.5, near: 60, far: 190, float: true, scale: [1.4, 2.4] },
       { kind: 'seaStack', per100: 1.5, near: 44, far: 150, float: true, clear: 8, scale: [0.8, 1.6] },
       { kind: 'cloudDark', per100: 1.6, near: 40, far: 320, lift: [50, 110], scale: [1, 2.2] },
@@ -589,6 +603,8 @@ export const SCENES: readonly Scene[] = [
       { kind: 'billboardB', per100: 1.7, near: 9.5, far: 13, face: true },
       { kind: 'lamp', per100: 4, near: 7.8, far: 7.8, face: true },
       { kind: 'treeGreen', per100: 3, near: 9, far: 13, scale: [0.7, 1] },
+      { kind: 'neonSign', per100: 2.4, near: 14, far: 16, face: true, scale: [0.9, 1.3] },
+      { kind: 'foodCart', per100: 1.6, near: 10.5, far: 13, face: true },
       { kind: 'cloudDark', per100: 1.2, near: 60, far: 320, lift: [70, 130], scale: [1, 2] },
     ],
   },
@@ -601,6 +617,8 @@ export const SCENES: readonly Scene[] = [
     sky: [0x071028, 0x12305a, 0x2f6a80],
     sun: { color: 0xeef6ff, height: 58, turn: -60, size: 0.035 },
     stars: 1,
+    // 天上的极光（画在天空里，见 world.ts 的 SKY_FRAGMENT）
+    aurora: 1,
     fog: [130, 600],
     light: { sun: 0xa8d4ff, sunPower: 1.5, sky: 0x86c6d6, ground: 0x4a6a8c, power: 1.7 },
     road: 0x39445c,
@@ -628,7 +646,6 @@ export const SCENES: readonly Scene[] = [
       { kind: 'grovePineSnow', per100: 2.2, near: 78, far: 200, clear: 12, scale: [0.9, 1.5] },
       { kind: 'hamletSnow', per100: 0.6, near: 60, far: 130, clear: 14 },
       { kind: 'ridgeSnow', per100: 1.2, near: 160, far: 300, clear: 84, scale: [0.8, 1.3] },
-      { kind: 'aurora', per100: 1.1, near: 120, far: 300, lift: [70, 120], scale: [1, 1.8] },
     ],
   },
   {
@@ -719,9 +736,17 @@ export const SCENES: readonly Scene[] = [
     token: { kind: 'feather', name: '鹰羽' },
     fish: { form: 'long', body: 0x6fb4a0, fin: 0xdff4e6 },
     curve: 0.4,
-    hill: 2,
-    // 先在窄窄的峡谷里往上爬八米，钻过一条隧道，出来没多远路就断了：飞过一道水，落到底下开阔的湖边
-    fault: { at: 324, drop: 8, gap: 8, climb: [50, 205] },
+    // 这一段的高低全靠下面的爬坡、断路和台阶，路本身不再随机起伏
+    hill: 0,
+    // 先在窄窄的峡谷里爬高八米；一道深沟（断路），底下是河，冲刺才稳稳飞得过去，落到矮三米的一截；
+    // 接着一条高跳弹簧把车弹上四米高的台阶；钻过隧道，出来没多远路又断了：飞过一道水，落到底下九米开阔的湖边。
+    // 八减三加四减九正好是零，出这段场景时路回到平常的高度
+    climb: { from: 10, to: 120, height: 8 },
+    steps: [
+      { at: 160, drop: 3, gap: 10, deep: true },
+      { at: 240, drop: -4 },
+      { at: 380, drop: 9, gap: 8 },
+    ],
     sky: [0x4d93d6, 0xa9d2ee, 0xe6f1f2],
     sun: { color: 0xfffbe6, height: 54, turn: 14, size: 0.045 },
     stars: 0,
@@ -743,10 +768,10 @@ export const SCENES: readonly Scene[] = [
       color: [0x9a968c, 0x837f76],
       top: 0x6fa25e,
       moss: { color: [0x6fa860, 0x5c9652], amount: 0.8 },
-      widen: { from: 0.56, foot: 66 },
+      widen: { from: 0.545, foot: 66 },
     },
     // 断层前面的那条隧道
-    cover: [[0.4, 0.52]],
+    cover: [[0.42, 0.51]],
     backdrop: 'peaks',
     backdropColor: 0x9fb4c8,
     props: [
@@ -762,10 +787,10 @@ export const SCENES: readonly Scene[] = [
       { kind: 'logs', per100: 0.9, near: 10, far: 16, under: 'sky' },
       { kind: 'tent', per100: 0.5, near: 11, far: 16, under: 'sky' },
       { kind: 'deer', per100: 1.2, near: 10, far: 17, under: 'sky' },
-      { kind: 'ropeBridge', per100: 0.9, near: 0, far: 0, span: true, under: 'sky', part: [0, 0.38] },
+      { kind: 'ropeBridge', per100: 0.9, near: 0, far: 0, span: true, under: 'sky', part: [0.04, 0.19] },
       { kind: 'eagles', per100: 1.4, near: 0, far: 6, lift: [36, 54], scale: [1, 1.5] },
       // 上半段崖顶上的一排松树
-      { kind: 'pine', per100: 16, near: 38, far: 50, scale: [1, 1.7], part: [0, 0.55] },
+      { kind: 'pine', per100: 16, near: 38, far: 50, scale: [1, 1.7], part: [0, 0.54] },
       // 下半段的湖：荷叶、荷花、芦苇、跳出水面的鱼、白鹭、小船，对岸崖壁上挂着瀑布
       { kind: 'reeds', per100: 14, near: 34.6, far: 39, float: true, scale: [0.9, 1.5] },
       { kind: 'lotus', per100: 12, near: 36, far: 63, float: true, scale: [0.9, 1.8] },
@@ -774,9 +799,9 @@ export const SCENES: readonly Scene[] = [
       { kind: 'heron', per100: 1.8, near: 34.6, far: 38, float: true, scale: [1, 1.3] },
       { kind: 'rowboat', per100: 1, near: 40, far: 58, float: true },
       { kind: 'foam', per100: 5, near: 38, far: 63, face: true, float: true, scale: [0.7, 1.3] },
-      { kind: 'waterfall', per100: 1, near: 66, far: 66, wall: true, face: true, part: [0.66, 1] },
-      { kind: 'gulls', per100: 1.2, near: 20, far: 50, lift: [26, 48], scale: [1, 1.5], part: [0.62, 1] },
-      { kind: 'pine', per100: 12, near: 82, far: 96, scale: [1, 1.8], part: [0.66, 1] },
+      { kind: 'waterfall', per100: 1, near: 66, far: 66, wall: true, face: true, part: [0.62, 1] },
+      { kind: 'gulls', per100: 1.2, near: 20, far: 50, lift: [26, 48], scale: [1, 1.5], part: [0.58, 1] },
+      { kind: 'pine', per100: 12, near: 82, far: 96, scale: [1, 1.8], part: [0.62, 1] },
       { kind: 'grovePine', per100: 2, near: 100, far: 150, clear: 12, scale: [0.9, 1.4] },
       { kind: 'mountainSnow', per100: 0.6, near: 240, far: 400, clear: 86, scale: [0.8, 1.3] },
       { kind: 'cloud', per100: 2, near: 40, far: 320, lift: [75, 130], scale: [1, 2.4] },
@@ -868,6 +893,8 @@ export const SCENES: readonly Scene[] = [
       { kind: 'rock', per100: 5, near: 8.6, far: 14, scale: [0.5, 1.2] },
       { kind: 'stalactites', per100: 6, near: 0, far: 0, span: true, under: 'roof' },
       { kind: 'bats', per100: 2, near: 0, far: 3, lift: [4.5, 6.5], under: 'roof' },
+      { kind: 'crystalPool', per100: 1.2, near: 10.5, far: 12.5, scale: [0.8, 1.1] },
+      { kind: 'mineCart', per100: 0.7, near: 10, far: 12, face: true },
     ],
   },
 ];

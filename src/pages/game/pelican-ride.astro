@@ -28,15 +28,48 @@ const summary = entry?.data.summary ?? '';
       </div>
       <div class="pelican__stage" data-stage>
         <canvas class="pelican__canvas" data-canvas aria-label="鹈鹕骑车游戏画面：左右压车，按住上方向键冲刺，按住空格猛冲"></canvas>
+        <!-- 冲刺、猛冲、超级加速时盖在画面上的速度线，脚本每帧画 -->
+        <canvas class="pelican__rush" data-rush aria-hidden="true"></canvas>
 
         <!-- 路程：贴着画面上沿的一根细线 -->
         <div class="pelican__progress" aria-hidden="true"><i data-progress></i></div>
 
         <div class="pelican__hud">
-          <p class="pelican__score pelican__panel">
-            <span class="pelican__label">分数</span>
-            <b data-score>0</b>
-          </p>
+          <!-- 左上角一排小格子（用户要「一个个小格子分开展示，每格加个图标」）：分数、小鱼、纪念品、生命 -->
+          <div class="pelican__cells">
+            <p class="pelican__cell pelican__panel">
+              <svg class="pelican__cell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z" /></svg>
+              <span class="pelican__label">分数</span>
+              <b data-score>0</b>
+            </p>
+            <p class="pelican__cell pelican__panel">
+              <svg class="pelican__cell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c3-4.6 8.6-5.8 13-2.6L20.5 6v12L16 14.6C11.6 17.8 6 16.6 3 12zM8 11.2h.01" /></svg>
+              <span class="pelican__label">小鱼</span>
+              <b data-eaten>0</b>
+            </p>
+            <p class="pelican__cell pelican__panel">
+              <svg class="pelican__cell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7C10.5 4 7 3.6 7 5.6S10 7 12 7zM12 7c1.5-3 5-3.4 5-1.4S14 7 12 7z" /></svg>
+              <span class="pelican__label">纪念品</span>
+              <b><span data-keepsake>0</span><small data-keepsake-total>/12</small></b>
+            </p>
+            <p class="pelican__cell pelican__panel">
+              <span class="pelican__label">生命</span>
+              <span class="pelican__hearts" data-hearts role="img" aria-label="生命 3 颗心">
+                <svg class="pelican__heart" data-heart viewBox="0 0 24 24">
+                  <path class="pelican__heart-fill" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
+                  <path class="pelican__heart-line" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
+                </svg>
+                <svg class="pelican__heart" data-heart viewBox="0 0 24 24">
+                  <path class="pelican__heart-fill" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
+                  <path class="pelican__heart-line" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
+                </svg>
+                <svg class="pelican__heart" data-heart viewBox="0 0 24 24">
+                  <path class="pelican__heart-fill" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
+                  <path class="pelican__heart-line" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
+                </svg>
+              </span>
+            </p>
+          </div>
           <div class="pelican__tools">
             <button type="button" class="pelican-btn pelican-btn--icon pelican-btn--sound" data-mute aria-pressed="true" aria-label="声音开关">
               <svg class="pelican-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -66,13 +99,14 @@ const summary = entry?.data.summary ?? '';
         <div class="pelican__meters pelican__panel" data-boost-box data-level="high" aria-hidden="true">
           <div class="pelican__meter pelican__meter--boost">
             <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M13.5 2.5 5.5 13.5h5.5l-1 8 8.5-11.5h-5.5z" /></svg>
-            <span class="pelican__label">冲刺</span>
+            <span class="pelican__label" data-boost-label>冲刺</span>
             <span class="pelican__meter-line">
               <i data-boost></i><b></b><b></b><b></b>
               <span class="pelican__flames" data-flames>
                 {Array.from({ length: 14 }, () => <u />)}
               </span>
             </span>
+            <em class="pelican__meter-num" data-boost-num></em>
           </div>
           <div class="pelican__meter pelican__meter--speed">
             <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M4 17a8.5 8.5 0 1 1 16 0M12 16l4.5-6" /></svg>
@@ -342,6 +376,14 @@ const summary = entry?.data.summary ?? '';
     height: 100%;
   }
 
+  .pelican__rush {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
   .pelican__progress {
     position: absolute;
     inset: 0 0 auto;
@@ -381,21 +423,87 @@ const summary = entry?.data.summary ?? '';
     transition: color var(--dur-3) var(--ease-out);
   }
 
-  .pelican__score {
+  /* 左上角一排小格子，格子之间留一点空，每格是图标、名字、数字 */
+  .pelican__cells {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin: 0;
-    padding: 0.35rem 0.7rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
   }
 
-  .pelican__score b {
-    min-width: 2.2rem;
+  .pelican__cell {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0.35rem 0.6rem;
+  }
+
+  .pelican__cell-icon {
+    flex: none;
+    width: 0.9rem;
+    height: 0.9rem;
+    fill: none;
+    stroke: var(--hud-accent);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke var(--dur-3) var(--ease-out);
+  }
+
+  .pelican__cell b {
+    min-width: 1.4rem;
     font-family: var(--font-mono);
     font-size: 0.9375rem;
     font-weight: 500;
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
+  }
+
+  .pelican__cell b small {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--hud-soft);
+  }
+
+  /* 血条：三颗心，每颗能掉半颗；掉血的那一下三颗心一起放大一下再收回去 */
+  .pelican__hearts {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__hearts[data-hurt] {
+    transform: scale(1.22);
+  }
+
+  .pelican__heart {
+    width: 1.05rem;
+    height: 1.05rem;
+    overflow: visible;
+  }
+
+  .pelican__heart-line {
+    fill: none;
+    stroke: var(--hud-ink);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    opacity: 0.55;
+  }
+
+  .pelican__heart-fill {
+    fill: #e5604a;
+    stroke: none;
+    clip-path: inset(0 0 0 0);
+    transition: clip-path var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__heart[data-fill="1"] .pelican__heart-fill {
+    clip-path: inset(0 50% 0 0);
+  }
+
+  .pelican__heart[data-fill="0"] .pelican__heart-fill {
+    clip-path: inset(0 100% 0 0);
   }
 
   .pelican__meters {
@@ -510,6 +618,28 @@ const summary = entry?.data.summary ?? '';
   /* 猛冲时整条烧成橙红 */
   .pelican__meters[data-burn="2"] .pelican__meter--boost {
     --meter: #f0642e;
+  }
+
+  /* 吃了火箭（超级加速）：整条变成青色、按剩下的时间往回缩，火苗也是青白色的 */
+  .pelican__meters[data-burn="4"] .pelican__meter--boost {
+    --meter: #3fc8f0;
+  }
+
+  .pelican__meters[data-burn="4"] .pelican__flames u {
+    background: #7fe2ff;
+  }
+
+  .pelican__meters[data-burn="4"] .pelican__flames u:nth-child(3n + 1) {
+    background: #3fb0f0;
+  }
+
+  .pelican__meters[data-burn="4"] .pelican__flames u:nth-child(3n + 2) {
+    background: #eafcff;
+  }
+
+  /* 速度超过猛冲那一档时，速度条也跟着变青 */
+  .pelican__meters[data-burn="4"] .pelican__meter--speed {
+    --meter: #3fc8f0;
   }
 
   /* 吃了辣椒：冲刺条不掉，整条是金色的 */
@@ -744,7 +874,7 @@ const summary = entry?.data.summary ?? '';
   }
 
   /* 出发前画面上只留标题、提示和右上角的声音键，分数和两条线等骑起来再出现 */
-  .pelican[data-state="ready"] .pelican__score,
+  .pelican[data-state="ready"] .pelican__cells,
   .pelican[data-state="ready"] .pelican__meters {
     visibility: hidden;
   }
@@ -840,9 +970,10 @@ const summary = entry?.data.summary ?? '';
     display: none;
   }
 
+  /* 放在左上角那排小格子下面，不压着格子 */
   .pelican__toast {
     position: absolute;
-    top: 1.15rem;
+    top: 3.6rem;
     left: 50%;
     display: flex;
     align-items: center;
@@ -964,6 +1095,15 @@ const summary = entry?.data.summary ?? '';
 
     .pelican__hud {
       padding: 0.7rem 0.75rem;
+    }
+
+    /* 窄屏上格子里只留图标和数字，名字藏起来，四格才挤得下 */
+    .pelican__cell .pelican__label {
+      display: none;
+    }
+
+    .pelican__cell {
+      padding: 0.3rem 0.45rem;
     }
 
     .pelican__meters {

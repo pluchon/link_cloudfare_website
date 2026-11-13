@@ -20,10 +20,27 @@ export interface TrackStyle {
   curve: number;
   // 路面最高能起伏到多高（米）
   hill: number;
-  // 断层：这段场景里离进场的门 at 米的地方，路面突然落下去 drop 米，前面 gap 米是空的，车照常骑就飞得过去。
-  // 路在这之前的 climb[0] 到 climb[1] 米之间慢慢爬高 drop 米，才有高度可落
-  fault?: { at: number; drop: number; gap: number; climb: [number, number] };
+  // 路面的高度不是固定的（用户要求）：先在 from 到 to 米之间慢慢爬高 height 米，后面再一级一级地落下去、蹦上来。
+  // 两边的地面是从路面往下坡到水平面的，所以路只能比平常高、不能比平常低：要先爬上去才有高度可落，
+  // 而且这一段场景走完时，爬的、落的、蹦的加起来要正好回到零
+  climb?: { from: number; to: number; height: number };
+  steps?: readonly TrackStep[];
 }
+
+// 路面一步变高或变低的地方
+export interface TrackStep {
+  // 离进场的门多少米。必须是偶数：路面两米一排，断口要正好落在两排之间
+  at: number;
+  // 正数：路在这里断开，落下去这么多米；负数：迎面一道这么高的台阶，要靠前面的高跳弹簧蹦上去
+  drop: number;
+  // 断口有多宽（米，偶数）。台阶不用写
+  gap?: number;
+  // 断口是不是一道掉得下去的深沟：骑得够快才飞得过去，慢了会掉下去。不写就是照常骑一定飞得过去的断层
+  deep?: boolean;
+}
+
+// 深沟有多深（米）
+export const PIT_DEPTH = 14;
 
 // 采样步长（米）
 const STEP = 0.5;
@@ -37,6 +54,9 @@ const MAX_CURVE = 0.0077;
 const MAX_SLOPE = 0.07;
 // 路的走向最多偏离出发方向这么多（弧度），这样整条路只会左右蜿蜒，不会绕回来压到自己
 const MAX_YAW = 0.9;
+// 断口和台阶前后各这么多米的路要压平，其中靠外的这一截是从原来的起伏慢慢过渡过来的
+const LEVEL_REACH = 44;
+const LEVEL_FADE = 20;
 
 // 固定种子的随机数，同一个种子永远出同一串
 export function seeded(seed: number): () => number {
@@ -68,8 +88,10 @@ export class Track {
   // 每个场景占多长
   readonly sceneLength: number;
   readonly sceneCount: number;
-  // 路上的断层：在哪、落多高、空多长
-  readonly faults: Array<{ s: number; drop: number; gap: number }> = [];
+  // 路上的断口：在哪、落多高、空多长、是不是掉得下去的深沟
+  readonly faults: Array<{ s: number; drop: number; gap: number; deep: boolean }> = [];
+  // 路上的台阶：在哪、高多少
+  readonly ledges: Array<{ s: number; rise: number }> = [];
 
   private readonly px: Float32Array;
   private readonly py: Float32Array;
@@ -152,17 +174,45 @@ export class Track {
       this.yaw[index] = yaw;
     }
 
-    // 断层：断层之前的路整体垫高，先慢慢爬上去，到了断层那一点一步落回原来的高度
+    // 断口和台阶：先把它们前后的路压平（起飞的那一下路面是斜的话，飞多远就说不准了），
+    // 再把整段场景按「爬了多少、落了多少」垫高
     styles.forEach((style, scene) => {
-      const fault = style.fault;
-      if (!fault) return;
+      const steps = style.steps ?? [];
       const from = scene * sceneLength;
-      this.faults.push({ s: from + fault.at, drop: fault.drop, gap: fault.gap });
-      for (let i = Math.ceil((from + fault.climb[0]) / STEP); i * STEP < from + fault.at && i < this.count; i += 1) {
-        const u = Math.min(1, (i * STEP - from - fault.climb[0]) / (fault.climb[1] - fault.climb[0]));
-        this.py[i] += fault.drop * u * u * (3 - 2 * u);
+      for (const step of steps) {
+        const at = from + step.at;
+        const level = this.py[Math.round(at / STEP)];
+        const far = at + (step.gap ?? 0);
+        for (let i = Math.max(0, Math.ceil((at - LEVEL_REACH) / STEP)); i * STEP <= far + LEVEL_REACH && i < this.count; i += 1) {
+          const s = i * STEP;
+          const out = s < at ? at - s : s > far ? s - far : 0;
+          const u = Math.max(0, Math.min(1, (LEVEL_REACH - out) / LEVEL_FADE));
+          this.py[i] += (level - this.py[i]) * u * u * (3 - 2 * u);
+        }
+        if (step.drop > 0) this.faults.push({ s: at, drop: step.drop, gap: step.gap ?? 0, deep: !!step.deep });
+        else this.ledges.push({ s: at, rise: -step.drop });
+      }
+      const climb = style.climb;
+      if (!climb && steps.length === 0) return;
+      for (let i = Math.ceil(from / STEP); i * STEP < from + sceneLength && i < this.count; i += 1) {
+        const local = i * STEP - from;
+        let lift = 0;
+        if (climb) {
+          const u = Math.max(0, Math.min(1, (local - climb.from) / (climb.to - climb.from)));
+          lift = climb.height * u * u * (3 - 2 * u);
+        }
+        for (const step of steps) if (local >= step.at) lift -= step.drop;
+        this.py[i] += lift;
       }
     });
+  }
+
+  // s 处是不是悬在一道深沟上面：是的话返回沟有多深，不是返回 0
+  pit(s: number): number {
+    for (const fault of this.faults) {
+      if (fault.deep && s >= fault.s && s < fault.s + fault.gap) return PIT_DEPTH;
+    }
+    return 0;
   }
 
   // 取中心线上离起点 s 米处的位置和朝向，结果写进 out

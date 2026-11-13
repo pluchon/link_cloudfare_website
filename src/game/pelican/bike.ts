@@ -1,7 +1,7 @@
 // 车的物理：沿路的位置、横向偏移、倾角、速度、离地高度。
 // 这个文件不依赖 three，可以脱离画面单独跑
 
-import { LAUNCH_SPEED, LAUNCH_UP, RAMP_KICK, SPRING_SPEED, type Course } from './course';
+import { HIGH_CLEAR, HIGH_SPEED, LAUNCH_SPEED, LAUNCH_UP, RAMP_KICK, SPRING_SPEED, type Course } from './course';
 import type { TrackPoint } from './track';
 
 export interface Controls {
@@ -13,7 +13,7 @@ export interface Controls {
   turbo: boolean;
 }
 
-export type BikeEvent = 'jump' | 'land' | 'finish' | 'dash' | 'turbo' | 'pad' | 'spring';
+export type BikeEvent = 'jump' | 'land' | 'finish' | 'dash' | 'turbo' | 'pad' | 'spring' | 'fall' | 'blast';
 
 // 平常的速度和冲刺时的速度（米每秒）。用户嫌过慢，整体提过一次
 const CRUISE = 19;
@@ -22,7 +22,11 @@ const SPRINT = 28;
 const TURBO = 34;
 const TURBO_DRAIN = 2;
 const MIN_SPEED = 6;
-const MAX_SPEED = 42;
+const MAX_SPEED = 48;
+// 火箭（超级加速）：这么多秒里一下子冲到这么快，不耗冲刺条（用户要的「持续时间短」）
+const BLAST_SECONDS = 3.2;
+const BLAST_SPEED = 46;
+const ACCEL_BLAST = 5;
 // 吃到辣椒：这么多秒里冲刺条不掉，各档速度都再快一点
 const FEVER_SECONDS = 8;
 const FEVER_SPEED = 3;
@@ -65,6 +69,17 @@ const MAX_HEADING = 0.7;
 const AIR_STEER = 0.3;
 
 const GRAVITY = 19;
+
+// 掉进深沟：飞到对岸时比路面低这么多以内还算够着了，再低就是撞在崖壁上掉下去
+const FALL_GRACE = 0.45;
+// 掉下去以后鹈鹕自己扑着翅膀飞上来、落在对岸，一共这么多秒；前面这一成多还在往下掉。落地后从这个速度重新起步
+const RESCUE_SECONDS = 2;
+const RESCUE_SINK = 0.3;
+// 沟底是水，水面在高度 0（world.ts 的 SEA）：掉下去要一头扎进水里再飞出来
+const RESCUE_DIVE = -1.3;
+const RESCUE_SPEED = 9;
+// 路面在一步里高出这么多（米）就不是坡，是一道坎：最陡的跳台以最快的速度骑上去，一步也只升 0.15 米
+const STEP_UP = 0.5;
 
 // 冲刺条满的时候能连续冲多久（秒）。用户三次嫌掉得太快：3 秒、7 秒都改过
 const DASH_SECONDS = 11;
@@ -112,7 +127,11 @@ export class Bike {
   surge = 0;
   // 辣椒的劲儿还剩多少秒：这段时间冲刺条不掉
   fever = 0;
+  // 火箭的劲儿还剩多少秒
+  blast = 0;
   finished = false;
+  // 掉进深沟以后，离飞回对岸还有多少秒；0 就是没掉下去
+  rescue = 0;
   // 轮子转过的角度，画面用
   spin = 0;
   // 落地时的下压量，画面用，自己会回弹
@@ -125,6 +144,10 @@ export class Bike {
   // 上一步是不是在跳台的坡面上：离开坡面腾空的那一下要响一声
   private onRamp = false;
   private lastGround = 0;
+  // 掉下去的那道沟的对岸在哪、掉下去那一刻有多高
+  private fallEdge = 0;
+  private fallFrom = 0;
+  private fallAt = 0;
   private emit: (event: BikeEvent) => void;
 
   constructor(emit: (event: BikeEvent) => void = () => {}) {
@@ -148,7 +171,9 @@ export class Bike {
     this.turbo = false;
     this.surge = 0;
     this.fever = 0;
+    this.blast = 0;
     this.finished = false;
+    this.rescue = 0;
     this.spin = 0;
     this.squash = 0;
     this.ground = point.y;
@@ -160,13 +185,25 @@ export class Bike {
 
   // 是不是正在加速（按着冲刺，或者刚压过加速带）
   get rushing(): boolean {
-    return this.dashing || this.surge > 0;
+    return this.dashing || this.surge > 0 || this.blast > 0;
+  }
+
+  // 火箭剩下几成（0 到 1），状态栏倒计时用
+  get blastLeft(): number {
+    return this.blast / BLAST_SECONDS;
+  }
+
+  // 吃到火箭：一小段时间里冲到最快
+  launch(): void {
+    this.blast = BLAST_SECONDS;
+    this.emit('blast');
   }
 
   // 撞上路障：速度掉一半，冲刺和加速带的劲儿都断掉，车往 side 那一侧晃一下（1 右，-1 左）
   hit(side: number): void {
     this.v *= 0.5;
     this.surge = 0;
+    this.blast = 0;
     this.dashing = false;
     this.turbo = false;
     this.leanVel += side * 3.2;
@@ -184,10 +221,55 @@ export class Bike {
     this.boost = clamp(this.boost + amount, 0, 1);
   }
 
+  // 没血了：这一趟到此为止，车慢慢停下来，不算冲过终点
+  stop(): void {
+    this.finished = true;
+    this.dashing = false;
+    this.turbo = false;
+    this.surge = 0;
+    this.blast = 0;
+  }
+
+  // 掉进深沟的那一段：先接着往下掉一小会儿，然后扑着翅膀划一道弧飞上来，落在对岸
+  private climbOut(dt: number, course: Course): void {
+    this.rescue = Math.max(0, this.rescue - dt);
+    const u = 1 - this.rescue / RESCUE_SECONDS;
+    const low = Math.min(this.fallFrom - 3, RESCUE_DIVE);
+    course.track.at(this.fallEdge + 6, point);
+    if (u < RESCUE_SINK) {
+      const fall = u / RESCUE_SINK;
+      this.h = this.fallFrom + (low - this.fallFrom) * fall * fall;
+    } else {
+      const w = (u - RESCUE_SINK) / (1 - RESCUE_SINK);
+      const ease = w * w * (3 - 2 * w);
+      this.s = this.fallAt + (this.fallEdge + 6 - this.fallAt) * ease;
+      this.h = low + (point.y - low) * ease + Math.sin(w * Math.PI) * 1.8;
+    }
+    this.lean += (0 - this.lean) * Math.min(1, dt * 6);
+    this.leanVel = 0;
+    this.heading += (0 - this.heading) * Math.min(1, dt * 6);
+    this.x *= 1 - Math.min(1, dt * 0.8);
+    this.spin += 3 * dt;
+    this.ground = point.y;
+    this.lastGround = point.y;
+    if (this.rescue > 0) return;
+    this.h = point.y;
+    this.vy = 0;
+    this.v = RESCUE_SPEED;
+    this.grounded = true;
+    this.squash = 0.5;
+    this.emit('land');
+  }
+
   step(dt: number, course: Course, controls: Controls): void {
     const track = course.track;
     this.clock += dt;
     this.squash += (0 - this.squash) * Math.min(1, dt * 9);
+    if (this.rescue > 0) {
+      this.climbOut(dt, course);
+      return;
+    }
+    const before = this.s;
 
     track.at(this.s, point);
     const half = track.width / 2;
@@ -206,7 +288,10 @@ export class Bike {
     if (turbo && !this.turbo) this.emit('turbo');
     this.turbo = turbo;
     this.fever = Math.max(0, this.fever - dt);
+    this.blast = Math.max(0, this.blast - dt);
+    // 吃了辣椒、或者火箭正在推着走的时候，冲刺条都不掉
     if (this.fever > 0) this.boost = 1;
+    else if (this.blast > 0) this.boost = Math.min(1, this.boost + dt * REGEN);
     else if (this.dashing) this.boost = Math.max(0, this.boost - (dt / DASH_SECONDS) * (turbo ? TURBO_DRAIN : 1));
     else this.boost = Math.min(1, this.boost + dt * REGEN);
 
@@ -217,10 +302,10 @@ export class Bike {
     }
     this.surge = Math.max(0, this.surge - dt);
 
-    let target = this.finished ? 0 : this.turbo ? TURBO : this.surge > 0 ? SURGE_SPEED : this.dashing ? SPRINT : CRUISE;
+    let target = this.finished ? 0 : this.blast > 0 ? BLAST_SPEED : this.turbo ? TURBO : this.surge > 0 ? SURGE_SPEED : this.dashing ? SPRINT : CRUISE;
     if (this.fever > 0 && !this.finished) target += FEVER_SPEED;
     if (this.rough && this.grounded) target *= ROUGH_SPEED;
-    const pull = this.turbo ? ACCEL_TURBO : this.surge > 0 ? ACCEL_SURGE : this.dashing ? ACCEL_DASH : ACCEL;
+    const pull = this.blast > 0 ? ACCEL_BLAST : this.turbo ? ACCEL_TURBO : this.surge > 0 ? ACCEL_SURGE : this.dashing ? ACCEL_DASH : ACCEL;
     this.v += (target - this.v) * pull * dt;
     // 上跳台的那一段白送一点速度，飞出去更远更爽；course.ts 排奖励圈时用的是同一个数
     const climbing = this.grounded && course.rampHeight(this.s, this.x) > 0;
@@ -262,16 +347,46 @@ export class Bike {
 
     // 竖直方向：贴着路面走，路面突然落下去（坡顶、跳台尽头）就腾空
     track.at(this.s, point);
-    const ground = point.y + course.rampHeight(this.s, this.x);
-    const groundSpeed = (ground - this.lastGround) / dt;
+    // 悬在深沟上面时，脚下是沟底
+    const pit = track.pit(this.s);
+    const ground = point.y + course.rampHeight(this.s, this.x) - pit;
+    // 路面一步高出一大截（台阶的石坎、深沟的对岸）不是车自己在往上走，不能算成上升的速度，否则下一步会被甩上天
+    const rise = ground - this.lastGround;
+    const groundSpeed = rise > STEP_UP ? 0 : rise / dt;
+
+    // 深沟：这一步刚越过对岸的崖边时还比路面低，或者干脆落到了沟底，就是掉下去了
+    const crossed = pit === 0 && track.pit(before) > 0;
+    if ((crossed && this.h + this.vy * dt < ground - FALL_GRACE) || (pit > 0 && !this.grounded && this.h + this.vy * dt <= ground)) {
+      let edge = this.s;
+      for (const fault of track.faults) if (fault.deep && before >= fault.s && before < fault.s + fault.gap) edge = fault.s + fault.gap;
+      this.fallEdge = edge;
+      this.fallFrom = Math.min(this.h, point.y - 0.6);
+      this.s = Math.min(this.s, edge - 0.9);
+      this.fallAt = this.s;
+      this.rescue = RESCUE_SECONDS;
+      this.v = 0;
+      this.vy = 0;
+      this.grounded = false;
+      this.dashing = false;
+      this.turbo = false;
+      this.surge = 0;
+      this.blast = 0;
+      this.emit('fall');
+      return;
+    }
 
     // 弹簧垫：轮子压上去就被弹到半空。斜着的那种还往前推一把，在空中的这段时间一直保持加速带那么快
     const spring = this.grounded && !this.finished ? course.onSpring(this.s, this.x) : null;
     if (spring) {
-      this.vy = spring.tilt ? LAUNCH_UP : SPRING_SPEED;
+      this.vy = spring.high ? Math.sqrt(2 * GRAVITY * (spring.high + HIGH_CLEAR)) : spring.tilt ? LAUNCH_UP : SPRING_SPEED;
       if (spring.tilt) {
         this.v = Math.max(this.v, LAUNCH_SPEED);
         this.surge = (2 * LAUNCH_UP) / GRAVITY;
+      }
+      // 高跳弹簧：速度不够就补上，在空中一直往加速带的速度上靠，保证落在台阶上面
+      if (spring.high) {
+        this.v = Math.max(this.v, HIGH_SPEED);
+        this.surge = (2 * this.vy) / GRAVITY;
       }
       this.grounded = false;
       this.emit('spring');

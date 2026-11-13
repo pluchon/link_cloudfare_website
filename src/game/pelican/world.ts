@@ -2,8 +2,8 @@
 // 整条路按场景切成十二块，只画车附近的几块；峡谷和洞穴两侧另有崖壁和洞顶；天空、雾和灯光要等车过了场景交界的那道门才换
 
 import * as THREE from 'three';
-import { LANE_WIDTH, ROAD_WIDTH, type Course, type ItemKind } from './course';
-import { buildBolt, buildChili, buildFish, buildGate, buildLauncher, buildObstacle, buildPad, buildProp, buildRamp, buildRing, buildBird, buildSpring, buildToken, type FlockKind, type PropShape } from './props';
+import { HIGH_RUN, LANE_WIDTH, ROAD_WIDTH, type Course, type ItemKind, type Spring } from './course';
+import { buildBolt, buildBooster, buildWarning, buildChili, buildRocket, buildFish, buildGate, buildLauncher, buildObstacle, buildPad, buildProp, buildRamp, buildRing, buildBird, buildSpring, buildToken, type FlockKind, type PropShape } from './props';
 import type { Backdrop, PropKind, Scene, TokenKind, Walls } from './scenes';
 import { seeded, type TrackPoint } from './track';
 
@@ -31,7 +31,7 @@ const FAR = 1100;
 // 阴影罩住车周围多大一块（米），和阴影贴图的边长
 const SHADOW_REACH = 75;
 const SHADOW_MAP = 2048;
-const ITEM_SIZE: Record<ItemKind, number> = { fish: 0.78, gold: 0.95, bolt: 1, ring: 1, chili: 1.5, token: 1.3 };
+const ITEM_SIZE: Record<ItemKind, number> = { fish: 0.78, gold: 0.95, bolt: 1, ring: 1, chili: 1.5, token: 1.3, rocket: 1.5 };
 // 崖壁按这么长一排来建（米），每排从脚到顶分几层；崖顶往外再铺多宽的一圈
 const WALL_ROW = 4;
 const WALL_LEVELS = 6;
@@ -59,7 +59,6 @@ const MOTION: Partial<Record<PropKind, ['sail' | 'drift' | 'bob' | 'leap', numbe
   cloud: ['sail', 3.2],
   cloudWarm: ['sail', 2.6],
   cloudDark: ['sail', 2.2],
-  aurora: ['drift', 7],
   foam: ['drift', 1.4],
   foamNight: ['drift', 1.4],
   jumpFish: ['leap', 1.5],
@@ -160,6 +159,8 @@ uniform vec3 uSun;
 uniform vec3 uSunDir;
 uniform float uSunSize;
 uniform float uSunBoost;
+uniform float uAurora;
+uniform float uTime;
 varying vec3 vDir;
 void main() {
   vec3 dir = normalize(vDir);
@@ -169,6 +170,24 @@ void main() {
   float disc = 1.0 - smoothstep(uSunSize * 0.94, uSunSize, angle);
   float halo = exp(-angle * angle / (uSunSize * uSunSize * 22.0)) * 0.42;
   color = mix(color, uSun * uSunBoost, disc) + uSun * halo * (1.0 - disc);
+  // 极光：画在天空里，跟天空一样在无穷远处。两道帘子，下沿清楚、往上慢慢淡掉，竖着一根根光柱，底下绿、上头转紫，整片慢慢飘。
+  // 用户嫌过早先那版「太低太假，像一个个条带子」：那是挂在七八十米高处的几片平面
+  if (uAurora > 0.001 && h > 0.03) {
+    float az = atan(dir.x, -dir.z);
+    vec3 glow = vec3(0.0);
+    for (int k = 0; k < 2; k++) {
+      float fk = float(k);
+      float base = 0.17 + fk * 0.13 + 0.06 * sin(az * 2.0 + fk * 2.3 + uTime * 0.05) + 0.035 * sin(az * 5.0 - uTime * 0.08 + fk);
+      float above = h - base;
+      float curtain = smoothstep(-0.012, 0.018, above) * exp(-max(above, 0.0) * (4.5 + fk * 2.5));
+      float rays = 0.55 + 0.45 * sin(az * 38.0 + sin(az * 7.0 + uTime * 0.2) * 2.0 + fk * 5.0);
+      rays *= 0.65 + 0.35 * sin(az * 91.0 - uTime * 0.35 + fk);
+      float patchy = smoothstep(-0.3, 0.8, sin(az * 1.3 + fk * 1.7 + uTime * 0.03));
+      vec3 tint = mix(vec3(0.18, 1.0, 0.55), vec3(0.6, 0.32, 1.0), smoothstep(0.03, 0.26, above));
+      glow += tint * curtain * rays * patchy * (k == 0 ? 0.6 : 0.38);
+    }
+    color += glow * uAurora;
+  }
   gl_FragColor = vec4(color, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -374,7 +393,7 @@ export class World {
   private readonly skyUniforms: Record<string, THREE.IUniform>;
   private readonly stars: THREE.Points;
   private readonly backdrops = new Map<Backdrop, THREE.Mesh>();
-  // 叠加发光的景物（极光）不受雾影响，隔着两个场景也看得见，所以单独记下来按场景淡入淡出
+  // 叠加发光的景物不受雾影响，隔着两个场景也看得见，所以单独记下来按场景淡入淡出
   private readonly beams: Array<{ mesh: THREE.InstancedMesh; scene: Scene }> = [];
   private readonly spinners: Spinner[] = [];
   private readonly movers: Mover[] = [];
@@ -438,6 +457,8 @@ export class World {
       uSunDir: { value: new THREE.Vector3(0, 1, 0) },
       uSunSize: { value: 0.05 },
       uSunBoost: { value: 1 },
+      uAurora: { value: 0 },
+      uTime: { value: 0 },
     };
     const skyMaterial = new THREE.ShaderMaterial({
       uniforms: this.skyUniforms,
@@ -567,6 +588,7 @@ export class World {
       this.addRamps(chunk, from, to);
       this.addPads(chunk, from, to);
       this.addSprings(chunk, from, to);
+      this.addWarnings(chunk, from, to);
       this.addObstacles(chunk, from, to);
       this.addItems(chunk, index);
       chunk.visible = false;
@@ -794,33 +816,68 @@ export class World {
       // 断层：路面到这里断开。断口前最后一排停在崖边上（再往前半米高度就落下去了），空出来的那一截不铺路，
       // 补一面从崖边垂到水面的崖、一条水、对岸一道矮坎；下一截从对岸重新开始
       const fault = track.faults.find((item) => item.s > s && item.s <= s + ROW);
+      type Patch = [number[], number[], number[], number[], number, number];
+      const paintAll = (patches: Patch[]) => {
+        for (const [a, b, c, d, hex, light] of patches) {
+          shade.setHex(hex).multiplyScalar(light);
+          position.push(...a, ...b, ...c, ...a, ...c, ...d);
+          for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
+        }
+      };
       if (fault) {
         const lip = row(fault.s - 0.5);
         const far = row(fault.s + fault.gap);
-        const water = track.at(fault.s + fault.gap, p).y - 1.4;
-        const sink = (point: number[]) => [point[0], water, point[2]];
+        // 断层底下是贴着对岸的一条水；深沟（断路）一直切到水面以下，两面崖壁越往下越暗，沟底就是河
+        const water = fault.deep ? SEA - 0.6 : track.at(fault.s + fault.gap, p).y - 1.4;
+        const split = fault.deep ? 0.45 : 1;
+        // part 是从这个点往水面落了几成
+        const sink = (point: number[], part = 1) => [point[0], point[1] + (water - point[1]) * part, point[2]];
         const wall = lip.a.walls?.color ?? [0x8f929c, 0x787c88];
         for (let k = 0; k < STRIPS; k += 1) {
-          const patches: Array<[number[], number[], number[], number[], number, number]> = [
-            [lip.points[k], lip.points[k + 1], sink(lip.points[k + 1]), sink(lip.points[k]), wall[k % 2], 0.9 + grit(k, 3, 7) * 0.2],
+          const patches: Patch[] = [
+            [lip.points[k], lip.points[k + 1], sink(lip.points[k + 1], split), sink(lip.points[k], split), wall[k % 2], 0.9 + grit(k, 3, 7) * 0.2],
             [sink(lip.points[k]), sink(lip.points[k + 1]), sink(far.points[k + 1]), sink(far.points[k]), lip.a.far, 1],
-            [sink(far.points[k]), sink(far.points[k + 1]), far.points[k + 1], far.points[k], wall[(k + 1) % 2], 0.8 + grit(k, 5, 9) * 0.2],
+            [sink(far.points[k], split), sink(far.points[k + 1], split), far.points[k + 1], far.points[k], wall[(k + 1) % 2], 0.8 + grit(k, 5, 9) * 0.2],
           ];
-          for (const [a, b, c, d, hex, light] of patches) {
-            shade.setHex(hex).multiplyScalar(light);
-            position.push(...a, ...b, ...c, ...a, ...c, ...d);
-            for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
+          if (fault.deep) {
+            patches.push(
+              [sink(lip.points[k], split), sink(lip.points[k + 1], split), sink(lip.points[k + 1]), sink(lip.points[k]), wall[(k + 1) % 2], 0.5 + grit(k, 7, 3) * 0.14],
+              [sink(far.points[k]), sink(far.points[k + 1]), sink(far.points[k + 1], split), sink(far.points[k], split), wall[k % 2], 0.46 + grit(k, 9, 5) * 0.14],
+            );
           }
+          paintAll(patches);
         }
+      }
+      // 台阶：迎面一道石坎。坎脚那一排停在坎前半米，坎顶那一排从台阶上重新开始
+      const ledge = track.ledges.find((item) => item.s > s && item.s <= s + ROW);
+      const foot = ledge ? row(ledge.s - 0.5) : null;
+      const brow = ledge ? row(ledge.s) : null;
+      if (foot && brow) {
+        const wall = foot.a.walls?.color ?? [0x8f929c, 0x787c88];
+        const patches: Patch[] = [];
+        for (let k = 0; k < STRIPS; k += 1) {
+          // 坎分上下两层，颜色错开，看着是垒起来的石头
+          const mid = [0, 1].map((side) => {
+            const low = foot.points[k + side];
+            const high = brow.points[k + side];
+            return [(low[0] + high[0]) / 2, (low[1] + high[1]) / 2, (low[2] + high[2]) / 2];
+          });
+          patches.push(
+            [foot.points[k], foot.points[k + 1], mid[1], mid[0], wall[k % 2], 0.82 + grit(k, 13, 3) * 0.2],
+            [mid[0], mid[1], brow.points[k + 1], brow.points[k], wall[(k + 1) % 2], 0.92 + grit(k, 15, 5) * 0.2],
+          );
+        }
+        paintAll(patches);
       }
       // 这一排落在断口里：不铺
       if (track.faults.some((item) => s >= item.s && s < item.s + item.gap)) {
         near = row(Math.min(s + ROW, to));
         continue;
       }
-      const next = fault ? row(fault.s - 0.5) : row(Math.min(s + ROW, to));
+      const next = fault ? row(fault.s - 0.5) : (foot ?? row(Math.min(s + ROW, to)));
       const { a, b, w } = near;
       const pick = (get: (scene: Scene) => number) => mix(get(a), get(b), w, colorA);
+      const hazard = track.faults.some((item) => item.deep && s >= item.s - 4 && s < item.s);
       // 近处的地面按四排一片换深浅，左右两边错开，不会看成整齐的条纹
       const block = Math.floor(n / 4);
       for (let k = 0; k < STRIPS; k += 1) {
@@ -832,6 +889,8 @@ export class World {
         else if (edge === 2) pick((scene) => scene.shoulder);
         else if (edge === 3) pick((scene) => scene.curb[Math.floor(n / 2) % 2]);
         // 边线是实线；两条车道线是虚线，画两米空四米
+        // 断路崖边的最后几米：路面刷成黄黑相间的格子
+        else if (edge >= 4 && hazard) colorA.setHex((k + n) % 2 ? 0xf2c14e : 0x2b2d3a);
         else if (edge === 5 || (edge === 7 && n % 3 === 0)) pick((scene) => scene.line);
         else pick((scene) => scene.road);
         // 地面每块深浅略有不同，才有一块一块的手绘感
@@ -844,7 +903,7 @@ export class World {
         position.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
         for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
       }
-      near = next;
+      near = brow ?? next;
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
@@ -886,6 +945,8 @@ export class World {
         if (rule.span && (s < 50 || Math.abs(s - Math.round(s / track.sceneLength) * track.sceneLength) < 30)) continue;
         // 断口里和断口两边不摆东西
         if (!rule.lift && track.faults.some((item) => s > item.s - 6 && s < item.s + item.gap + 6)) continue;
+        // 台阶的石坎和它前面那条高跳弹簧附近也不摆，免得栅栏插在石坎里、石头压在弹簧上
+        if (!rule.lift && track.ledges.some((item) => s > item.s - HIGH_RUN - 5 && s < item.s + 4)) continue;
         // 只放在这段场景的某一截里的
         if (rule.part && (s / track.sceneLength - index < rule.part[0] || s / track.sceneLength - index > rule.part[1])) continue;
         // 只放露天的、只放洞顶底下的
@@ -1023,11 +1084,16 @@ export class World {
 
   private addSprings(chunk: THREE.Group, from: number, to: number): void {
     const track = this.course.track;
-    // 直着弹的和斜着弹的是两种造型，各建一批
-    for (const tilt of [false, true]) {
-      const springs = this.course.springs.filter((spring) => spring.s >= from && spring.s < to && spring.tilt === tilt);
+    // 直着弹的、斜着弹的、横铺整条路的高跳弹簧是三种造型，各建一批
+    const sorts: Array<[(spring: Spring) => boolean, (length: number, width: number) => THREE.BufferGeometry]> = [
+      [(spring) => !spring.tilt && !spring.high, buildSpring],
+      [(spring) => spring.tilt, buildLauncher],
+      [(spring) => !!spring.high, buildBooster],
+    ];
+    for (const [match, shape] of sorts) {
+      const springs = this.course.springs.filter((spring) => spring.s >= from && spring.s < to && match(spring));
       if (springs.length === 0) continue;
-      const geometry = (tilt ? buildLauncher : buildSpring)(springs[0].len, springs[0].width);
+      const geometry = shape(springs[0].len, springs[0].width);
       this.disposables.push(geometry);
       const mesh = new THREE.InstancedMesh(geometry, this.lit, springs.length);
       springs.forEach((spring, i) => {
@@ -1043,6 +1109,27 @@ export class World {
       mesh.receiveShadow = true;
       chunk.add(mesh);
     }
+  }
+
+  // 断路（掉得下去的深沟）前面立一道警示门
+  private addWarnings(chunk: THREE.Group, from: number, to: number): void {
+    const track = this.course.track;
+    const mine = track.faults.filter((fault) => fault.deep && fault.s >= from && fault.s < to);
+    if (mine.length === 0) return;
+    const geometry = buildWarning(track.width);
+    this.disposables.push(geometry);
+    const mesh = new THREE.InstancedMesh(geometry, this.lit, mine.length);
+    mine.forEach((fault, i) => {
+      track.at(fault.s - 1.5, p);
+      dummy.position.set(p.x, p.y, p.z);
+      dummy.rotation.set(0, -p.yaw, 0);
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.frustumCulled = false;
+    mesh.castShadow = true;
+    chunk.add(mesh);
   }
 
   private addObstacles(chunk: THREE.Group, from: number, to: number): void {
@@ -1100,7 +1187,7 @@ export class World {
   private addItems(chunk: THREE.Group, index: number): void {
     const track = this.course.track;
     if (!this.itemGeometry) {
-      this.itemGeometry = { bolt: buildBolt(), ring: buildRing(), chili: buildChili() };
+      this.itemGeometry = { bolt: buildBolt(), ring: buildRing(), chili: buildChili(), rocket: buildRocket() };
       this.disposables.push(...Object.values(this.itemGeometry));
     }
     // 纪念品每个场景一种造型，用到了才建
@@ -1123,7 +1210,7 @@ export class World {
       return made;
     };
     const all = this.course.items;
-    for (const kind of ['fish', 'gold', 'bolt', 'ring', 'chili', 'token'] as const) {
+    for (const kind of ['fish', 'gold', 'bolt', 'ring', 'chili', 'token', 'rocket'] as const) {
       const mine = all.map((item, i) => ({ item, i })).filter(({ item }) => item.scene === index && item.kind === kind);
       if (mine.length === 0) continue;
       // 金鱼和能量罐用自发光的材质，夜里也一眼看得见
@@ -1366,6 +1453,8 @@ export class World {
     mix(a.sky[2], b.sky[2], w, this.skyUniforms.uLow.value);
     mix(a.sun.color, b.sun.color, w, this.skyUniforms.uSun.value);
     this.skyUniforms.uSunSize.value = lerp(a.sun.size, b.sun.size, w);
+    this.skyUniforms.uAurora.value = lerp(a.aurora ?? 0, b.aurora ?? 0, w);
+    this.skyUniforms.uTime.value = this.still ? 0 : time;
     const height = (lerp(a.sun.height, b.sun.height, w) * Math.PI) / 180;
     const turn = (lerp(a.sun.turn, b.sun.turn, w) * Math.PI) / 180;
     const direction = this.skyUniforms.uSunDir.value as THREE.Vector3;

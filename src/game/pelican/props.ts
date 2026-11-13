@@ -398,27 +398,6 @@ function snowman(): PropShape {
   };
 }
 
-function aurora(): PropShape {
-  const curtain = new THREE.PlaneGeometry(150, 34, 16, 1).toNonIndexed();
-  curtain.deleteAttribute('uv');
-  const position = curtain.getAttribute('position');
-  const color = new Float32Array(position.count * 3);
-  for (let i = 0; i < position.count; i += 1) {
-    const x = position.getX(i);
-    const y = position.getY(i);
-    position.setZ(i, Math.sin(x * 0.045) * 14 + Math.sin(x * 0.11 + 1) * 5);
-    // 底边亮绿，往上转紫并暗下去；叠加混合里越暗就越透明
-    const up = (y + 17) / 34;
-    const fade = Math.max(0, 1 - Math.abs(x) / 75) ** 0.6;
-    tint.setRGB(0.25 + up * 0.35, 0.95 - up * 0.75, 0.6 + up * 0.1).multiplyScalar((1 - up) * 0.4 * fade);
-    color[i * 3] = tint.r;
-    color[i * 3 + 1] = tint.g;
-    color[i * 3 + 2] = tint.b;
-  }
-  curtain.setAttribute('color', new THREE.BufferAttribute(color, 3));
-  return { beam: curtain };
-}
-
 interface Massif {
   seed: number;
   // 占地多宽、多深，最高多高（米）
@@ -1247,7 +1226,136 @@ export function buildBird(kind: FlockKind): { body: THREE.BufferGeometry; wing: 
   return { body: join(body), wing: join(wing) };
 }
 
+// 洞里的一汪发光的水：一圈碎石围着一片青色的水面，边上冒出几根小水晶
+function crystalPool(): PropShape {
+  const rim: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 9; k += 1) {
+    const angle = (k / 9) * Math.PI * 2;
+    rim.push(part(roughen(blob(0.42, 0), 0.25), k % 2 ? 0x4c4868 : 0x5a5676, { p: [Math.cos(angle) * 2, 0.12, Math.sin(angle) * 1.5], s: [1.2, 0.6, 1] }));
+  }
+  return {
+    lit: join(rim),
+    glow: join([
+      part(tube(1.9, 1.9, 0.04, 14), 0x5fe0e8, { p: [0, 0.06, 0], s: [1, 1, 0.78] }),
+      part(new THREE.OctahedronGeometry(1, 0), 0xb48cff, { p: [1.6, 0.6, 0.6], s: [0.22, 0.7, 0.22], r: [0, 0, -0.3] }),
+      part(new THREE.OctahedronGeometry(1, 0), 0x8fd8ff, { p: [-1.7, 0.45, -0.4], s: [0.18, 0.5, 0.18], r: [0.2, 0, 0.35] }),
+    ]),
+  };
+}
+
+// 洞里的矿车：一截短铁轨上停着一辆木头矿车，车斗里堆着发光的矿石
+function mineCart(): PropShape {
+  const lit = [
+    part(box(0.1, 0.08, 4), 0x6a6f80, { p: [-0.55, 0.04, 0] }),
+    part(box(0.1, 0.08, 4), 0x6a6f80, { p: [0.55, 0.04, 0] }),
+    part(box(1.5, 0.75, 1.9), 0x7a5a3a, { p: [0, 0.75, 0] }),
+    part(box(1.6, 0.1, 2), 0x4a3a2a, { p: [0, 1.15, 0] }),
+  ];
+  for (let k = -2; k <= 2; k += 1) lit.push(part(box(1.5, 0.06, 0.24), 0x5a4632, { p: [0, 0.02, k * 0.8] }));
+  for (const x of [-0.6, 0.6]) for (const z of [-0.6, 0.6]) lit.push(part(tube(0.2, 0.2, 0.12, 8), 0x3a3d52, { p: [x, 0.24, z], r: [0, 0, Math.PI / 2] }));
+  return {
+    lit: join(lit),
+    glow: join([
+      part(new THREE.OctahedronGeometry(0.3, 0), 0xb48cff, { p: [-0.3, 1.3, 0.3] }),
+      part(new THREE.OctahedronGeometry(0.26, 0), 0x8fd8ff, { p: [0.3, 1.28, -0.2] }),
+      part(new THREE.OctahedronGeometry(0.22, 0), 0xffd98a, { p: [0.1, 1.36, 0.5] }),
+    ]),
+  };
+}
+
+// 水面上漂着的一盏河灯：木头小托盘上一只暖色的纸灯笼
+function lanternFloat(): PropShape {
+  return {
+    lit: join([part(box(0.9, 0.12, 0.9), 0x6a4a32, { p: [0, 0.06, 0] })]),
+    glow: join([part(tube(0.3, 0.26, 0.6, 6), 0xffc46a, { p: [0, 0.45, 0] }), part(cone(0.32, 0.22, 6), 0xff8a4a, { p: [0, 0.86, 0] })]),
+  };
+}
+
+// 霓虹灯牌：一根杆子挑着三块竖着的发光牌子，颜色各不一样
+function neonSign(): PropShape {
+  return {
+    lit: join([part(tube(0.12, 0.16, 7, 6), 0x3a3b5a, { p: [0, 3.5, 0] }), part(box(1.3, 5, 0.3), 0x24253a, { p: [0, 6.6, 0] })]),
+    glow: join([
+      part(box(1, 1.3, 0.06), 0xff5fa8, { p: [0, 8.2, 0.18] }),
+      part(box(1, 1.3, 0.06), 0x5fe8ff, { p: [0, 6.7, 0.18] }),
+      part(box(1, 1.3, 0.06), 0xffd84a, { p: [0, 5.2, 0.18] }),
+      part(box(1.4, 0.1, 0.1), 0xff5fa8, { p: [0, 9.1, 0.16] }),
+    ]),
+  };
+}
+
+// 夜市小推车：车身、四个轮子、一顶条纹棚子，棚子底下挂一排小灯泡
+function foodCart(): PropShape {
+  const lit = [
+    part(box(2.6, 1.1, 1.4), 0xe5604a, { p: [0, 0.95, 0] }),
+    part(box(2.8, 0.1, 1.6), 0xfdf6ea, { p: [0, 1.55, 0] }),
+    part(tube(0.05, 0.05, 1.4, 5), 0xdcdce6, { p: [-1.25, 2.25, 0.65] }),
+    part(tube(0.05, 0.05, 1.4, 5), 0xdcdce6, { p: [1.25, 2.25, 0.65] }),
+  ];
+  for (let k = 0; k < 6; k += 1) {
+    lit.push(part(box(0.5, 0.1, 1.8), k % 2 ? 0xfdf6ea : 0x4fb3a4, { p: [-1.25 + k * 0.5, 3, 0.1], r: [0.18, 0, 0] }));
+  }
+  for (const x of [-0.9, 0.9]) lit.push(part(tube(0.28, 0.28, 0.14, 8), 0x2b2d3a, { p: [x, 0.3, 0.72], r: [Math.PI / 2, 0, 0] }));
+  const bulbs: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 6; k += 1) bulbs.push(part(blob(0.09, 0), k % 2 ? 0xffd98a : 0xff8fb8, { p: [-1.2 + k * 0.48, 2.78, 0.95] }));
+  return { lit: join(lit), glow: join(bulbs) };
+}
+
+// 樱花树下的野餐：一块红白格子的布、一只藤编篮子、一个保温壶
+function picnic(): PropShape {
+  const lit: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 4; i += 1) {
+    for (let j = 0; j < 4; j += 1) lit.push(part(box(0.6, 0.03, 0.6), (i + j) % 2 ? 0xfdf6ea : 0xe5604a, { p: [-0.9 + i * 0.6, 0.02, -0.9 + j * 0.6] }));
+  }
+  lit.push(
+    part(box(0.7, 0.42, 0.5), 0xc49a5a, { p: [0.4, 0.24, -0.2] }),
+    part(new THREE.TorusGeometry(0.28, 0.04, 4, 10, Math.PI), 0xa07a42, { p: [0.4, 0.45, -0.2] }),
+    part(tube(0.12, 0.12, 0.42, 7), 0x4fb3a4, { p: [-0.5, 0.23, 0.4] }),
+    part(tube(0.13, 0.13, 0.08, 7), 0xfdf6ea, { p: [-0.5, 0.48, 0.4] }),
+  );
+  return { lit: join(lit) };
+}
+
+// 三层的小塔：石台基、三层越来越小的屋檐、顶上一根相轮
+function pagoda(): PropShape {
+  const lit = [part(box(5, 0.8, 5), 0x9a9ca8, { p: [0, 0.4, 0] })];
+  let y = 0.8;
+  for (let k = 0; k < 3; k += 1) {
+    const w = 3.4 - k * 0.7;
+    const h = 2 - k * 0.3;
+    lit.push(part(box(w, h, w), 0xfdf3e6, { p: [0, y + h / 2, 0] }));
+    lit.push(part(box(w * 0.18, h * 0.6, w + 0.04), 0xd9453a, { p: [0, y + h / 2, 0] }));
+    lit.push(part(cone(w * 0.95, 1, 4), 0x3a3d52, { p: [0, y + h + 0.45, 0], r: [0, Math.PI / 4, 0] }));
+    y += h + 0.75;
+  }
+  lit.push(part(tube(0.08, 0.08, 2, 6), 0xc9a24a, { p: [0, y + 1, 0] }));
+  for (let k = 0; k < 4; k += 1) lit.push(part(tube(0.2, 0.2, 0.06, 8), 0xc9a24a, { p: [0, y + 0.4 + k * 0.4, 0] }));
+  return { lit: join(lit) };
+}
+
+// 沙漠里的土坯房：方方的一间，屋顶伸出几根木椽，门口一盏暖色的窗
+function adobe(): PropShape {
+  const lit = [
+    part(box(5, 3, 4), 0xd9a06a, { p: [0, 1.5, 0] }),
+    part(box(3, 1.6, 2.8), 0xcf9560, { p: [1.2, 3.8, -0.4] }),
+    part(box(1, 1.9, 0.12), 0x6a4a32, { p: [-1.2, 0.95, 2.02] }),
+  ];
+  for (let k = 0; k < 4; k += 1) lit.push(part(tube(0.09, 0.09, 0.9, 5), 0x7a5a3a, { p: [-2 + k * 1.3, 2.7, 2.3], r: [Math.PI / 2, 0, 0] }));
+  return {
+    lit: join(lit),
+    glow: join([part(box(0.9, 0.8, 0.08), 0xffd08a, { p: [1, 1.7, 2.02] }), part(box(0.7, 0.6, 0.08), 0xffd08a, { p: [1.2, 3.9, 1.02] })]),
+  };
+}
+
 const BUILDERS: Record<Exclude<PropKind, FlockKind>, () => PropShape> = {
+  crystalPool,
+  mineCart,
+  lanternFloat,
+  neonSign,
+  foodCart,
+  picnic,
+  pagoda,
+  adobe,
   palm,
   treeGreen: () => tree(0x4f9f66, 0x62b274),
   treeCherry: () => tree(0xf6b4cb, 0xfbd0de, 0x6a4a44),
@@ -1283,7 +1391,6 @@ const BUILDERS: Record<Exclude<PropKind, FlockKind>, () => PropShape> = {
   parasol,
   mesa,
   snowman,
-  aurora,
   hillGreen: () => hill(11, [0x6fb264, 0x7fbf6e, 0x8fca7a, 0xa4d68a]),
   hillPink: () => hill(12, [0x9cc88a, 0xb4d39c, 0xe8b6c8, 0xf6cbd9]),
   hillPine: () => hill(13, [0x356f50, 0x3f7f5c, 0x4a8d66, 0x5a9c72]),
@@ -1476,6 +1583,22 @@ export function buildChili(): THREE.BufferGeometry {
   ]);
 }
 
+// 火箭（超级加速，用户要的「持续时间短」的那种）：白色的身子、红色的尖头、三片青色的尾翼，屁股后面一团黄火
+export function buildRocket(): THREE.BufferGeometry {
+  const parts = [
+    part(tube(0.17, 0.17, 0.62, 8), 0xf6f8ff, { p: [0, 0.05, 0] }),
+    part(cone(0.17, 0.32, 8), 0xe5604a, { p: [0, 0.52, 0] }),
+    part(tube(0.18, 0.18, 0.06, 8), 0x4fc3ff, { p: [0, 0.2, 0] }),
+    part(cone(0.13, 0.34, 6), 0xffc24a, { p: [0, -0.42, 0], r: [Math.PI, 0, 0] }),
+  ];
+  for (let k = 0; k < 3; k += 1) {
+    const angle = (k / 3) * Math.PI * 2;
+    parts.push(part(box(0.04, 0.3, 0.22), 0x4fc3ff, { p: [Math.cos(angle) * 0.2, -0.18, Math.sin(angle) * 0.2], r: [0, -angle, 0] }));
+  }
+  // 斜着摆，像正往前上方飞
+  return join(parts.map((geometry) => geometry.rotateZ(-0.5)));
+}
+
 // 小鱼：头朝 +x，后面一片尾巴。每个场景的鱼样子不一样（用户要求）：普通的、圆滚滚的、细长的、又高又扁的
 export function buildFish(body: number, fin: number, form: FishForm = 'plain'): THREE.BufferGeometry {
   const eye = (x: number, y: number, z: number) => [part(blob(0.05, 0), 0x2b2d33, { p: [x, y, z] }), part(blob(0.05, 0), 0x2b2d33, { p: [x, y, -z] })];
@@ -1597,6 +1720,56 @@ export function buildLauncher(length: number, width: number): THREE.BufferGeomet
     for (let ring = 0; ring < 4; ring += 1) {
       parts.push(part(tube(0.24, 0.24, 0.06, 8), 0x8d91a8, { p: [sx * (width / 2 - 0.3), 0.3 + ring * 0.28, z - length / 2 + 0.35] }));
     }
+  }
+  return join(parts);
+}
+
+// 断路前的警示门：崖边两根红白相间的杆子，顶上横一条黄黑相间的板，板上两盏黄灯。
+// 从车后面看过去，崖边把后面的深沟整个挡住了，不立这个根本看不出前面路断了
+export function buildWarning(width: number): THREE.BufferGeometry {
+  const reach = width / 2 + 1.1;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 9; k += 1) {
+      parts.push(part(tube(0.16, 0.16, 0.6, 8), k % 2 ? 0xfdf6ea : 0xe5604a, { p: [side * reach, 0.3 + k * 0.6, 0] }));
+    }
+    parts.push(part(blob(0.26, 0), 0xffc24a, { p: [side * reach, 5.75, 0] }));
+  }
+  const stripes = 14;
+  for (let i = 0; i < stripes; i += 1) {
+    const x = -reach + ((i + 0.5) * 2 * reach) / stripes;
+    parts.push(part(box((2 * reach) / stripes, 0.8, 0.14), i % 2 ? 0x2b2d3a : 0xf2c14e, { p: [x, 5, 0] }));
+  }
+  return join(parts);
+}
+
+// 高跳弹簧：横着铺满整条路的一长条蹦床，橙色的面上一排朝前的白箭头，底下一排粗弹簧，两头各立一根红白相间的杆子。
+// 压上去被弹上前面那道台阶
+export function buildBooster(length: number, width: number): THREE.BufferGeometry {
+  const z = -length / 2;
+  const parts = [
+    part(box(width, 0.12, length), 0x2b2d3a, { p: [0, 0.06, z] }),
+    part(box(width - 0.3, 0.1, length - 0.2), 0xff8a3c, { p: [0, 0.5, z] }),
+    part(box(width - 0.3, 0.04, 0.22), 0xfdf6ea, { p: [0, 0.56, z + length / 2 - 0.3] }),
+    part(box(width - 0.3, 0.04, 0.22), 0xfdf6ea, { p: [0, 0.56, z - length / 2 + 0.3] }),
+  ];
+  const count = Math.max(3, Math.round(width / 2.4));
+  for (let i = 0; i < count; i += 1) {
+    const x = -width / 2 + ((i + 0.5) * width) / count;
+    // 箭头：两根斜杠拼的尖角，尖朝前，前后两道
+    for (const side of [-1, 1]) {
+      parts.push(part(box(0.75, 0.04, 0.2), 0xfdf6ea, { p: [x + side * 0.26, 0.57, z - 0.15], r: [0, side * 0.75, 0] }));
+      parts.push(part(box(0.75, 0.04, 0.2), 0xfdf6ea, { p: [x + side * 0.26, 0.57, z + 0.65], r: [0, side * 0.75, 0] }));
+    }
+    for (const sz of [-1, 1]) {
+      parts.push(part(tube(0.15, 0.15, 0.36, 7), 0xd9dcf0, { p: [x, 0.29, z + sz * (length / 2 - 0.4)] }));
+    }
+  }
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 5; k += 1) {
+      parts.push(part(tube(0.13, 0.13, 0.5, 8), k % 2 ? 0xfdf6ea : 0xe5604a, { p: [side * (width / 2 + 0.35), 0.25 + k * 0.5, z] }));
+    }
+    parts.push(part(blob(0.2, 0), 0xffc24a, { p: [side * (width / 2 + 0.35), 2.7, z] }));
   }
   return join(parts);
 }
