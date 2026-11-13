@@ -1,14 +1,12 @@
 // 车的物理：沿路的位置、横向偏移、倾角、速度、离地高度。
 // 这个文件不依赖 three，可以脱离画面单独跑
 
-import { JUMP_SPEED, RAMP_KICK, SPRING_SPEED, type Course } from './course';
+import { LAUNCH_SPEED, LAUNCH_UP, RAMP_KICK, SPRING_SPEED, type Course } from './course';
 import type { TrackPoint } from './track';
 
 export interface Controls {
   // 左右压车，-1 到 1，正数向右
   steer: number;
-  // 这一步里刚按下跳
-  jump: boolean;
   // 按住冲刺
   dash: boolean;
   // 长按空格：比冲刺再快一档的猛冲，冲刺条耗得快一倍
@@ -17,20 +15,23 @@ export interface Controls {
 
 export type BikeEvent = 'jump' | 'land' | 'finish' | 'dash' | 'turbo' | 'pad' | 'spring';
 
-// 平常的速度和冲刺时的速度（米每秒）
-const CRUISE = 16;
-const SPRINT = 25;
+// 平常的速度和冲刺时的速度（米每秒）。用户嫌过慢，整体提过一次
+const CRUISE = 19;
+const SPRINT = 28;
 // 猛冲（长按空格）：在冲刺上面再加一档，冲刺条耗得快一倍
-const TURBO = 31;
+const TURBO = 34;
 const TURBO_DRAIN = 2;
 const MIN_SPEED = 6;
-const MAX_SPEED = 36;
+const MAX_SPEED = 42;
+// 吃到辣椒：这么多秒里冲刺条不掉，各档速度都再快一点
+const FEVER_SECONDS = 8;
+const FEVER_SPEED = 3;
 // 追上目标速度的快慢
 const ACCEL = 1.1;
 const ACCEL_DASH = 2.4;
 const ACCEL_TURBO = 3.2;
 // 压上加速带：比冲刺还快一点，持续这么久，不耗冲刺条
-const SURGE_SPEED = 29;
+const SURGE_SPEED = 32;
 const SURGE_SECONDS = 1.9;
 const ACCEL_SURGE = 4;
 // 坡度对速度的影响，1 就是没有任何阻力的自由滑行
@@ -53,7 +54,7 @@ const LEAN_DAMP = 10.5;
 const TURN_GAIN = 2.1;
 // 一压车，车身马上往那一侧横着挪（米每秒，按每弧度倾角算）。只靠转车头再等它斜着骑过去，
 // 要先倾、再转、再挪，中间隔了两层，玩家按下去半天不见动，会觉得左右挪不动
-const SLIDE = 13;
+const SLIDE = 15;
 // 进弯时车自己先压一部分，剩下的要靠玩家补
 const CURVE_ASSIST = 0.6;
 // 车头慢慢对回路的方向，松手不会一直斜着冲出去。松开手之后回得更快，车才停得住、不会滑过头
@@ -64,14 +65,11 @@ const MAX_HEADING = 0.7;
 const AIR_STEER = 0.3;
 
 const GRAVITY = 19;
-// 提前一点按跳、离开路面一瞬间按跳都算数
-const JUMP_BUFFER = 0.12;
-const COYOTE = 0.1;
 
-// 冲刺条满的时候能连续冲多久（秒）
-const DASH_SECONDS = 7;
+// 冲刺条满的时候能连续冲多久（秒）。用户三次嫌掉得太快：3 秒、7 秒都改过
+const DASH_SECONDS = 11;
 // 不冲刺的时候冲刺条自己慢慢回，每秒回这么多
-const REGEN = 0.07;
+const REGEN = 0.08;
 // 冲刺条低于这个值时不能再起步冲刺，免得一闪一闪
 const DASH_START = 0.08;
 
@@ -112,6 +110,8 @@ export class Bike {
   turbo = false;
   // 加速带的劲儿还剩多少秒
   surge = 0;
+  // 辣椒的劲儿还剩多少秒：这段时间冲刺条不掉
+  fever = 0;
   finished = false;
   // 轮子转过的角度，画面用
   spin = 0;
@@ -122,8 +122,8 @@ export class Bike {
   slope = 0;
 
   private clock = 0;
-  private jumpBuffer = 0;
-  private coyote = 0;
+  // 上一步是不是在跳台的坡面上：离开坡面腾空的那一下要响一声
+  private onRamp = false;
   private lastGround = 0;
   private emit: (event: BikeEvent) => void;
 
@@ -147,14 +147,14 @@ export class Bike {
     this.dashing = false;
     this.turbo = false;
     this.surge = 0;
+    this.fever = 0;
     this.finished = false;
     this.spin = 0;
     this.squash = 0;
     this.ground = point.y;
     this.slope = 0;
     this.clock = 0;
-    this.jumpBuffer = 0;
-    this.coyote = 0;
+    this.onRamp = false;
     this.lastGround = point.y;
   }
 
@@ -171,6 +171,12 @@ export class Bike {
     this.turbo = false;
     this.leanVel += side * 3.2;
     this.squash = 0.7;
+  }
+
+  // 吃到辣椒：一段时间里冲刺条是满的、不会掉，骑得也更快
+  ignite(): void {
+    this.fever = FEVER_SECONDS;
+    this.boost = 1;
   }
 
   // 给冲刺条加一点（吃到鱼时）
@@ -199,7 +205,9 @@ export class Bike {
     const turbo = this.dashing && wantTurbo;
     if (turbo && !this.turbo) this.emit('turbo');
     this.turbo = turbo;
-    if (this.dashing) this.boost = Math.max(0, this.boost - (dt / DASH_SECONDS) * (turbo ? TURBO_DRAIN : 1));
+    this.fever = Math.max(0, this.fever - dt);
+    if (this.fever > 0) this.boost = 1;
+    else if (this.dashing) this.boost = Math.max(0, this.boost - (dt / DASH_SECONDS) * (turbo ? TURBO_DRAIN : 1));
     else this.boost = Math.min(1, this.boost + dt * REGEN);
 
     if (this.grounded && !this.finished && course.onPad(this.s, this.x)) {
@@ -210,11 +218,13 @@ export class Bike {
     this.surge = Math.max(0, this.surge - dt);
 
     let target = this.finished ? 0 : this.turbo ? TURBO : this.surge > 0 ? SURGE_SPEED : this.dashing ? SPRINT : CRUISE;
+    if (this.fever > 0 && !this.finished) target += FEVER_SPEED;
     if (this.rough && this.grounded) target *= ROUGH_SPEED;
     const pull = this.turbo ? ACCEL_TURBO : this.surge > 0 ? ACCEL_SURGE : this.dashing ? ACCEL_DASH : ACCEL;
     this.v += (target - this.v) * pull * dt;
     // 上跳台的那一段白送一点速度，飞出去更远更爽；course.ts 排奖励圈时用的是同一个数
-    if (this.grounded && !this.finished && course.rampHeight(this.s, this.x) > 0) this.v += RAMP_KICK * dt;
+    const climbing = this.grounded && course.rampHeight(this.s, this.x) > 0;
+    if (climbing && !this.finished) this.v += RAMP_KICK * dt;
     if (this.grounded) this.v -= 9.8 * Math.sin(point.pitch) * SLOPE * dt;
     this.v = clamp(this.v, this.finished ? 0 : MIN_SPEED, MAX_SPEED);
 
@@ -255,35 +265,30 @@ export class Bike {
     const ground = point.y + course.rampHeight(this.s, this.x);
     const groundSpeed = (ground - this.lastGround) / dt;
 
-    if (controls.jump) this.jumpBuffer = JUMP_BUFFER;
-    this.jumpBuffer -= dt;
-    this.coyote -= dt;
-
-    // 弹簧垫：轮子压上去就被弹起来，比自己跳高得多
-    if (this.grounded && !this.finished && course.onSpring(this.s, this.x)) {
-      this.vy = SPRING_SPEED;
+    // 弹簧垫：轮子压上去就被弹到半空。斜着的那种还往前推一把，在空中的这段时间一直保持加速带那么快
+    const spring = this.grounded && !this.finished ? course.onSpring(this.s, this.x) : null;
+    if (spring) {
+      this.vy = spring.tilt ? LAUNCH_UP : SPRING_SPEED;
+      if (spring.tilt) {
+        this.v = Math.max(this.v, LAUNCH_SPEED);
+        this.surge = (2 * LAUNCH_UP) / GRAVITY;
+      }
       this.grounded = false;
-      this.coyote = 0;
       this.emit('spring');
     }
 
     if (this.grounded) {
       if (this.vy - GRAVITY * dt > groundSpeed + 0.5) {
         this.grounded = false;
-        this.coyote = COYOTE;
+        // 从跳台的坡顶飞出去
+        if (this.onRamp) this.emit('jump');
       } else {
         this.h = ground;
         this.vy = groundSpeed;
       }
     }
 
-    if (this.jumpBuffer > 0 && (this.grounded || this.coyote > 0) && !this.finished) {
-      this.vy = Math.max(this.vy, 0) + JUMP_SPEED;
-      this.grounded = false;
-      this.jumpBuffer = 0;
-      this.coyote = 0;
-      this.emit('jump');
-    }
+    this.onRamp = climbing;
 
     if (!this.grounded) {
       this.vy -= GRAVITY * dt;

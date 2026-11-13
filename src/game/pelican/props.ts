@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ROAD_WIDTH } from './course';
-import type { PropKind } from './scenes';
+import type { FishForm, PropKind, TokenKind } from './scenes';
 import { seeded } from './track';
 
 export interface PropShape {
@@ -17,7 +17,8 @@ export interface PropShape {
   // 叠加发光的部分（极光），越亮越透
   beam?: THREE.BufferGeometry;
   // 会一直转的部分（风车的叶片、摩天轮的轮子、灯塔的光柱）：造型以转轴为原点，pivot 是转轴在景物里的位置，speed 是每秒转多少弧度
-  spin?: { part: THREE.BufferGeometry; layer: 'lit' | 'beam'; pivot: [number, number, number]; axis: 'y' | 'z'; speed: number };
+  // axis 写 fall 的不是转，是一直往下滑（瀑布上的水纹）：speed 是每秒滑多少米，滑满 period 米跳回原位，造型要按这个周期重复
+  spin?: { part: THREE.BufferGeometry; layer: 'lit' | 'beam' | 'flat'; pivot: [number, number, number]; axis: 'y' | 'z' | 'fall'; speed: number; period?: number };
 }
 
 interface Place {
@@ -543,24 +544,6 @@ function seaStack(): PropShape {
   };
 }
 
-// 一小群鸟：每只是两片往上翘的翅膀
-function birds(color: number): PropShape {
-  const parts: THREE.BufferGeometry[] = [];
-  const spots = [
-    [0, 0, 0],
-    [2.4, 0.5, 1.7],
-    [-2.6, 0.3, 1.5],
-    [4.9, 1, 3.6],
-    [-4.7, 0.9, 3.3],
-    [1.1, 1.7, 5.4],
-  ];
-  for (const [x, y, z] of spots) {
-    parts.push(part(box(1.15, 0.06, 0.36), color, { p: [x + 0.52, y + 0.16, z], r: [0, 0, 0.36] }));
-    parts.push(part(box(1.15, 0.06, 0.36), color, { p: [x - 0.52, y + 0.16, z], r: [0, 0, -0.36] }));
-  }
-  return { lit: join(parts) };
-}
-
 // 一段栅栏，顺着路摆
 function fence(post: number, rail: number): PropShape {
   const parts = [part(box(6.3, 0.1, 0.08), rail, { p: [0, 0.5, 0] }), part(box(6.3, 0.1, 0.08), rail, { p: [0, 0.92, 0] })];
@@ -957,7 +940,314 @@ function kite(a: number, b: number): PropShape {
   return { lit: join(parts) };
 }
 
-const BUILDERS: Record<PropKind, () => PropShape> = {
+// 一簇水晶：底下一块石头，上面几根自己发光的晶柱
+function crystal(a: number, b: number): PropShape {
+  const shard = (x: number, z: number, h: number, r: number, tiltX: number, tiltZ: number, hex: number) =>
+    part(new THREE.OctahedronGeometry(1, 0), hex, { p: [x, h * 0.42, z], r: [tiltX, 0, tiltZ], s: [r, h * 0.55, r] });
+  return {
+    lit: join([part(roughen(blob(0.7, 0), 0.3), 0x4a4664, { p: [0, 0.1, 0], s: [1.5, 0.5, 1.5] })]),
+    glow: join([shard(0, 0, 2.6, 0.42, 0, 0, a), shard(0.6, 0.2, 1.7, 0.32, 0.1, -0.4, b), shard(-0.55, -0.15, 1.4, 0.3, -0.15, 0.45, b), shard(0.1, -0.6, 1.1, 0.26, -0.5, 0.1, a)]),
+  };
+}
+
+// 会发光的蘑菇：一大两小
+function shroomGlow(): PropShape {
+  const stems: THREE.BufferGeometry[] = [];
+  const caps: THREE.BufferGeometry[] = [];
+  for (const [x, z, size] of [
+    [0, 0, 1.5],
+    [0.55, 0.3, 0.9],
+    [-0.4, 0.35, 0.7],
+  ]) {
+    stems.push(part(tube(0.08, 0.12, 0.5, 6), 0xbfc8e6, { p: [x, 0.25 * size, z], s: size }));
+    caps.push(part(blob(0.34, 0), 0x6fe8d0, { p: [x, 0.54 * size, z], s: [size, size * 0.55, size] }));
+  }
+  return { lit: join(stems), glow: join(caps) };
+}
+
+// 石笋：地上长出来的几根尖石头
+function stalagmite(): PropShape {
+  return {
+    lit: join([
+      part(roughen(cone(0.7, 3.4, 6), 0.12), 0x5a5676, { p: [0, 1.7, 0] }),
+      part(roughen(cone(0.5, 2.2, 6), 0.12), 0x4c4868, { p: [0.8, 1.1, 0.3], r: [0, 0, -0.12] }),
+      part(roughen(cone(0.42, 1.6, 5), 0.12), 0x656182, { p: [-0.7, 0.8, -0.2], r: [0.1, 0, 0.16] }),
+    ]),
+  };
+}
+
+// 洞顶在离路中线 x 米处有多高（和 world.ts 里搭洞顶用的是同一条弧线，按洞穴场景的崖壁算）
+const caveRoof = (x: number) => 11 * (0.6 + 0.4 * Math.cos((x / 20) * (Math.PI / 2)));
+
+// 钟乳石：从洞顶垂下来的一排，跨在路上。最低的尖离路面也有六米多
+function stalactites(): PropShape {
+  const random = seeded(733);
+  const rocks: THREE.BufferGeometry[] = [];
+  const tips: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 9; i += 1) {
+    const x = -12 + i * 3 + (random() - 0.5) * 1.6;
+    const z = (random() - 0.5) * 5;
+    const length = 1.6 + random() * 2.2;
+    const top = caveRoof(x) + 0.9;
+    rocks.push(part(roughen(cone(0.3 + length * 0.12, length, 5), 0.12), i % 2 ? 0x4c4868 : 0x5a5676, { p: [x, top - length / 2, z], r: [Math.PI, 0, 0] }));
+    // 有几根的尖上凝着一粒发光的水晶
+    if (i % 3 === 1) tips.push(part(new THREE.OctahedronGeometry(0.22, 0), 0xb48cff, { p: [x, top - length - 0.1, z], s: [1, 1.5, 1] }));
+  }
+  return { lit: join(rocks), glow: join(tips) };
+}
+
+// 洞里的路灯：一根短杆挑着一盏暖色的灯笼
+function caveLamp(): PropShape {
+  return {
+    lit: join([
+      part(tube(0.07, 0.1, 3.2, 6), 0x2c2a44, { p: [0, 1.6, 0] }),
+      part(box(0.08, 0.08, 1), 0x2c2a44, { p: [0, 3.15, 0.45] }),
+      part(box(0.34, 0.08, 0.34), 0x2c2a44, { p: [0, 2.98, 0.9] }),
+    ]),
+    glow: join([part(tube(0.15, 0.12, 0.42, 6), 0xffd98a, { p: [0, 2.72, 0.9] })]),
+  };
+}
+
+// 一串往下滑的白色水纹，接在瀑布上。columns 里每一项是一列：在哪、多长、一个周期里几条。
+// 最顶上那一条整个藏在出水口的石头里，周期一到跳回原位时才看不出来
+function streaks(columns: Array<[number, number, number, number]>, lip: number, period: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const [x, z, length, count] of columns) {
+    for (let y = lip + length / 2 + 0.1; y > -period - length; y -= period / count) {
+      parts.push(part(box(0.42, length, 0.12), 0xffffff, { p: [x, y, z] }));
+    }
+  }
+  return join(parts);
+}
+
+// 挂在崖壁上的瀑布：按三十米高做的，摆的时候按崖壁的高度拉长。正面朝 +z
+function waterfall(): PropShape {
+  const tall = 30;
+  return {
+    lit: join([
+      // 崖顶出水口的石台，水纹最顶上那一截藏在它里面
+      part(roughen(box(9.5, 3.8, 7.6), 0.08), 0x6f7a72, { p: [0, tall + 1.5, -2.9] }),
+      part(roughen(blob(1.7, 0), 0.3), 0x5f9a58, { p: [-3.4, tall + 3.5, -2] , s: [1.3, 0.6, 1.5] }),
+      part(roughen(blob(1.5, 0), 0.3), 0x6fa86a, { p: [2.8, tall + 3.5, -3.4], s: [1.5, 0.6, 1.3] }),
+      part(roughen(blob(1.6, 0), 0.3), 0x69776e, { p: [-4.4, 0.3, 0.8], s: [1, 0.9, 1.1] }),
+      part(roughen(blob(1.3, 0), 0.3), 0x7d8a80, { p: [4.2, 0.2, 1.2] }),
+    ]),
+    flat: join([
+      part(box(6, tall + 2, 0.5), 0xa9dcee, { p: [0, tall / 2 - 1, 0] }),
+      // 落水的地方一团团白沫
+      part(blob(2.2, 1), 0xf4fcff, { p: [0, 0.2, 1.6], s: [1.7, 0.45, 1.1] }),
+      part(blob(1.4, 0), 0xffffff, { p: [-2.4, 0.3, 2.4], s: [1, 0.5, 1] }),
+      part(blob(1.2, 0), 0xffffff, { p: [2.6, 0.2, 2.2], s: [1, 0.5, 1] }),
+    ]),
+    spin: {
+      part: streaks(
+        [
+          [-2.4, 0, 2.4, 2],
+          [-1.4, 0, 3.4, 1],
+          [-0.5, 0, 2.2, 2],
+          [0.5, 0, 3.2, 1],
+          [1.4, 0, 2.6, 2],
+          [2.4, 0, 3, 1],
+        ],
+        tall - 0.4,
+        8,
+      ),
+      layer: 'flat',
+      pivot: [0, 0, 0.32],
+      axis: 'fall',
+      speed: 9,
+      period: 8,
+    },
+  };
+}
+
+// 跨在路上的石拱，拱顶两头各挂一道水帘，中间是一层薄薄的水雾：从瀑布底下穿过去
+function fallArch(): PropShape {
+  return {
+    lit: join([
+      part(roughen(tube(1.8, 2.5, 10.4, 6), 0.14), 0x6f7a72, { p: [-10.6, 5.2, 0] }),
+      part(roughen(tube(1.7, 2.4, 10.2, 6), 0.14), 0x7d8a80, { p: [10.6, 5.1, 0.3] }),
+      part(roughen(box(26.5, 3.6, 5), 0.07), 0x69776e, { p: [0, 11.3, 0] }),
+      part(roughen(box(15, 1.4, 4), 0.1), 0x7d8a80, { p: [1, 13.6, 0.2] }),
+      part(roughen(blob(1.8, 0), 0.3), 0x5f9a58, { p: [-6, 14.2, 0.4], s: [1.6, 0.5, 1.2] }),
+      part(roughen(blob(1.5, 0), 0.3), 0x6fa86a, { p: [7, 13.5, -0.6], s: [1.6, 0.5, 1.2] }),
+    ]),
+    flat: join([
+      part(box(2, 9.7, 0.36), 0xa9dcee, { p: [-7.9, 4.75, 0] }),
+      part(box(2, 9.7, 0.36), 0xa9dcee, { p: [7.9, 4.75, 0] }),
+      part(blob(1.3, 0), 0xffffff, { p: [-7.9, 0.1, 0], s: [1.2, 0.4, 1.4] }),
+      part(blob(1.3, 0), 0xffffff, { p: [7.9, 0.1, 0], s: [1.2, 0.4, 1.4] }),
+    ]),
+    // 横在路上的那层水雾：很淡，叠在画面上
+    beam: join([part(box(13.8, 9.5, 0.05), 0x35606e, { p: [0, 4.75, 0] })]),
+    spin: {
+      part: streaks(
+        [
+          [-8.5, 0.24, 1.8, 2],
+          [-7.9, 0.24, 2.4, 1],
+          [-7.3, 0.24, 1.6, 2],
+          [7.3, 0.24, 2.2, 1],
+          [7.9, 0.24, 1.7, 2],
+          [8.5, 0.24, 2.5, 1],
+          [-8.2, -0.24, 2.2, 1],
+          [-7.5, -0.24, 1.8, 2],
+          [7.5, -0.24, 2.4, 1],
+          [8.2, -0.24, 1.6, 2],
+        ],
+        9.6,
+        5,
+      ),
+      layer: 'flat',
+      pivot: [0, 0, 0],
+      axis: 'fall',
+      speed: 8,
+      period: 5,
+    },
+  };
+}
+
+// 吊桥：高高地横在峡谷两壁之间，中间往下坠一点
+function ropeBridge(): PropShape {
+  const parts: THREE.BufferGeometry[] = [];
+  const reach = 27;
+  const sag = (x: number) => 16 - 2.2 * (1 - (x / reach) ** 2);
+  for (let x = -reach; x < reach; x += 1.8) {
+    const mid = x + 0.9;
+    const tilt = Math.atan2(sag(x + 1.8) - sag(x), 1.8);
+    parts.push(part(box(1.5, 0.12, 1.7), Math.round(mid / 1.8) % 2 ? 0x9a6b4a : 0x8a5d40, { p: [mid, sag(mid), 0], r: [0, 0, tilt] }));
+    for (const z of [-0.85, 0.85]) parts.push(part(box(1.86, 0.06, 0.06), 0xd9c7a0, { p: [mid, sag(mid) + 1, z], r: [0, 0, tilt] }));
+    if (Math.round(mid / 1.8) % 3 === 0) for (const z of [-0.85, 0.85]) parts.push(part(box(0.05, 1, 0.05), 0xd9c7a0, { p: [mid, sag(mid) + 0.5, z] }));
+  }
+  for (const x of [-reach, reach]) for (const z of [-1, 1]) parts.push(part(tube(0.16, 0.2, 2.6, 6), 0x7a5540, { p: [x, sag(x) + 0.9, z] }));
+  return { lit: join(parts) };
+}
+
+// 浮在水面上的几片莲叶，中间开一朵花
+function lotus(): PropShape {
+  const parts = [
+    part(tube(0.95, 0.95, 0.05, 8), 0x4f9a62, { p: [0, 0.02, 0] }),
+    part(tube(0.7, 0.7, 0.05, 8), 0x62ab70, { p: [1.4, 0.02, 0.6] }),
+    part(tube(0.55, 0.55, 0.05, 7), 0x4f9a62, { p: [-0.9, 0.02, 1.2] }),
+  ];
+  for (let k = 0; k < 6; k += 1) {
+    const angle = (k / 6) * Math.PI * 2;
+    parts.push(part(cone(0.16, 0.5, 4), k % 2 ? 0xf7a8c8 : 0xfbd0de, { p: [Math.cos(angle) * 0.16, 0.26, Math.sin(angle) * 0.16], r: [Math.sin(angle) * 0.5, 0, -Math.cos(angle) * 0.5] }));
+  }
+  parts.push(part(blob(0.1, 0), 0xfde27a, { p: [0, 0.32, 0] }));
+  return { lit: join(parts) };
+}
+
+// 挺出水面的一朵荷花：一根细茎顶着花，旁边两片立起来的荷叶
+function lotusBloom(): PropShape {
+  const parts = [
+    part(tube(0.04, 0.05, 1.3, 5), 0x4f9a62, { p: [0, 0.65, 0] }),
+    part(tube(0.04, 0.05, 0.9, 5), 0x4f9a62, { p: [0.7, 0.45, 0.3], r: [0, 0, -0.15] }),
+    part(tube(0.8, 0.1, 0.12, 8), 0x62ab70, { p: [0.78, 0.92, 0.3], r: [0.2, 0, -0.25] }),
+    part(tube(0.04, 0.05, 0.6, 5), 0x4f9a62, { p: [-0.6, 0.3, -0.4], r: [0, 0, 0.2] }),
+    part(tube(0.62, 0.1, 0.1, 8), 0x4f9a62, { p: [-0.68, 0.62, -0.4], r: [-0.15, 0, 0.3] }),
+    part(blob(0.12, 0), 0xfde27a, { p: [0, 1.36, 0] }),
+  ];
+  for (let ring = 0; ring < 2; ring += 1) {
+    for (let k = 0; k < 6; k += 1) {
+      const angle = (k / 6) * Math.PI * 2 + ring * 0.5;
+      const lean = 0.45 + ring * 0.45;
+      parts.push(part(cone(0.17, 0.6, 4), ring ? 0xf7a8c8 : 0xfbd0de, { p: [Math.cos(angle) * 0.2 * (1 + ring), 1.42 - ring * 0.08, Math.sin(angle) * 0.2 * (1 + ring)], r: [Math.sin(angle) * lean, 0, -Math.cos(angle) * lean] }));
+    }
+  }
+  return { lit: join(parts) };
+}
+
+// 水边的一丛芦苇，几根顶上带着褐色的蒲棒
+function reeds(): PropShape {
+  const random = seeded(517);
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 9; i += 1) {
+    const x = (random() - 0.5) * 1.8;
+    const z = (random() - 0.5) * 1.8;
+    const tall = 1.4 + random() * 1.4;
+    const tilt = (random() - 0.5) * 0.3;
+    parts.push(part(cone(0.07, tall, 4), i % 2 ? 0x6fa860 : 0x8cbc6e, { p: [x, tall / 2, z], r: [tilt, 0, tilt] }));
+    if (i % 3 === 0) parts.push(part(tube(0.09, 0.09, 0.42, 6), 0x7a4a2a, { p: [x + tilt * 0.3, tall * 0.92, z] }));
+  }
+  return { lit: join(parts) };
+}
+
+// 站在浅水里的白鹭：细长腿，弯脖子，长嘴
+function heron(): PropShape {
+  const white = 0xfdfaf2;
+  return {
+    lit: join([
+      part(tube(0.03, 0.03, 1, 4), 0x3a3d52, { p: [0.08, 0.5, 0] }),
+      part(tube(0.03, 0.03, 1, 4), 0x3a3d52, { p: [-0.08, 0.5, 0.1] }),
+      part(blob(0.34, 1), white, { p: [0, 1.2, 0.05], s: [0.7, 0.7, 1.25] }),
+      part(cone(0.16, 0.5, 4), 0xe6e9ee, { p: [0, 1.16, 0.56], r: [1.3, 0, 0], s: [1, 1, 0.4] }),
+      part(tube(0.06, 0.08, 0.6, 5), white, { p: [0, 1.6, -0.3], r: [-0.35, 0, 0] }),
+      part(tube(0.055, 0.06, 0.4, 5), white, { p: [0, 1.96, -0.34], r: [0.3, 0, 0] }),
+      part(blob(0.11, 0), white, { p: [0, 2.16, -0.36], s: [0.9, 0.9, 1.2] }),
+      part(cone(0.04, 0.42, 4), 0xf2c14e, { p: [0, 2.14, -0.66], r: [-Math.PI / 2, 0, 0] }),
+      part(cone(0.03, 0.26, 3), white, { p: [0, 2.24, -0.2], r: [1.1, 0, 0] }),
+    ]),
+  };
+}
+
+// 一条小木船，船头翘着，里面横着一支桨
+function rowboat(): PropShape {
+  return {
+    lit: join([
+      part(box(1.3, 0.34, 3.2), 0x9a6b4a, { p: [0, 0.2, 0] }),
+      part(box(1.06, 0.2, 2.9), 0xc9a27a, { p: [0, 0.34, 0] }),
+      part(cone(0.66, 1, 4), 0x9a6b4a, { p: [0, 0.22, -2.05], r: [-Math.PI / 2, Math.PI / 4, 0], s: [1, 1, 0.5] }),
+      part(box(1.2, 0.07, 0.3), 0x7a5540, { p: [0, 0.42, 0.5] }),
+      part(box(1.2, 0.07, 0.3), 0x7a5540, { p: [0, 0.42, -0.6] }),
+      part(box(0.07, 0.07, 2.4), 0xd9c7a0, { p: [0.3, 0.5, 0], r: [0, 0.3, 0.1] }),
+    ]),
+  };
+}
+
+// 从水里跳出来的鱼：造型朝 +x，怎么跳在 world.ts 里算
+function jumpFish(): PropShape {
+  return {
+    lit: join([
+      part(new THREE.OctahedronGeometry(0.34, 0), 0x8fc4d8, { s: [1.9, 1, 0.5] }),
+      part(new THREE.OctahedronGeometry(0.3, 0), 0xdff4ff, { p: [0.05, -0.1, 0], s: [1.6, 0.6, 0.42] }),
+      part(cone(0.26, 0.4, 3), 0x6fa8c4, { p: [-0.76, 0, 0], r: [0, 0, -Math.PI / 2], s: [1, 1, 0.3] }),
+      part(cone(0.12, 0.3, 3), 0x6fa8c4, { p: [0, 0.34, 0], s: [1, 1, 0.3] }),
+      part(blob(0.05, 0), 0x2b2d33, { p: [0.36, 0.07, 0.12] }),
+      part(blob(0.05, 0), 0x2b2d33, { p: [0.36, 0.07, -0.12] }),
+    ]),
+  };
+}
+
+// 成群飞的东西不走普通景物那一套：每只单独算位置，翅膀单独扇
+export type FlockKind = 'birds' | 'gulls' | 'eagles' | 'bats';
+const BIRDS: Record<FlockKind, { body: number; head: number; wing: number; tip: number; beak: number; tail: number; span: number; chord: number }> = {
+  gulls: { body: 0xfdfaf2, head: 0xfdfaf2, wing: 0xdfe4ea, tip: 0x3a3d52, beak: 0xf2a23a, tail: 0xfdfaf2, span: 1, chord: 0.46 },
+  birds: { body: 0x3a3d52, head: 0x3a3d52, wing: 0x4a4d64, tip: 0x2b2d3a, beak: 0xf2c14e, tail: 0x2b2d3a, span: 0.8, chord: 0.42 },
+  eagles: { body: 0x5a4030, head: 0xfdf6ea, wing: 0x6b4c38, tip: 0x3a2a20, beak: 0xf2c14e, tail: 0xfdf6ea, span: 1.5, chord: 0.74 },
+  bats: { body: 0x2a2440, head: 0x2a2440, wing: 0x3d3560, tip: 0x2a2440, beak: 0x2a2440, tail: 0x2a2440, span: 0.8, chord: 0.72 },
+};
+
+// 一只鸟：身子朝 -z；翅膀单独一块（这是右翅，根在原点、往 +x 伸，分三截往后掠），左翅是它的镜像
+export function buildBird(kind: FlockKind): { body: THREE.BufferGeometry; wing: THREE.BufferGeometry } {
+  const look = BIRDS[kind];
+  const body = [
+    gem(0.5, look.body, { s: [0.34, 0.3, 1.2] }),
+    part(blob(0.17, 0), look.head, { p: [0, 0.07, -0.56] }),
+    part(cone(0.06, 0.24, 4), look.beak, { p: [0, 0.05, -0.8], r: [-Math.PI / 2, 0, 0] }),
+    gem(0.5, look.tail, { p: [0, 0.02, 0.66], s: [0.42, 0.05, 0.5] }),
+  ];
+  // 蝙蝠多两只尖耳朵
+  if (kind === 'bats') for (const side of [-1, 1]) body.push(part(cone(0.06, 0.18, 3), look.body, { p: [side * 0.09, 0.22, -0.54] }));
+  const span = look.span;
+  const wing = [
+    gem(0.5, look.wing, { p: [0.45 * span, 0, 0.02], s: [0.95 * span, 0.05, look.chord] }),
+    gem(0.5, look.wing, { p: [1.05 * span, 0, 0.1], r: [0, -0.3, 0], s: [0.9 * span, 0.045, look.chord * 0.8] }),
+    gem(0.5, look.tip, { p: [1.5 * span, 0, 0.24], r: [0, -0.5, 0], s: [0.5 * span, 0.04, look.chord * 0.5] }),
+  ];
+  return { body: join(body), wing: join(wing) };
+}
+
+const BUILDERS: Record<Exclude<PropKind, FlockKind>, () => PropShape> = {
   palm,
   treeGreen: () => tree(0x4f9f66, 0x62b274),
   treeCherry: () => tree(0xf6b4cb, 0xfbd0de, 0x6a4a44),
@@ -1027,8 +1317,6 @@ const BUILDERS: Record<PropKind, () => PropShape> = {
       [() => pine(true), 3],
     ]),
   seaStack,
-  birds: () => birds(0x3a3d52),
-  gulls: () => birds(0xfdfaf2),
   fenceWhite: () => fence(0xfdf6ea, 0xfdf6ea),
   fenceWood: () => fence(0x7a5540, 0x9a6b4a),
   grass: () => grass(0x5fae62, 0x7cc272),
@@ -1068,9 +1356,24 @@ const BUILDERS: Record<PropKind, () => PropShape> = {
   bunting,
   kite: () => kite(0xe5604a, 0xf2c14e),
   kiteBlue: () => kite(0x4fb3a4, 0xfdf6ea),
+  crystal: () => crystal(0xb48cff, 0xd0b4ff),
+  crystalBlue: () => crystal(0x7fd8ff, 0xb4ecff),
+  shroomGlow: () => shroomGlow(),
+  stalagmite: () => stalagmite(),
+  stalactites: () => stalactites(),
+  caveLamp: () => caveLamp(),
+  lotusBloom: () => lotusBloom(),
+  reeds: () => reeds(),
+  heron: () => heron(),
+  rowboat: () => rowboat(),
+  jumpFish: () => jumpFish(),
+  waterfall: () => waterfall(),
+  fallArch: () => fallArch(),
+  ropeBridge: () => ropeBridge(),
+  lotus: () => lotus(),
 };
 
-export function buildProp(kind: PropKind): PropShape {
+export function buildProp(kind: Exclude<PropKind, FlockKind>): PropShape {
   return BUILDERS[kind]();
 }
 
@@ -1097,14 +1400,118 @@ export function buildGate(width: number, finish: boolean): THREE.BufferGeometry 
   return join(parts);
 }
 
-// 小鱼：身子是拉长的八面体，后面一片尾巴
-export function buildFish(body: number, fin: number): THREE.BufferGeometry {
+// 一圈花瓣（或者一把扇骨）立在竖着的平面里：鱼和纪念品都是绕竖轴转的，转起来像一枚硬币。
+// angles 是每一瓣朝哪个方向（弧度）
+function petals(angles: number[], hex: number, length: number, width: number): THREE.BufferGeometry[] {
+  return angles.map((angle) =>
+    part(new THREE.OctahedronGeometry(0.5, 0), hex, {
+      p: [Math.cos(angle) * length * 0.5, Math.sin(angle) * length * 0.5, 0],
+      r: [0, 0, angle],
+      s: [length, width, 0.16],
+    }),
+  );
+}
+
+const around = (count: number, turn = 0) => Array.from({ length: count }, (_, i) => (i / count) * Math.PI * 2 + turn);
+const fan = (count: number, from: number, to: number) => Array.from({ length: count }, (_, i) => from + ((to - from) * i) / (count - 1));
+const disc = (radius: number, hex: number) => part(blob(radius, 0), hex, { s: [1, 1, 0.5] });
+const gem = (radius: number, hex: number, place: { p?: [number, number, number]; r?: [number, number, number]; s?: [number, number, number] | number } = {}) =>
+  part(new THREE.OctahedronGeometry(radius, 0), hex, place);
+
+const TOKENS: Record<TokenKind, () => THREE.BufferGeometry[]> = {
+  shell: () => [...petals(fan(5, 0.5, Math.PI - 0.5), 0xffd9c2, 0.6, 0.3), ...petals(fan(4, 0.76, Math.PI - 0.76), 0xff9f8a, 0.52, 0.14), part(blob(0.16, 0), 0xfff2e0, { p: [0, -0.02, 0] })],
+  sunflower: () => [...petals(around(10), 0xf7c93a, 0.46, 0.2), disc(0.2, 0x7a4a24)],
+  blossom: () => [...petals(around(5, Math.PI / 2), 0xf9a8c4, 0.42, 0.34), disc(0.11, 0xfde27a)],
+  pinecone: () => [
+    part(cone(0.3, 0.36, 6), 0x8a5d40, { p: [0, -0.2, 0] }),
+    part(cone(0.26, 0.34, 6), 0x9a6b4a, { p: [0, 0, 0] }),
+    part(cone(0.2, 0.32, 6), 0xa9785c, { p: [0, 0.2, 0] }),
+    part(cone(0.12, 0.26, 6), 0xb98a66, { p: [0, 0.38, 0] }),
+  ],
+  maple: () => [...petals(fan(5, 0.2, Math.PI - 0.2), 0xe5632e, 0.54, 0.26), part(box(0.05, 0.34, 0.05), 0x9a4a24, { p: [0, -0.18, 0] }), disc(0.14, 0xf2933a)],
+  turquoise: () => [gem(0.4, 0x3fd0c0, { s: [0.9, 1.2, 0.9] }), part(new THREE.TorusGeometry(0.42, 0.05, 4, 12), 0xffd84a, { r: [Math.PI / 2, 0, 0] })],
+  coconut: () => [
+    part(blob(0.36, 1), 0x9a6b4a),
+    part(blob(0.06, 0), 0x3a2a20, { p: [0.1, 0.2, 0.26] }),
+    part(blob(0.06, 0), 0x3a2a20, { p: [-0.1, 0.2, 0.26] }),
+    part(blob(0.06, 0), 0x3a2a20, { p: [0, 0.06, 0.33] }),
+    ...petals(fan(3, 0.6, Math.PI - 0.6), 0x4fae5a, 0.4, 0.14).map((leaf) => leaf.translate(0, 0.3, 0)),
+  ],
+  starfish: () => [...petals(around(5, Math.PI / 2), 0xff8a5c, 0.52, 0.22), disc(0.17, 0xffb07c)],
+  note: () => [
+    part(blob(0.2, 0), 0xff6fb5, { p: [-0.12, -0.3, 0], s: [1.25, 0.9, 0.6] }),
+    part(box(0.07, 0.72, 0.07), 0xff6fb5, { p: [0.1, 0.04, 0] }),
+    part(box(0.3, 0.14, 0.07), 0x8ee6ff, { p: [0.24, 0.33, 0], r: [0, 0, -0.35] }),
+  ],
+  snowflake: () => [...petals(around(6), 0xdff4ff, 0.52, 0.1), ...petals(around(6, Math.PI / 6), 0xffffff, 0.3, 0.08), disc(0.09, 0xffffff)],
+  icegem: () => [gem(0.4, 0xa8e4ff, { s: [0.7, 1.4, 0.7] }), gem(0.22, 0xe6f8ff, { p: [0.3, -0.26, 0], r: [0, 0, -0.5], s: [0.7, 1.3, 0.7] }), gem(0.2, 0xcfeeff, { p: [-0.28, -0.3, 0], r: [0, 0, 0.5], s: [0.7, 1.2, 0.7] })],
+  balloon: () => [
+    part(blob(0.34, 1), 0xff6f61, { p: [0, 0.16, 0], s: [1, 1.2, 1] }),
+    part(cone(0.07, 0.1, 4), 0xff6f61, { p: [0, -0.28, 0] }),
+    part(box(0.03, 0.34, 0.03), 0xfdf6ea, { p: [0, -0.5, 0] }),
+  ],
+  feather: () => [
+    gem(0.5, 0xa9744a, { p: [0.04, 0.1, 0], r: [0, 0, -0.3], s: [0.42, 1.4, 0.14] }),
+    gem(0.5, 0xfdf6ea, { p: [-0.1, 0.5, 0], r: [0, 0, -0.3], s: [0.26, 0.5, 0.14] }),
+    part(box(0.04, 0.5, 0.04), 0xfdf6ea, { p: [0.22, -0.5, 0], r: [0, 0, -0.3] }),
+  ],
+  lotus: () => [...petals(around(8, Math.PI / 8), 0xf7a8c8, 0.46, 0.2), ...petals(around(8), 0xfbd0de, 0.3, 0.16), disc(0.12, 0xfde27a)],
+  crystal: () => [gem(0.4, 0xb48cff, { s: [0.62, 1.5, 0.62] }), gem(0.26, 0xd0b4ff, { p: [0.3, -0.24, 0], r: [0, 0, -0.55], s: [0.6, 1.3, 0.6] }), gem(0.24, 0x9a78f0, { p: [-0.28, -0.28, 0], r: [0, 0, 0.5], s: [0.6, 1.2, 0.6] })],
+};
+
+// 场景自己的纪念品：每种只有巴掌大，自己发光，远远就看得见
+export function buildToken(kind: TokenKind): THREE.BufferGeometry {
+  return join(TOKENS[kind]());
+}
+
+// 辣椒：弯弯的一根红的，顶上一截绿蒂。吃了一小段时间里冲刺条不掉
+export function buildChili(): THREE.BufferGeometry {
   return join([
-    part(new THREE.OctahedronGeometry(0.34, 0), body, { s: [1.7, 1, 0.5] }),
-    part(cone(0.24, 0.36, 3), fin, { p: [-0.68, 0, 0], r: [0, 0, -Math.PI / 2], s: [1, 1, 0.3] }),
-    part(blob(0.05, 0), 0x2b2d33, { p: [0.3, 0.07, 0.11] }),
-    part(blob(0.05, 0), 0x2b2d33, { p: [0.3, 0.07, -0.11] }),
+    part(tube(0.17, 0.2, 0.3, 6), 0xff4a3a, { p: [0, 0.22, 0] }),
+    part(tube(0.2, 0.15, 0.32, 6), 0xff4a3a, { p: [0.03, -0.06, 0], r: [0, 0, 0.18] }),
+    part(tube(0.15, 0.08, 0.3, 6), 0xf23a2e, { p: [0.12, -0.32, 0], r: [0, 0, 0.5] }),
+    part(cone(0.08, 0.24, 6), 0xe0322a, { p: [0.27, -0.52, 0], r: [0, 0, 0.85 + Math.PI] }),
+    part(tube(0.05, 0.1, 0.2, 5), 0x4fae5a, { p: [-0.03, 0.46, 0], r: [0, 0, 0.3] }),
+    part(new THREE.TorusGeometry(0.17, 0.04, 4, 8), 0x62c26a, { p: [0, 0.37, 0], r: [Math.PI / 2, 0, 0] }),
   ]);
+}
+
+// 小鱼：头朝 +x，后面一片尾巴。每个场景的鱼样子不一样（用户要求）：普通的、圆滚滚的、细长的、又高又扁的
+export function buildFish(body: number, fin: number, form: FishForm = 'plain'): THREE.BufferGeometry {
+  const eye = (x: number, y: number, z: number) => [part(blob(0.05, 0), 0x2b2d33, { p: [x, y, z] }), part(blob(0.05, 0), 0x2b2d33, { p: [x, y, -z] })];
+  const tail = (x: number, size = 1) => part(cone(0.24 * size, 0.36 * size, 3), fin, { p: [x, 0, 0], r: [0, 0, -Math.PI / 2], s: [1, 1, 0.3] });
+  if (form === 'round') {
+    // 圆滚滚的：一个球，背上一片小鳍，两边各一片小胸鳍
+    return join([
+      part(blob(0.36, 1), body, { s: [1.2, 1.1, 0.8] }),
+      tail(-0.54, 0.9),
+      part(cone(0.14, 0.24, 3), fin, { p: [-0.04, 0.42, 0], s: [1, 1, 0.3] }),
+      part(cone(0.1, 0.2, 3), fin, { p: [0.06, -0.12, 0.3], r: [1.2, 0, 0], s: [1, 1, 0.3] }),
+      part(cone(0.1, 0.2, 3), fin, { p: [0.06, -0.12, -0.3], r: [-1.2, 0, 0], s: [1, 1, 0.3] }),
+      ...eye(0.3, 0.1, 0.2),
+    ]);
+  }
+  if (form === 'long') {
+    // 细长的：身子拉得很长，背上腹下各一片小鳍
+    return join([
+      part(new THREE.OctahedronGeometry(0.34, 0), body, { s: [2.4, 0.66, 0.46] }),
+      tail(-0.9, 0.85),
+      part(cone(0.1, 0.2, 3), fin, { p: [-0.1, 0.24, 0], s: [1, 1, 0.3] }),
+      part(cone(0.08, 0.16, 3), fin, { p: [-0.2, -0.22, 0], r: [0, 0, Math.PI], s: [1, 1, 0.3] }),
+      ...eye(0.5, 0.05, 0.1),
+    ]);
+  }
+  if (form === 'tall') {
+    // 又高又扁的：身子是立着的菱形，背鳍和腹鳍都拖得很长
+    return join([
+      part(new THREE.OctahedronGeometry(0.34, 0), body, { s: [1.3, 1.4, 0.4] }),
+      tail(-0.56, 0.9),
+      part(cone(0.14, 0.5, 3), fin, { p: [-0.12, 0.52, 0], r: [0, 0, 0.5], s: [1, 1, 0.3] }),
+      part(cone(0.14, 0.5, 3), fin, { p: [-0.12, -0.52, 0], r: [0, 0, Math.PI - 0.5], s: [1, 1, 0.3] }),
+      ...eye(0.24, 0.08, 0.1),
+    ]);
+  }
+  return join([part(new THREE.OctahedronGeometry(0.34, 0), body, { s: [1.7, 1, 0.5] }), tail(-0.68), ...eye(0.3, 0.07, 0.11)]);
 }
 
 // 半空中的奖励圈：一个金色的大环套一个细白环，迎着来路立着
@@ -1163,6 +1570,32 @@ export function buildSpring(length: number, width: number): THREE.BufferGeometry
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       parts.push(part(tube(0.11, 0.11, 0.26, 6), 0xd9dcf0, { p: [sx * (width / 2 - 0.22), 0.21, z + sz * (length / 2 - 0.22)] }));
+    }
+  }
+  return join(parts);
+}
+
+// 斜弹簧：一块前头翘起来的弹板，底下两根粗弹簧顶着，板面上三道朝前的箭头。压上去往前上方弹出去
+export function buildLauncher(length: number, width: number): THREE.BufferGeometry {
+  const z = -length / 2;
+  const tilt = 0.4;
+  const parts = [
+    part(box(width, 0.1, length), 0x2b2d3a, { p: [0, 0.05, z] }),
+    part(box(width - 0.3, 0.09, length), 0x4fc3ff, { p: [0, 0.78, z], r: [tilt, 0, 0] }),
+    part(box(width - 0.9, 0.05, length - 0.5), 0xfdf6ea, { p: [0, 0.83, z], r: [tilt, 0, 0] }),
+  ];
+  // 箭头：每道是两根斜杠拼的尖角，尖朝前
+  for (let k = 0; k < 3; k += 1) {
+    const along = -0.9 + k * 0.9;
+    for (const side of [-1, 1]) {
+      parts.push(part(box(0.9, 0.05, 0.22), 0xff6fa0, { p: [side * 0.34, 0.87 - along * Math.sin(tilt), z + along * Math.cos(tilt)], r: [tilt, side * 0.7, 0] }));
+    }
+  }
+  for (const sx of [-1, 1]) {
+    parts.push(part(tube(0.16, 0.16, 1.25, 7), 0xd9dcf0, { p: [sx * (width / 2 - 0.3), 0.72, z - length / 2 + 0.35] }));
+    parts.push(part(tube(0.12, 0.12, 0.3, 6), 0xd9dcf0, { p: [sx * (width / 2 - 0.3), 0.2, z + length / 2 - 0.3] }));
+    for (let ring = 0; ring < 4; ring += 1) {
+      parts.push(part(tube(0.24, 0.24, 0.06, 8), 0x8d91a8, { p: [sx * (width / 2 - 0.3), 0.3 + ring * 0.28, z - length / 2 + 0.35] }));
     }
   }
   return join(parts);

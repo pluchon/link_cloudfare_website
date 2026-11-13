@@ -9,7 +9,7 @@ import { Bike, BIKE_SPEED, type BikeEvent, type Controls } from './bike';
 import { Course, REFILL, SCORE, shuffledOrder } from './course';
 import { buildRider } from './rider';
 import { createSound } from './sound';
-import type { Scene } from './scenes';
+import type { Scene, TokenKind } from './scenes';
 import type { Track, TrackPoint } from './track';
 import { World } from './world';
 
@@ -31,10 +31,30 @@ const BLOCK_HEIGHT = 0.85;
 const SHAKE_SECONDS = 0.3;
 const FOV = 64;
 const FOV_DASH = 12;
+// 捡到东西时弹框里的小图标：24 格的线条画，和顶栏那些图标一个画法。这里写的是 svg 里面的内容
+const ring = (count: number, rx: number, ry: number, cy: number) =>
+  Array.from({ length: count }, (_, i) => `<ellipse cx="12" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${(360 / count) * i} 12 12)"/>`).join('');
+const ICONS: Record<TokenKind | 'chili', string> = {
+  shell: '<path d="M12 20 4.5 10.5a8 8 0 0 1 15 0zM12 20V6.6M12 20 8 7.6M12 20l4-12.4"/>',
+  sunflower: `${ring(10, 1.5, 3, 5.2)}<circle cx="12" cy="12" r="3.2"/>`,
+  blossom: `${ring(5, 2.9, 3.8, 6.6)}<circle cx="12" cy="12" r="1.3"/>`,
+  pinecone: '<path d="M12 3c3.6 2 5.6 5.6 5.6 9.6a5.6 5.6 0 0 1-11.2 0C6.4 8.6 8.4 5 12 3zM7 11.5l5 3 5-3M7.6 15.6 12 18l4.4-2.4M9.2 7.4 12 9.2l2.8-1.8"/>',
+  maple: '<path d="M12 21v-5.5M12 15.5l-7.5-2 2.3-2.2L3.5 7l4.3.6L7.6 4 12 7l4.4-3-.2 3.6 4.3-.6-3.3 4.3 2.3 2.2z"/>',
+  turquoise: '<path d="M6.5 4h11L21 9l-9 11L3 9zM3 9h18M9.5 4 8 9l4 11 4-11-1.5-5"/>',
+  coconut: '<circle cx="12" cy="12.5" r="7.5"/><path d="M9.6 10.5h.01M14.4 10.5h.01M12 14h.01" stroke-width="2.4"/>',
+  starfish: '<path d="M12 3l2.5 5.8 6.3.6-4.8 4.1 1.5 6.2L12 16.4 6.5 19.7 8 13.5 3.2 9.4l6.3-.6z"/>',
+  note: '<circle cx="7" cy="17.5" r="2.5"/><circle cx="17" cy="15.5" r="2.5"/><path d="M9.5 17.5V6l10-2v11.5M9.5 9.5l10-2"/>',
+  snowflake: '<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9M9.8 4.6 12 6.6l2.2-2M9.8 19.4l2.2-2 2.2 2"/>',
+  icegem: '<path d="M12 2.5l5 7-5 12-5-12zM7 9.5h10M12 2.5v19"/>',
+  balloon: '<path d="M12 3a6 6 0 0 1 6 6c0 3.8-3 6.6-6 7.6-3-1-6-3.8-6-7.6a6 6 0 0 1 6-6zM11 16.6h2l-.4 1.4h-1.2zM12 18c-1.6 1.2 1.6 2 0 3.4"/>',
+  feather: '<path d="M20 4C12 4 7 9 6 16.5L4 20M6 16.5C13.5 15.5 19 11 20 4M8.5 14l6-6M6.4 16.4l3.4-.6"/>',
+  lotus: '<path d="M12 5c2.4 3.2 2.4 9 0 13-2.4-4-2.4-9.8 0-13zM4 10c4 0 7 3 8 8-5 0-8-3-8-8zM20 10c-4 0-7 3-8 8 5 0 8-3 8-8z"/>',
+  crystal: '<path d="M12 2.5l3.6 6-3.6 12.5L8.4 8.5zM6 10.5l2.4 8.5-5-2.2zM18 10.5l-2.4 8.5 5-2.2z"/>',
+  chili: '<path d="M14.5 6.5c5 2.4 5.5 9-1.5 12.5-3 1.5-7 1-9-1 6 0 8.5-4 8.5-9 0-1.6.8-2.5 2-2.5zM14.5 6.5c0-2 1.5-3.2 3.5-3.2"/>',
+};
+
 // 嘴离鱼多近算吃到：沿路、横向、上下（米）
 const REACH = { along: 1.5, across: 1.5, up: 1.6 };
-// 空格按住超过这么久（秒）算长按，是冲刺；没到就松开才是起跳
-const HOLD_SECONDS = 0.2;
 // 速度条在这个速度（米每秒）时是满的
 const SPEED_FULL = 34;
 const STORE_KEY = 'nn-pelican-ride';
@@ -66,7 +86,7 @@ export function supportsWebGL2(): boolean {
   }
 }
 
-function pick<T extends HTMLElement>(root: HTMLElement, selector: string): T {
+function pick<T extends Element>(root: HTMLElement, selector: string): T {
   const node = root.querySelector<T>(selector);
   if (!node) throw new Error(`鹈鹕骑车：页面上缺少 ${selector}`);
   return node;
@@ -123,6 +143,8 @@ export function mountPelican(root: HTMLElement): () => void {
   const flames = Array.from(flameBox.children) as HTMLElement[];
   const recordNode = pick<HTMLElement>(root, '[data-record]');
   const toastNode = pick<HTMLElement>(root, '[data-toast]');
+  const toastIcon = pick<SVGElement>(root, '[data-toast-icon]');
+  const toastText = pick<HTMLElement>(root, '[data-toast-text]');
   const pauseButton = pick<HTMLButtonElement>(root, '[data-pause]');
   const muteButton = pick<HTMLButtonElement>(root, '[data-mute]');
   const overlay = pick<HTMLElement>(root, '[data-overlay]');
@@ -134,7 +156,7 @@ export function mountPelican(root: HTMLElement): () => void {
   const speedNum = pick<HTMLElement>(root, '[data-speed-num]');
   const overlayText = pick<HTMLElement>(root, '[data-overlay-text]');
   const overlayButton = pick<HTMLButtonElement>(root, '[data-overlay-btn]');
-  const jumpButton = pick<HTMLButtonElement>(root, '[data-jump]');
+  const turboButton = pick<HTMLButtonElement>(root, '[data-turbo]');
   const dashButton = pick<HTMLButtonElement>(root, '[data-dash]');
   const gameTitle = root.dataset.title ?? '鹈鹕骑车';
 
@@ -195,7 +217,9 @@ export function mountPelican(root: HTMLElement): () => void {
       scene.remove(world.group);
       world.dispose();
     }
-    course = new Course(shuffledOrder(), Math.floor(Math.random() * 1e9));
+    // 本地开发时可以在地址后面写 ?scenes=12,13,14 指定这一局经过哪几个场景（SCENES 里的下标），看新场景用；构建产物里没有
+    const forced = import.meta.env.DEV ? new URLSearchParams(location.search).get('scenes') : null;
+    course = new Course(forced ? forced.split(',').map(Number) : shuffledOrder(), Math.floor(Math.random() * 1e9));
     track = course.track;
     world = new World(course, still);
     world.setShadows(QUALITY[quality].shadows);
@@ -213,6 +237,8 @@ export function mountPelican(root: HTMLElement): () => void {
   let state: State = 'ready';
   let score = 0;
   let eaten = 0;
+  // 这一局在哪几个场景捡到过纪念品
+  const keepsakes = new Set<number>();
   let elapsed = 0;
   let time = 0;
   let finishTimer = 0;
@@ -236,13 +262,12 @@ export function mountPelican(root: HTMLElement): () => void {
   bike.reset(course);
 
   // 按键和触屏各记各的，合起来才是这一步的输入
-  // hold 是长按空格的冲刺。空格短按是起跳、长按是冲刺：按下时先记下时刻，按够了时间就开始冲，没按够就松开才跳
-  const keys = { left: false, right: false, dash: false, hold: false };
-  let spaceDown = false;
-  let spaceSince = 0;
-  const touch = { left: 0, right: 0, dash: false };
-  const controls: Controls = { steer: 0, jump: false, dash: false, turbo: false };
-  let jumpQueued = false;
+  // dash 是按住 ↑ 的冲刺，turbo 是按住空格的猛冲。没有起跳键（用户取消的），要飞起来靠跳台和弹簧垫
+  const keys = { left: false, right: false, dash: false, turbo: false };
+  const touch = { left: 0, right: 0, dash: false, turbo: false };
+  const controls: Controls = { steer: 0, dash: false, turbo: false };
+  // 这一下空格是用来开始游戏的，还没松开
+  let spaceStarted = false;
 
   const p: TrackPoint = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, curve: 0 };
   const camPos = new THREE.Vector3();
@@ -273,8 +298,10 @@ export function mountPelican(root: HTMLElement): () => void {
     if (button) overlayButton.focus({ preventScroll: true });
   };
 
-  const showToast = (text: string) => {
-    toastNode.textContent = text;
+  // icon 是 ICONS 里的一项（我们自己写死的线条画）；报场景名的时候不带图标
+  const showToast = (text: string, icon = '') => {
+    toastIcon.innerHTML = icon;
+    toastText.textContent = text;
     toastNode.dataset.show = '1';
     toastTimer = 2.6;
   };
@@ -285,7 +312,7 @@ export function mountPelican(root: HTMLElement): () => void {
     const record = !best || score > best.score;
     if (record) saveBest({ score, fish: eaten, seconds: Math.round(elapsed) });
     // 面板上只写分数和用时；吃了多少鱼、是不是新纪录写在画面下面那一行的左边
-    const notes = [`本局小鱼 ${eaten} / ${total}`];
+    const notes = [`本局小鱼 ${eaten} / ${total}`, `纪念品 ${keepsakes.size} / ${course.scenes.length}`];
     if (record && best) notes.push(`新纪录，之前最好 ${best.score}`);
     else if (record) notes.push('新纪录');
     else if (best) notes.push(`最好成绩 ${best.score}`);
@@ -327,13 +354,13 @@ export function mountPelican(root: HTMLElement): () => void {
     showBest();
     score = 0;
     eaten = 0;
+    keepsakes.clear();
     elapsed = 0;
     finishTimer = 0;
     accumulator = 0;
     sceneShown = -1;
     // 从出发前的环绕镜头接过来时不硬切，让镜头自己绕回车后面；再骑一次才直接跳过去
     snapCamera = state !== 'ready';
-    jumpQueued = false;
     setState('playing');
     sound.play('bell');
   };
@@ -400,23 +427,15 @@ export function mountPelican(root: HTMLElement): () => void {
           handled = false;
           break;
         }
-        // 出发前按空格也能开始（这一下不算起跳）
+        // 出发前按空格也能开始。这一下按着不松不算猛冲，松开再按才算
         if (down && !event.repeat && state === 'ready') {
           sound.start();
           restart();
+          spaceStarted = true;
           break;
         }
-        if (down) {
-          if (!event.repeat && state === 'playing') {
-            spaceDown = true;
-            spaceSince = performance.now();
-          }
-        } else {
-          // 还没按够长按的时间就松开了：这是一次起跳
-          if (spaceDown && !keys.hold && state === 'playing') jumpQueued = true;
-          spaceDown = false;
-          keys.hold = false;
-        }
+        if (!down) spaceStarted = false;
+        keys.turbo = down && !spaceStarted && state === 'playing';
         break;
       case 'Escape':
       case 'KeyP':
@@ -436,8 +455,7 @@ export function mountPelican(root: HTMLElement): () => void {
   window.addEventListener(
     'blur',
     () => {
-      keys.left = keys.right = keys.dash = keys.hold = false;
-      spaceDown = false;
+      keys.left = keys.right = keys.dash = keys.turbo = false;
     },
     { signal },
   );
@@ -475,22 +493,19 @@ export function mountPelican(root: HTMLElement): () => void {
   window.addEventListener('pointerup', release, { signal });
   window.addEventListener('pointercancel', release, { signal });
 
-  jumpButton.addEventListener(
-    'pointerdown',
-    (event) => {
+  // 触屏右下角两个键：按住「冲」是冲刺，按住「猛」是猛冲
+  const holdKey = (button: HTMLButtonElement, key: 'dash' | 'turbo') => {
+    const set = (down: boolean) => (event: Event) => {
       event.preventDefault();
-      if (state === 'playing') jumpQueued = true;
-    },
-    { signal },
-  );
-  const holdDash = (down: boolean) => (event: Event) => {
-    event.preventDefault();
-    touch.dash = down;
+      touch[key] = down;
+    };
+    button.addEventListener('pointerdown', set(true), { signal });
+    button.addEventListener('pointerup', set(false), { signal });
+    button.addEventListener('pointercancel', set(false), { signal });
+    button.addEventListener('pointerleave', set(false), { signal });
   };
-  dashButton.addEventListener('pointerdown', holdDash(true), { signal });
-  dashButton.addEventListener('pointerup', holdDash(false), { signal });
-  dashButton.addEventListener('pointercancel', holdDash(false), { signal });
-  dashButton.addEventListener('pointerleave', holdDash(false), { signal });
+  holdKey(dashButton, 'dash');
+  holdKey(turboButton, 'turbo');
 
   const resize = () => {
     const width = stage.clientWidth;
@@ -542,16 +557,28 @@ export function mountPelican(root: HTMLElement): () => void {
       const item = items[i];
       if (Math.abs(item.x - bike.x) > REACH.across || Math.abs(item.y - mouth) > REACH.up) continue;
       taken[i] = 1;
-      if (item.kind !== 'bolt') eaten += 1;
+      if (item.kind === 'fish' || item.kind === 'gold') eaten += 1;
       score += SCORE[item.kind];
       bike.refill(REFILL[item.kind]);
       world?.collect(i, time);
       rider.gulp();
-      sound.play(item.kind);
+      if (item.kind === 'chili') {
+        // 辣椒：一小段时间里冲刺条不掉，骑得也更快
+        bike.ignite();
+        showToast('捡到“辣椒”', ICONS.chili);
+        sound.play('bolt');
+        sound.play('dash', 0.8);
+      } else if (item.kind === 'token') {
+        // 纪念品：每个场景自己的小东西，头一回捡到报一下名字
+        const token = course.scenes[item.scene].token;
+        if (!keepsakes.has(item.scene)) showToast(`捡到“${token.name}”`, ICONS[token.kind]);
+        keepsakes.add(item.scene);
+        sound.play('ring');
+      } else sound.play(item.kind);
     }
   };
 
-  // 撞路障：贴着地、又正好在它那条车道上才算撞到；跳起来就过去了。撞上只是慢一下，路障被撞飞
+  // 撞路障：贴着地、又正好在它那条车道上才算撞到；从跳台或弹簧垫上飞过去不算。撞上只是慢一下，路障被撞飞
   const bump = () => {
     const list = course.obstacles;
     while (blockFrom < list.length && list[blockFrom].s < bike.s - 1) blockFrom += 1;
@@ -645,14 +672,15 @@ export function mountPelican(root: HTMLElement): () => void {
     boostNode.style.transform = `scaleX(${bike.boost.toFixed(3)})`;
     boostBox.toggleAttribute('data-active', bike.rushing);
     // 冲刺时冲刺条上烧着一排火苗，猛冲时烧得更高（用户要求）。火苗的高矮每帧在这里算，不用自己循环的动画
-    const burn = bike.turbo ? '2' : bike.dashing ? '1' : '';
+    // 吃了辣椒的那几秒一直烧着，冲刺条是金色的
+    const burn = bike.fever > 0 ? '3' : bike.turbo ? '2' : bike.dashing ? '1' : '';
     if ((boostBox.dataset.burn ?? '') !== burn) {
       if (burn) boostBox.dataset.burn = burn;
       else delete boostBox.dataset.burn;
     }
     if (burn) {
       flameBox.style.width = `${(bike.boost * 100).toFixed(1)}%`;
-      const tall = burn === '2' ? 1 : 0.55;
+      const tall = burn === '1' ? 0.55 : 1;
       flames.forEach((flame, i) => {
         // 越靠近冲刺条的头上烧得越高；几个不成倍数的正弦叠起来，每根火苗各跳各的
         const lead = 0.4 + 0.6 * (i / (flames.length - 1));
@@ -661,7 +689,7 @@ export function mountPelican(root: HTMLElement): () => void {
       });
     }
     // 画面外框上的十字键和两颗圆键跟着按键亮
-    const press = `${keys.left || touch.left > 0 ? 'l ' : ''}${keys.right || touch.right > 0 ? 'r ' : ''}${keys.dash || touch.dash ? 'u ' : ''}${spaceDown ? 'a' : ''}`;
+    const press = `${keys.left || touch.left > 0 ? 'l ' : ''}${keys.right || touch.right > 0 ? 'r ' : ''}${keys.dash || touch.dash ? 'u ' : ''}${keys.turbo || touch.turbo ? 'a' : ''}`;
     if (root.dataset.press !== press) root.dataset.press = press;
     // 冲刺条的颜色跟着余量走：多、不多、快没了
     const level = bike.boost < 0.25 ? 'low' : bike.boost < 0.6 ? 'mid' : 'high';
@@ -715,12 +743,9 @@ export function mountPelican(root: HTMLElement): () => void {
       accumulator += dt;
       while (accumulator >= TICK) {
         controls.steer = (keys.right || touch.right > 0 ? 1 : 0) - (keys.left || touch.left > 0 ? 1 : 0);
-        if (spaceDown && !keys.hold && performance.now() - spaceSince > HOLD_SECONDS * 1000) keys.hold = true;
         controls.dash = keys.dash || touch.dash;
-        // 长按空格是冲刺的更快一档（用户要求）：比按方向键还快，冲刺条耗得快一倍
-        controls.turbo = keys.hold;
-        controls.jump = jumpQueued;
-        jumpQueued = false;
+        // 按住空格是冲刺的更快一档（用户要求）：比按方向键还快，冲刺条耗得快一倍
+        controls.turbo = keys.turbo || touch.turbo;
         bike.step(TICK, course, controls);
         eat();
         bump();

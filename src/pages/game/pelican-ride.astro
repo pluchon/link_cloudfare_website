@@ -27,7 +27,7 @@ const summary = entry?.data.summary ?? '';
         <span class="pelican__lamp"></span>
       </div>
       <div class="pelican__stage" data-stage>
-        <canvas class="pelican__canvas" data-canvas aria-label="鹈鹕骑车游戏画面：左右压车，空格起跳，按住上方向键或长按空格冲刺"></canvas>
+        <canvas class="pelican__canvas" data-canvas aria-label="鹈鹕骑车游戏画面：左右压车，按住上方向键冲刺，按住空格猛冲"></canvas>
 
         <!-- 路程：贴着画面上沿的一根细线 -->
         <div class="pelican__progress" aria-hidden="true"><i data-progress></i></div>
@@ -57,7 +57,10 @@ const summary = entry?.data.summary ?? '';
         </div>
 
         <!-- 进新场景时报一次站名，几秒后自己淡掉 -->
-        <p class="pelican__toast pelican__panel" data-toast aria-live="polite"></p>
+        <p class="pelican__toast pelican__panel" data-toast aria-live="polite">
+          <svg class="pelican__toast-icon" data-toast-icon viewBox="0 0 24 24" aria-hidden="true"></svg>
+          <span data-toast-text></span>
+        </p>
 
         <!-- 左下角两条线：冲刺还剩多少，现在骑多快。每条线分四格：i 是长度，三个 b 是刻度 -->
         <div class="pelican__meters pelican__panel" data-boost-box data-level="high" aria-hidden="true">
@@ -79,10 +82,10 @@ const summary = entry?.data.summary ?? '';
           </div>
         </div>
 
-        <!-- 只在触屏上出现：左右半屏压车，这两个按钮管跳和冲刺 -->
+        <!-- 只在触屏上出现：左右半屏压车，这两个按钮按住是冲刺和猛冲 -->
         <div class="pelican__touch">
           <button type="button" class="pelican-btn pelican-btn--pad" data-dash>冲</button>
-          <button type="button" class="pelican-btn pelican-btn--pad" data-jump>跳</button>
+          <button type="button" class="pelican-btn pelican-btn--pad" data-turbo>猛</button>
         </div>
 
         <div class="pelican__overlay" data-overlay hidden>
@@ -118,9 +121,8 @@ const summary = entry?.data.summary ?? '';
         <p class="pelican__record" data-record aria-live="polite"></p>
         <p class="pelican__keys">
           <span><kbd>←</kbd><kbd>→</kbd> 压车</span>
-          <span><kbd>空格</kbd> 起跳</span>
           <span><kbd>↑</kbd> 冲刺</span>
-          <span>长按 <kbd>空格</kbd> 猛冲</span>
+          <span><kbd>空格</kbd> 猛冲</span>
           <span><kbd>P</kbd> 暂停</span>
           <span><kbd>M</kbd> 静音</span>
         </p>
@@ -510,6 +512,11 @@ const summary = entry?.data.summary ?? '';
     --meter: #f0642e;
   }
 
+  /* 吃了辣椒：冲刺条不掉，整条是金色的 */
+  .pelican__meters[data-burn="3"] .pelican__meter--boost {
+    --meter: #f6c12e;
+  }
+
   /* 冲刺时烧在冲刺条上的一排火苗：每根是一个三角，高矮由脚本每帧给 */
   .pelican__flames {
     position: absolute;
@@ -626,7 +633,7 @@ const summary = entry?.data.summary ?? '';
     font-size: 0.8125rem;
   }
 
-  /* 触屏上的跳和冲刺：右下角两个方块，鼠标设备上不出现 */
+  /* 触屏上的冲刺和猛冲：右下角两个方块，鼠标设备上不出现 */
   .pelican__touch {
     position: absolute;
     right: 1.1rem;
@@ -837,6 +844,9 @@ const summary = entry?.data.summary ?? '';
     position: absolute;
     top: 1.15rem;
     left: 50%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     margin: 0;
     padding: 0.4rem 1rem;
     font-family: var(--font-serif);
@@ -852,6 +862,22 @@ const summary = entry?.data.summary ?? '';
       border-color var(--dur-3) var(--ease-out),
       color var(--dur-3) var(--ease-out);
     pointer-events: none;
+  }
+
+  /* 捡到东西时名字前面的小图标：线条画，颜色跟场景的强调色走。报场景名的时候里面是空的，不占地方 */
+  .pelican__toast-icon {
+    flex: none;
+    width: 1.15rem;
+    height: 1.15rem;
+    fill: none;
+    stroke: var(--hud-accent);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .pelican__toast-icon:empty {
+    display: none;
   }
 
   .pelican__toast[data-show] {

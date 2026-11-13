@@ -20,6 +20,9 @@ export interface TrackStyle {
   curve: number;
   // 路面最高能起伏到多高（米）
   hill: number;
+  // 断层：这段场景里离进场的门 at 米的地方，路面突然落下去 drop 米，前面 gap 米是空的，车照常骑就飞得过去。
+  // 路在这之前的 climb[0] 到 climb[1] 米之间慢慢爬高 drop 米，才有高度可落
+  fault?: { at: number; drop: number; gap: number; climb: [number, number] };
 }
 
 // 采样步长（米）
@@ -65,6 +68,8 @@ export class Track {
   // 每个场景占多长
   readonly sceneLength: number;
   readonly sceneCount: number;
+  // 路上的断层：在哪、落多高、空多长
+  readonly faults: Array<{ s: number; drop: number; gap: number }> = [];
 
   private readonly px: Float32Array;
   private readonly py: Float32Array;
@@ -146,6 +151,18 @@ export class Track {
       this.pz[index] = z;
       this.yaw[index] = yaw;
     }
+
+    // 断层：断层之前的路整体垫高，先慢慢爬上去，到了断层那一点一步落回原来的高度
+    styles.forEach((style, scene) => {
+      const fault = style.fault;
+      if (!fault) return;
+      const from = scene * sceneLength;
+      this.faults.push({ s: from + fault.at, drop: fault.drop, gap: fault.gap });
+      for (let i = Math.ceil((from + fault.climb[0]) / STEP); i * STEP < from + fault.at && i < this.count; i += 1) {
+        const u = Math.min(1, (i * STEP - from - fault.climb[0]) / (fault.climb[1] - fault.climb[0]));
+        this.py[i] += fault.drop * u * u * (3 - 2 * u);
+      }
+    });
   }
 
   // 取中心线上离起点 s 米处的位置和朝向，结果写进 out
