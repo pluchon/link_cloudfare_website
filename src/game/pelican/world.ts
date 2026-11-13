@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { HIGH_RUN, LANE_WIDTH, ROAD_WIDTH, type Course, type ItemKind, type Spring } from './course';
-import { buildBolt, buildBooster, buildWarning, buildChili, buildRocket, buildFish, buildGate, buildLauncher, buildObstacle, buildPad, buildProp, buildRamp, buildRing, buildBird, buildSpring, buildToken, type FlockKind, type PropShape } from './props';
+import { part, buildBolt, buildBooster, buildWarning, buildChili, buildRocket, buildMagnet, buildFish, buildGate, buildLauncher, buildObstacle, buildPad, buildProp, buildRamp, buildRing, buildBird, buildSpring, buildToken, type FlockKind, type GateTheme, type PropShape } from './props';
 import type { Backdrop, PropKind, Scene, TokenKind, Walls } from './scenes';
 import { seeded, type TrackPoint } from './track';
 
@@ -22,6 +22,24 @@ const CURB = ROAD_WIDTH / 2 + 0.9;
 const SHOULDER = ROAD_WIDTH / 2 + 4;
 // 一排路面顶点之间切成多少条
 const STRIPS = 17;
+// 桥（云海断桥）：桥面边离路中线多远、桥面多厚，每隔几排（两米一排）立一对桥柱、两根柱子离中线多远，桥身的两种石头颜色。
+// 离场景两头的门这么多米以内还是普通的路，接得上隔壁场景
+const DECK = 7.5;
+const DECK_DEPTH = 1.1;
+const PILLAR_ROWS = 11;
+const PILLAR_SPREAD = 4.3;
+const BRIDGE_STONE = [0xa39d92, 0x8a847b];
+const BRIDGE_MARGIN = 24;
+// 被撞飞的路障：重力、砸地上弹回来几成、每砸一下水平速度剩几成、在地上躺多久再缩没（秒）
+const BLOCK_GRAVITY = 19;
+const BLOCK_BOUNCE = 0.35;
+const BLOCK_FRICTION = 0.62;
+const BLOCK_LINGER = 2.2;
+// 尘土碎屑最多同时有多少团
+const MOTES = 120;
+// 谷底两层雾离水面（SEA 是 0）多高
+const MIST_LOW = 2.4;
+const MIST_HIGH = 6.5;
 // 水平面的高度：远处的地面或水面
 const SEA = 0;
 // 车前后各画几个场景
@@ -31,11 +49,12 @@ const FAR = 1100;
 // 阴影罩住车周围多大一块（米），和阴影贴图的边长
 const SHADOW_REACH = 75;
 const SHADOW_MAP = 2048;
-const ITEM_SIZE: Record<ItemKind, number> = { fish: 0.78, gold: 0.95, bolt: 1, ring: 1, chili: 1.5, token: 1.3, rocket: 1.5 };
-// 崖壁按这么长一排来建（米），每排从脚到顶分几层；崖顶往外再铺多宽的一圈
+const ITEM_SIZE: Record<ItemKind, number> = { fish: 0.78, gold: 0.95, bolt: 1, ring: 1, chili: 1.5, token: 1.3, rocket: 1.5, magnet: 1.4 };
+// 崖壁按这么长一排来建（米），每排从脚到顶分几层
 const WALL_ROW = 4;
 const WALL_LEVELS = 6;
-const WALL_LIP = 18;
+// 高山的山脊上积的雪
+const SNOW_TINT: [number, number, number] = [0.93, 0.95, 0.98];
 // 洞顶：最高处离路面多高，横着分几段，两头伸进崖壁里多少米。props.ts 的钟乳石是照着这条弧线挂的
 const ROOF_PEAK = 11;
 const ROOF_SEGMENTS = 8;
@@ -112,6 +131,77 @@ const spinMatrix = new THREE.Matrix4();
 const colorA = new THREE.Color();
 const colorB = new THREE.Color();
 const dummy = new THREE.Object3D();
+// 给尘土碎屑一团一团上色用
+const tint = new THREE.Color();
+
+// 雾的贴图：一张 256 见方的画布上撒几十团边缘柔和的白，四边接得上，铺开来看不出是一块一块的
+function mistTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (context) {
+    const random = seeded(77);
+    for (let i = 0; i < 46; i += 1) {
+      const x = random() * size;
+      const y = random() * size;
+      const radius = 18 + random() * 46;
+      const alpha = 0.18 + random() * 0.3;
+      // 每一团在四周各画一份，贴图铺开时接缝处也是连着的
+      for (const dx of [-size, 0, size]) {
+        for (const dy of [-size, 0, size]) {
+          const glow = context.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, radius);
+          glow.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
+          glow.addColorStop(1, 'rgba(255,255,255,0)');
+          context.fillStyle = glow;
+          context.fillRect(x + dx - radius, y + dy - radius, radius * 2, radius * 2);
+        }
+      }
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+}
+
+// 水面的材质（用户要水有「光影反射的感觉」，又不能上太贵的效果）：还是普通的受光材质，
+// 只是在着色器里按时间叠四组细浪去歪一歪水面的朝向，太阳就在水上映出一片碎碎闪动的光；
+// 再按视线和水面的夹角往天色里混（越往远处看、越贴着水面，越像倒映着天），不用反射贴图，几乎不费事
+function waterMaterial(uniforms: Record<string, THREE.IUniform>): THREE.MeshPhongMaterial {
+  const material = new THREE.MeshPhongMaterial({ shininess: 120 });
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = 'varying vec3 vWaterPos;\n' + shader.vertexShader.replace(
+      '#include <worldpos_vertex>',
+      '#include <worldpos_vertex>\n  vWaterPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+    );
+    shader.fragmentShader =
+      'uniform float uWaterTime;\nuniform float uWaterReflect;\nuniform vec3 uWaterSky;\nvarying vec3 vWaterPos;\n' +
+      shader.fragmentShader
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+  vec2 wp = vWaterPos.xz;
+  float wt = uWaterTime;
+  vec2 slope = vec2(0.8, 0.6) * cos(dot(wp, vec2(0.8, 0.6)) * 0.35 + wt * 1.3) * 0.07;
+  slope += vec2(-0.5, 0.86) * cos(dot(wp, vec2(-0.5, 0.86)) * 0.62 + wt * 1.9) * 0.05;
+  slope += vec2(0.2, -0.98) * cos(dot(wp, vec2(0.2, -0.98)) * 1.3 + wt * 2.6) * 0.035;
+  slope += vec2(-0.93, -0.36) * cos(dot(wp, vec2(-0.93, -0.36)) * 2.4 + wt * 3.4) * 0.025;
+  normal = normalize((viewMatrix * vec4(normalize(vec3(-slope.x, 1.0, -slope.y)), 0.0)).xyz);`,
+        )
+        .replace(
+          '#include <envmap_fragment>',
+          `#include <envmap_fragment>
+  float facing = clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0);
+  float fresnel = 0.05 + 0.95 * pow(1.0 - facing, 4.0);
+  outgoingLight = mix(outgoingLight, uWaterSky, clamp(fresnel * uWaterReflect, 0.0, 0.8));`,
+        );
+  };
+  material.customProgramCacheKey = () => 'pelican-water';
+  return material;
+}
 
 function smooth(u: number): number {
   const t = Math.max(0, Math.min(1, u));
@@ -131,6 +221,38 @@ function lerp(a: number, b: number, w: number): number {
 function grit(a: number, b: number, c: number): number {
   const wave = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453;
   return wave - Math.floor(wave);
+}
+
+// 沿路慢慢起伏的山脊线，0 到 1：两层平滑的噪声叠起来，一座山头接一座山头。左右两边不一样
+function ridge(s: number, side: number): number {
+  const layer = (x: number, salt: number) => {
+    const i = Math.floor(x);
+    const f = x - i;
+    const u = f * f * (3 - 2 * f);
+    return lerp(grit(i, salt, side), grit(i + 1, salt, side), u);
+  };
+  return layer(s / 52 + side * 7.3, 5) * 0.7 + layer(s / 19 + side * 3.1, 9) * 0.3;
+}
+
+// 崖壁这一侧实际有多高：按山脊线在原来的高度上高低错落（八成到一倍三）
+function wallHeight(height: number, s: number, side: number): number {
+  return height * (0.8 + 0.5 * ridge(s, side));
+}
+
+// 崖顶往外的那一半山（用户嫌崖壁「只是一道窄墙」、从隔壁场景远远看过去「悬空」）：
+// 从崖顶内沿往外先隆起一道更高的山脊，再一路落到水平面，从外面看就是一座实心的山。
+// 返回几个转折点：离路中线多远、比路面高多少。最远不超过路中线外 OUTER_LIMIT 米，免得压到拐过来的别处的路
+const OUTER_LIMIT = 122;
+function outerSlope(edge: number, height: number, roadY: number): Array<[number, number]> {
+  const rise = Math.min(24, height * 0.5);
+  const peak = height * 1.28;
+  const fall = Math.max(12, Math.min(44, OUTER_LIMIT - edge - rise));
+  return [
+    [edge + rise * 0.45, height * 1.18],
+    [edge + rise, peak],
+    [edge + rise + fall * 0.5, peak * 0.52],
+    [edge + rise + fall, SEA - 1.5 - roadY],
+  ];
 }
 
 interface Blend {
@@ -354,6 +476,21 @@ interface BlockSlot {
   z: number;
   yaw: number;
   hit: number;
+  // 被撞飞以后按真的抛体算：位置、速度、翻滚的角度和角速度，上一次算到哪个时刻
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  rot: THREE.Vector3;
+  spin: THREE.Vector3;
+  last: number;
+}
+
+// 尘土、碎屑：一小团一小团往外散、慢慢往上飘、越来越小。位置、速度、出生时刻、能活多久、多大
+interface Mote {
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  born: number;
+  life: number;
+  size: number;
 }
 
 interface FishSlot {
@@ -366,6 +503,8 @@ interface FishSlot {
   yaw: number;
   // 被吃掉的时刻，没吃是 -1
   eaten: number;
+  // 是不是被磁铁吸过去的：吸过去的要飞进嘴里，不是原地缩小
+  pulled: boolean;
 }
 
 export class World {
@@ -396,6 +535,12 @@ export class World {
   // 叠加发光的景物不受雾影响，隔着两个场景也看得见，所以单独记下来按场景淡入淡出
   private readonly beams: Array<{ mesh: THREE.InstancedMesh; scene: Scene }> = [];
   private readonly spinners: Spinner[] = [];
+  private readonly mouth = new THREE.Vector3();
+  // 尘土和碎屑：一份实例化的小团，轮着用
+  private readonly moteMesh: THREE.InstancedMesh;
+  private readonly motes: Array<Mote | null> = new Array(MOTES).fill(null);
+  private moteNext = 0;
+  private moteTime = 0;
   private readonly movers: Mover[] = [];
   private readonly flocks: Flock[] = [];
   private readonly birdShapes = new Map<FlockKind, { body: THREE.BufferGeometry; wing: THREE.BufferGeometry }>();
@@ -409,6 +554,14 @@ export class World {
   // 减少动态效果时，飘的东西和转的东西都停住
   private readonly still: boolean;
   private readonly plane: THREE.Mesh;
+  private readonly mist: THREE.Mesh[];
+  // 水面着色器用的：时间、倒映多少天色（是陆地的场景是 0）、天色
+  private readonly waterUniforms: Record<string, THREE.IUniform> = {
+    uWaterTime: { value: 0 },
+    uWaterReflect: { value: 0 },
+    uWaterSky: { value: new THREE.Color() },
+  };
+  private readonly mistTexture: THREE.CanvasTexture;
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
 
@@ -446,6 +599,19 @@ export class World {
       side: THREE.DoubleSide,
     });
     this.disposables.push(this.lit, this.litSway, this.glow, this.plain, this.beam);
+
+    const moteShape = part(new THREE.IcosahedronGeometry(1, 0), 0xffffff);
+    this.disposables.push(moteShape);
+    this.moteMesh = new THREE.InstancedMesh(moteShape, this.plain, MOTES);
+    this.moteMesh.frustumCulled = false;
+    dummy.scale.setScalar(0);
+    dummy.updateMatrix();
+    for (let i = 0; i < MOTES; i += 1) {
+      this.moteMesh.setMatrixAt(i, dummy.matrix);
+      this.moteMesh.setColorAt(i, tint.setHex(0xffffff));
+    }
+    dummy.scale.setScalar(1);
+    this.group.add(this.moteMesh);
 
     // 天空：一个跟着镜头走的大球，颜色在着色器里按高度渐变，太阳也画在里面。
     // 它不写深度也不比深度，排在最前面画，后面的东西都盖在它上面
@@ -539,11 +705,29 @@ export class World {
     this.group.add(this.air);
 
     // 天边那一大片用带高光的材质：是水的时候，太阳和月亮会在水面上映出一道光
-    this.plane = new THREE.Mesh(new THREE.PlaneGeometry(FAR * 4, FAR * 4), new THREE.MeshPhongMaterial({ shininess: 70 }));
+    this.plane = new THREE.Mesh(new THREE.PlaneGeometry(FAR * 4, FAR * 4), waterMaterial(this.waterUniforms));
     this.plane.rotation.x = -Math.PI / 2;
     this.plane.position.y = SEA;
     this.plane.receiveShadow = true;
     this.group.add(this.plane);
+
+    // 谷底的雾（云海断桥）：两层贴着水面的半透明雾，用一张画布现画的一团一团的白，慢慢飘。只有人在高处时才看得见
+    this.mistTexture = mistTexture();
+    this.mist = [MIST_LOW, MIST_HIGH].map((height, k) => {
+      const map = this.mistTexture.clone();
+      map.needsUpdate = true;
+      map.repeat.set(6 + k * 2, 6 + k * 2);
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(FAR * 2, FAR * 2),
+        new THREE.MeshBasicMaterial({ map, color: 0xffffff, transparent: true, depthWrite: false, opacity: 0 }),
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = height;
+      mesh.renderOrder = 1;
+      mesh.visible = false;
+      this.group.add(mesh);
+      return mesh;
+    });
 
     this.hemi = new THREE.HemisphereLight();
     this.sun = new THREE.DirectionalLight();
@@ -584,7 +768,7 @@ export class World {
         chunk.add(mesh);
       }
       this.addProps(chunk, index, from, to);
-      this.addGate(chunk, last ? track.finish : to, last);
+      this.addGate(chunk, last ? track.finish : to, last ? 'finish' : this.course.scenes[index + 1].gate);
       this.addRamps(chunk, from, to);
       this.addPads(chunk, from, to);
       this.addSprings(chunk, from, to);
@@ -626,9 +810,20 @@ export class World {
     return true;
   }
 
+  // s 处是不是架在桥上（场景写了 bridge，离两头的门都有一段距离）。桥上的路面是一块薄薄的桥面，底下是一对对桥柱
+  private bridgeAt(s: number): boolean {
+    const track = this.course.track;
+    const index = track.sceneAt(s);
+    if (!this.course.scenes[index].bridge) return false;
+    const local = s - index * track.sceneLength;
+    return local > BRIDGE_MARGIN && local < track.sceneLength - BRIDGE_MARGIN;
+  }
+
   // 路两侧的地面在离路中心 offset 米处有多高。景物靠它站在地面上，路面网格也用同一个公式
   private terrain(s: number, offset: number, roadY: number, land: number, bumps: number): number {
     const reach = Math.abs(offset);
+    // 桥上：桥面以外就是底下的水
+    if (this.bridgeAt(s)) return reach <= DECK + 0.01 ? roadY : SEA - 0.4;
     if (reach <= SHOULDER) return roadY;
     const mid = SHOULDER + (land - SHOULDER) * 0.32;
     const midY = Math.max(0.25, roadY * 0.55 + bump(s, Math.sign(offset)) * bumps);
@@ -653,6 +848,26 @@ export class World {
     return { foot: lerp(footOf(one, a.walls ? a : b), footOf(two, b.walls ? b : a), w), height, lean: lerp(one.lean, two.lean, w), one, two, w };
   }
 
+  // s 处崖壁外面那一半山，在离路中线 reach 米处有多高（世界坐标）。不在山坡上（更远、外面是水）返回 null
+  private wallSlopeAt(s: number, side: number, reach: number): number | null {
+    const wall = this.wallAt(s);
+    if (!wall) return null;
+    const height = this.course.covered(s) ? wall.height : wallHeight(wall.height, s, side);
+    const roadY = this.course.track.at(s, q).y;
+    const edge = wall.foot + wall.lean * height;
+    let last: [number, number] = [edge, height];
+    for (const point of outerSlope(edge, height, roadY)) {
+      if (reach <= point[0]) {
+        const u = (reach - last[0]) / Math.max(0.01, point[0] - last[0]);
+        const y = roadY + lerp(last[1], point[1], u);
+        // 太靠外、山坡已经低到水边的地方不放
+        return y > SEA + 1 ? y : null;
+      }
+      last = point;
+    }
+    return null;
+  }
+
   // 崖壁和洞顶：和路面分开建。崖壁每一排从脚到顶分几层，每层往里往外错开一点，颜色一层深一层浅，看着像岩层；
   // 头顶有顶的地方（洞穴、隧道）再搭一道拱，两头各砌一面洞口
   private buildCliffs(from: number, to: number): { cliff: THREE.BufferGeometry | null; roof: THREE.BufferGeometry | null } {
@@ -669,8 +884,9 @@ export class World {
       rim: Point[];
       // 岩石两种、崖顶一种、草木两种
       tints: Tint[];
-      // 岩壁上草木长了几成
+      // 岩壁上草木长了几成；山脊上有没有雪
       moss: number;
+      snow: boolean;
     }
     const quad = (into: { position: number[]; color: number[] }, a: Point, b: Point, c: Point, d: Point, tint: Tint, light: number) => {
       into.position.push(...a, ...b, ...c, ...a, ...c, ...d);
@@ -690,14 +906,21 @@ export class World {
       const edge = wall.foot + wall.lean * wall.height;
       const sides = [-1, 1].map((side) => {
         const points: Point[] = [];
+        // 这一侧的崖顶按山脊线高低错落；洞顶那几排两边一样高，洞口才砌得严
+        const height = this.course.covered(s) ? wall.height : wallHeight(wall.height, s, side);
+        const sideTop = p.y + height;
+        const sideEdge = wall.foot + wall.lean * height;
         for (let j = 0; j <= WALL_LEVELS; j += 1) {
           const t = j / WALL_LEVELS;
-          const out = wall.foot + wall.lean * wall.height * t + (j > 0 ? (grit(n, j, side) - 0.35) * 2.6 * rough : 0);
-          const y = lerp(SEA - 1.5, top, t) + (j > 0 && j < WALL_LEVELS ? (grit(n, j + 20, side) - 0.5) * 1.6 * rough : 0);
+          const out = wall.foot + wall.lean * height * t + (j > 0 ? (grit(n, j, side) - 0.35) * 2.6 * rough : 0);
+          const y = lerp(SEA - 1.5, sideTop, t) + (j > 0 && j < WALL_LEVELS ? (grit(n, j + 20, side) - 0.5) * 1.6 * rough : 0);
           points.push(at(side * out, y));
         }
-        // 崖顶往外再铺一圈，从路上看不到崖壁后面是空的
-        points.push(at(side * (edge + WALL_LIP), top));
+        // 崖顶往外是另一半山：先隆起一道山脊，再落到水平面
+        outerSlope(sideEdge, height, p.y).forEach(([out, rise], k) => {
+          // 山坡上不再随机起伏：崖顶外面的树是按这条坡算高度摆的，坡面自己再抖一下，树就会悬在半空或者埋进去（用户截图指出过）
+          points.push(at(side * out, p.y + rise));
+        });
         return points;
       });
       let arch: Point[] | null = null;
@@ -718,7 +941,7 @@ export class World {
         mix((wall.one.moss ?? wall.one).color[0], (wall.two.moss ?? wall.two).color[0], wall.w, colorA).toArray() as Tint,
         mix((wall.one.moss ?? wall.one).color[1], (wall.two.moss ?? wall.two).color[1], wall.w, colorA).toArray() as Tint,
       ];
-      return { n, sides, arch, rim, tints, moss: lerp(wall.one.moss?.amount ?? 0, wall.two.moss?.amount ?? 0, wall.w) };
+      return { n, sides, arch, rim, tints, moss: lerp(wall.one.moss?.amount ?? 0, wall.two.moss?.amount ?? 0, wall.w), snow: !!(wall.w < 0.5 ? wall.one.snow : wall.two.snow) };
     };
 
     let near = row(from);
@@ -727,11 +950,14 @@ export class World {
       if (near && next) {
         const { n, tints } = near;
         for (let side = 0; side < 2; side += 1) {
-          for (let j = 0; j <= WALL_LEVELS; j += 1) {
-            // 最上面那一条是崖顶；下面每层轮流用两种岩石的颜色，每隔几排整体错一层
-            // 草木一片一片地长在岩壁上，每片横着八米、竖着一层，越往上越多；没长的地方露着石头
-            const green = grit(Math.floor(n / 2), j, side + 11) < near.moss * (0.25 + 0.75 * (j / WALL_LEVELS));
-            const tint = j === WALL_LEVELS ? tints[2] : green ? tints[grit(n, j + 31, side) < 0.5 ? 3 : 4] : tints[Math.abs(j + Math.floor(n / 5)) % 2];
+          for (let j = 0; j < near.sides[side].length - 1; j += 1) {
+            // 岩壁每层轮流用两种岩石的颜色，每隔几排整体错一层；草木一片一片地长在岩壁上，每片横着八米、竖着一层，越往上越多，没长的地方露着石头。
+            // 崖顶往外那一半山：有草木的场景大半是绿的，山脊最高那一截在写了 snow 的场景里是雪
+            const outer = j >= WALL_LEVELS;
+            const share = outer ? 0.55 + 0.45 * near.moss : 0.25 + 0.75 * (j / WALL_LEVELS);
+            const green = grit(Math.floor(n / 2), j, side + 11) < near.moss * share;
+            const snowy = near.snow && outer && j <= WALL_LEVELS + 1;
+            const tint = snowy ? SNOW_TINT : green ? tints[grit(n, j + 31, side) < 0.5 ? 3 : 4] : outer ? tints[j === WALL_LEVELS ? 2 : 1] : tints[Math.abs(j + Math.floor(n / 5)) % 2];
             quad(cliff, near.sides[side][j], near.sides[side][j + 1], next.sides[side][j + 1], next.sides[side][j], tint, 0.9 + grit(n, j + 60, side) * 0.2);
           }
         }
@@ -803,12 +1029,63 @@ export class World {
       track.at(s, p);
       const cos = Math.cos(p.yaw);
       const sin = Math.sin(p.yaw);
-      const points = offsets.map((offset) => [p.x + cos * offset, this.terrain(s, offset, p.y, land, bumps), p.z + sin * offset]);
+      // 桥上：路沿以外的几条地面都收到桥面边上（面积是零，画不出来），桥面的侧边、底面和桥柱另外补
+      const bridge = this.bridgeAt(s);
+      const points = offsets.map((offset) => {
+        const at = bridge && Math.abs(offset) > CURB ? Math.sign(offset) * DECK : offset;
+        return [p.x + cos * at, this.terrain(s, at, p.y, land, bumps), p.z + sin * at];
+      });
       // 颜色换得比地形快得多，另算一份
       const { a, b, w } = this.blend(s, PAINT_BLEND, PAINT_BLEND);
-      return { points, a, b, w };
+      return { points, a, b, w, bridge, cos, sin, x: p.x, y: p.y, z: p.z };
     };
+    type Row = ReturnType<typeof row>;
+    // 往下挪 depth 米
+    const down = (point: number[], depth = DECK_DEPTH) => [point[0], point[1] - depth, point[2]];
+    // 桥面的一截：两条侧边、一块底面
+    const deckUnder = (one: Row, two: Row) => {
+      const last = one.points.length - 1;
+      paintAll([
+        [one.points[0], two.points[0], down(two.points[0]), down(one.points[0]), BRIDGE_STONE[0], 0.9],
+        [two.points[last], one.points[last], down(one.points[last]), down(two.points[last]), BRIDGE_STONE[0], 0.9],
+        [down(one.points[0]), down(two.points[0]), down(two.points[last]), down(one.points[last]), BRIDGE_STONE[1], 0.62],
+      ]);
+    };
+    // 桥面一头断开的地方：一道和桥面一样厚的截面
+    const deckCap = (one: Row) => {
+      const last = one.points.length - 1;
+      paintAll([[one.points[0], one.points[last], down(one.points[last]), down(one.points[0]), BRIDGE_STONE[1], 0.8]]);
+    };
+    // 一对桥柱，顶上一道横梁，从桥面底下一直落进水里
+    const pillars = (one: Row) => {
+      const top = one.y - DECK_DEPTH;
+      if (top - SEA < 1.5) return;
+      const block = (offset: number, width: number, depth: number, high: number, low: number, hex: number) => {
+        const corner = (dx: number, dz: number, y: number) => [one.x + one.cos * (offset + dx) - one.sin * dz, y, one.z + one.sin * (offset + dx) + one.cos * dz];
+        const h = width / 2;
+        const d = depth / 2;
+        const ring: Array<[number, number]> = [[-h, -d], [h, -d], [h, d], [-h, d]];
+        const patches: Patch[] = [];
+        for (let k = 0; k < 4; k += 1) {
+          const [ax, az] = ring[k];
+          const [bx, bz] = ring[(k + 1) % 4];
+          patches.push([corner(ax, az, high), corner(bx, bz, high), corner(bx, bz, low), corner(ax, az, low), hex, 0.82 + (k % 2) * 0.14]);
+        }
+        paintAll(patches);
+      };
+      for (const side of [-1, 1]) block(side * PILLAR_SPREAD, 1.4, 1.4, top, SEA - 1, BRIDGE_STONE[k2(side)]);
+      block(0, PILLAR_SPREAD * 2 + 1.6, 1.2, top, top - 0.9, BRIDGE_STONE[1]);
+    };
+    const k2 = (side: number) => (side < 0 ? 0 : 1);
 
+    type Patch = [number[], number[], number[], number[], number, number];
+    const paintAll = (patches: Patch[]) => {
+      for (const [a, b, c, d, hex, light] of patches) {
+        shade.setHex(hex).multiplyScalar(light);
+        position.push(...a, ...b, ...c, ...a, ...c, ...d);
+        for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
+      }
+    };
     let near = row(from);
     // 起点后面那段的 s 是负数，行号取绝对值，下面按奇偶挑颜色才不会取到数组外面
     for (let s = from; s < to - 0.01; s += ROW) {
@@ -816,15 +1093,11 @@ export class World {
       // 断层：路面到这里断开。断口前最后一排停在崖边上（再往前半米高度就落下去了），空出来的那一截不铺路，
       // 补一面从崖边垂到水面的崖、一条水、对岸一道矮坎；下一截从对岸重新开始
       const fault = track.faults.find((item) => item.s > s && item.s <= s + ROW);
-      type Patch = [number[], number[], number[], number[], number, number];
-      const paintAll = (patches: Patch[]) => {
-        for (const [a, b, c, d, hex, light] of patches) {
-          shade.setHex(hex).multiplyScalar(light);
-          position.push(...a, ...b, ...c, ...a, ...c, ...d);
-          for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
-        }
-      };
-      if (fault) {
+      if (fault && this.bridgeAt(fault.s - 1)) {
+        // 断桥：桥面在这里断开，两头各一道截面，中间空着，底下是雾和水
+        deckCap(row(fault.s - 0.5));
+        deckCap(row(fault.s + fault.gap));
+      } else if (fault) {
         const lip = row(fault.s - 0.5);
         const far = row(fault.s + fault.gap);
         // 断层底下是贴着对岸的一条水；深沟（断路）一直切到水面以下，两面崖壁越往下越暗，沟底就是河
@@ -852,7 +1125,11 @@ export class World {
       const ledge = track.ledges.find((item) => item.s > s && item.s <= s + ROW);
       const foot = ledge ? row(ledge.s - 0.5) : null;
       const brow = ledge ? row(ledge.s) : null;
-      if (foot && brow) {
+      if (foot && brow && foot.bridge) {
+        // 桥上的台阶：低的那座桥到这里为止，高的那座桥从这里开始，两头各一道截面，中间空着
+        deckCap(foot);
+        deckCap(brow);
+      } else if (foot && brow) {
         const wall = foot.a.walls?.color ?? [0x8f929c, 0x787c88];
         const patches: Patch[] = [];
         for (let k = 0; k < STRIPS; k += 1) {
@@ -902,6 +1179,10 @@ export class World {
         const p3 = next.points[k];
         position.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
         for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
+      }
+      if (near.bridge && next.bridge) {
+        deckUnder(near, next);
+        if (n % PILLAR_ROWS === 0) pillars(near);
       }
       near = brow ?? next;
     }
@@ -954,13 +1235,18 @@ export class World {
         // 有崖壁的地方：落在崖壁里面的不放，落在崖壁外面的站到崖顶上；瀑布贴着崖脚摆，和崖壁一样高
         const wall = this.wallAt(s);
         let onTop = false;
+        let slopeY = 0;
         let stretch = 1;
         if (rule.wall) {
           if (!wall || wall.height < 14) continue;
           reach = wall.foot + 0.6;
           stretch = wall.height / FALL_HEIGHT;
         } else if (wall && wall.height > 1.5 && !rule.span && !rule.lift && reach > wall.foot - 1.5) {
+          // 落在崖壁外面那一半山上的，站到山坡上（按山坡在那里的高度）；落在山外面的水里就不放
           if (rule.float || reach < wall.foot + wall.lean * wall.height + 5) continue;
+          const ground = this.wallSlopeAt(s, side, reach);
+          if (ground === null) continue;
+          slopeY = ground;
           onTop = true;
         }
         // 大块头这一侧放不下就换到另一侧，两侧都压着路就不放
@@ -975,7 +1261,17 @@ export class World {
         // 浮在水上的东西，脚下要真的是水
         if (rule.float && terrain > SEA) continue;
         let y = Math.max(SEA - 0.05, terrain) - 0.06;
-        if (onTop && wall) y = p.y + wall.height - 0.15;
+        // 站在斜坡上的（路肩往外到水边那一段地面是斜的）：景物的脚是平的，按中心那一点的高度摆，坡朝下那一侧就悬空了。
+        // 按这里的坡度往地里埋一截，越陡、个头越大埋得越深
+        if (!onTop && !rule.lift && !rule.float && !rule.span && !rule.wall) {
+          const land = lerp(a.land, b.land, w);
+          const bumps = lerp(a.bumps, b.bumps, w);
+          const outer = this.terrain(s, offset + side * 1.2, p.y, land, bumps);
+          const inner = this.terrain(s, offset - side * 1.2, p.y, land, bumps);
+          y -= Math.min(1.5, (Math.abs(inner - outer) / 2.4) * size * 1.1);
+        }
+        // 山坡是斜的、四米一排之间是直线连起来的，树根往坡里埋半米，坡朝下那一侧才不会露出空隙
+        if (onTop) y = slopeY - 0.5;
         else if (rule.lift) y = p.y + height;
         else if (rule.float) y = SEA + 0.03;
         else if (rule.span) y = p.y;
@@ -1027,16 +1323,20 @@ export class World {
     }
   }
 
-  private addGate(chunk: THREE.Group, s: number, finish: boolean): void {
+  // 场景交界处的门：样子跟着要进去的那个场景走（终点是黑白格的门）
+  private addGate(chunk: THREE.Group, s: number, theme: GateTheme): void {
     const track = this.course.track;
-    const geometry = buildGate(track.width, finish);
-    this.disposables.push(geometry);
-    const gate = new THREE.Mesh(geometry, this.lit);
+    const shape = buildGate(track.width, theme);
     track.at(s, p);
-    gate.position.set(p.x, p.y, p.z);
-    gate.rotation.y = -p.yaw;
-    gate.castShadow = true;
-    chunk.add(gate);
+    for (const [geometry, material] of [[shape.lit, this.lit], [shape.glow, this.glow]] as const) {
+      if (!geometry) continue;
+      this.disposables.push(geometry);
+      const gate = new THREE.Mesh(geometry, material);
+      gate.position.set(p.x, p.y, p.z);
+      gate.rotation.y = -p.yaw;
+      gate.castShadow = material === this.lit;
+      chunk.add(gate);
+    }
   }
 
   private addRamps(chunk: THREE.Group, from: number, to: number): void {
@@ -1147,20 +1447,21 @@ export class World {
     body.castShadow = true;
     mine.forEach(({ obstacle, i }, id) => {
       track.at(obstacle.s, p);
-      const slot = { body, lamps, id, x: p.x + Math.cos(p.yaw) * obstacle.x, y: p.y, z: p.z + Math.sin(p.yaw) * obstacle.x, yaw: p.yaw, hit: -1 };
+      const x = p.x + Math.cos(p.yaw) * obstacle.x;
+      const z = p.z + Math.sin(p.yaw) * obstacle.x;
+      const slot = { body, lamps, id, x, y: p.y, z, yaw: p.yaw, hit: -1, pos: new THREE.Vector3(x, p.y, z), vel: new THREE.Vector3(), rot: new THREE.Vector3(), spin: new THREE.Vector3(), last: 0 };
       this.blocks[i] = slot;
-      this.poseBlock(slot, 0);
+      this.poseBlock(slot, 1);
     });
     chunk.add(body, lamps);
   }
 
-  // 摆一个路障：t 是被撞之后过了几成（0 是还立着，1 是已经飞没了）。被撞的往前翻着跟头飞出去，越飞越小
-  private poseBlock(slot: BlockSlot, t: number): void {
-    const fly = t * 7;
+  // 摆一个路障：按它现在的位置和翻滚角度摆；scale 到 0 就看不见了
+  private poseBlock(slot: BlockSlot, scale: number): void {
     dummy.rotation.order = 'YXZ';
-    dummy.position.set(slot.x + Math.sin(slot.yaw) * fly, slot.y + Math.sin(Math.PI * t) * 2.2, slot.z - Math.cos(slot.yaw) * fly);
-    dummy.rotation.set(-t * 5, -slot.yaw, 0);
-    dummy.scale.setScalar(Math.max(0, 1 - t * t));
+    dummy.position.copy(slot.pos);
+    dummy.rotation.set(slot.rot.x, -slot.yaw + slot.rot.y, slot.rot.z);
+    dummy.scale.setScalar(scale);
     dummy.updateMatrix();
     dummy.rotation.order = 'XYZ';
     slot.body.setMatrixAt(slot.id, dummy.matrix);
@@ -1169,25 +1470,98 @@ export class World {
     slot.lamps.instanceMatrix.needsUpdate = true;
   }
 
-  // 标记一个路障被撞飞了
-  knock(index: number, time: number): void {
-    this.blocks[index].hit = time;
+  // 一个路障被撞飞了（用户要「多一点物理」）：车越快飞得越远越高，往车撞歪的那一侧偏，带着翻滚；
+  // 之后按重力落下来，砸在地上弹几下、越弹越低、在地上擦着滑一段停下，最后慢慢缩没。side 是往哪边偏（1 右、-1 左）
+  knock(index: number, time: number, speed = 15, side = 0): void {
+    const slot = this.blocks[index];
+    slot.hit = time;
+    slot.last = time;
+    const forward = speed * 0.55 + 3;
+    const sideways = side * (2 + Math.random() * 2);
+    slot.pos.set(slot.x, slot.y, slot.z);
+    slot.vel.set(Math.sin(slot.yaw) * forward + Math.cos(slot.yaw) * sideways, 4.5 + speed * 0.12, -Math.cos(slot.yaw) * forward + Math.sin(slot.yaw) * sideways);
+    slot.rot.set(0, 0, 0);
+    slot.spin.set(-(5 + speed * 0.18), (Math.random() - 0.5) * 5, side * (2 + Math.random() * 3));
     this.falling.push(index);
+    // 撞上的那一下崩出一把红白的碎屑
+    this.puff(slot.pos.clone().setY(slot.y + 0.7), 10, [0xe5604a, 0xfdf6ea], 5, time);
   }
 
   private tumble(time: number): void {
     for (let k = this.falling.length - 1; k >= 0; k -= 1) {
       const slot = this.blocks[this.falling[k]];
-      const t = Math.min(1, (time - slot.hit) / 0.7);
-      this.poseBlock(slot, t);
-      if (t >= 1) this.falling.splice(k, 1);
+      const dt = Math.min(0.05, Math.max(0, time - slot.last));
+      slot.last = time;
+      slot.vel.y -= BLOCK_GRAVITY * dt;
+      slot.pos.addScaledVector(slot.vel, dt);
+      slot.rot.addScaledVector(slot.spin, dt);
+      // 砸到地上：弹起来一点，水平方向被地擦掉一些，翻滚也慢下来
+      if (slot.pos.y < slot.y) {
+        slot.pos.y = slot.y;
+        if (slot.vel.y < -1.5) this.puff(slot.pos, 4, [0xd8cdb8], 2, time);
+        slot.vel.y = -slot.vel.y * BLOCK_BOUNCE;
+        slot.vel.x *= BLOCK_FRICTION;
+        slot.vel.z *= BLOCK_FRICTION;
+        slot.spin.multiplyScalar(0.6);
+      }
+      const age = time - slot.hit;
+      const scale = age < BLOCK_LINGER ? 1 : Math.max(0, 1 - (age - BLOCK_LINGER) / 0.5);
+      this.poseBlock(slot, scale);
+      if (scale <= 0) this.falling.splice(k, 1);
     }
+  }
+
+  // 往 at 这一点崩出 count 团尘土或碎屑：colors 里轮着挑颜色，power 是往外崩得多快
+  puff(at: THREE.Vector3, count: number, colors: readonly number[], power: number, time: number): void {
+    if (this.still) return;
+    for (let i = 0; i < count; i += 1) {
+      const slot = this.moteNext;
+      this.moteNext = (this.moteNext + 1) % MOTES;
+      const angle = Math.random() * Math.PI * 2;
+      const out = power * (0.4 + Math.random() * 0.6);
+      this.motes[slot] = {
+        pos: at.clone(),
+        vel: new THREE.Vector3(Math.cos(angle) * out, power * (0.25 + Math.random() * 0.5), Math.sin(angle) * out),
+        born: time,
+        life: 0.6 + Math.random() * 0.5,
+        size: 0.18 + Math.random() * 0.22,
+      };
+      tint.setHex(colors[i % colors.length]);
+      this.moteMesh.setColorAt(slot, tint);
+    }
+    if (this.moteMesh.instanceColor) this.moteMesh.instanceColor.needsUpdate = true;
+  }
+
+  // 尘土每帧往外散、被空气拖慢、往上飘一点、越来越小
+  private drift(time: number): void {
+    const dt = Math.min(0.05, Math.max(0, time - this.moteTime));
+    this.moteTime = time;
+    let any = false;
+    this.motes.forEach((mote, i) => {
+      if (!mote) return;
+      const age = (time - mote.born) / mote.life;
+      if (age >= 1) {
+        this.motes[i] = null;
+        dummy.scale.setScalar(0);
+      } else {
+        mote.vel.multiplyScalar(Math.exp(-dt * 3.5));
+        mote.vel.y += 0.8 * dt;
+        mote.pos.addScaledVector(mote.vel, dt);
+        dummy.position.copy(mote.pos);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.setScalar(mote.size * (0.6 + age * 1.4) * (1 - age));
+      }
+      dummy.updateMatrix();
+      this.moteMesh.setMatrixAt(i, dummy.matrix);
+      any = true;
+    });
+    if (any) this.moteMesh.instanceMatrix.needsUpdate = true;
   }
 
   private addItems(chunk: THREE.Group, index: number): void {
     const track = this.course.track;
     if (!this.itemGeometry) {
-      this.itemGeometry = { bolt: buildBolt(), ring: buildRing(), chili: buildChili(), rocket: buildRocket() };
+      this.itemGeometry = { bolt: buildBolt(), ring: buildRing(), chili: buildChili(), rocket: buildRocket(), magnet: buildMagnet() };
       this.disposables.push(...Object.values(this.itemGeometry));
     }
     // 纪念品每个场景一种造型，用到了才建
@@ -1210,7 +1584,7 @@ export class World {
       return made;
     };
     const all = this.course.items;
-    for (const kind of ['fish', 'gold', 'bolt', 'ring', 'chili', 'token', 'rocket'] as const) {
+    for (const kind of ['fish', 'gold', 'bolt', 'ring', 'chili', 'token', 'rocket', 'magnet'] as const) {
       const mine = all.map((item, i) => ({ item, i })).filter(({ item }) => item.scene === index && item.kind === kind);
       if (mine.length === 0) continue;
       // 金鱼和能量罐用自发光的材质，夜里也一眼看得见
@@ -1229,6 +1603,7 @@ export class World {
           z: p.z + Math.sin(p.yaw) * item.x,
           yaw: p.yaw,
           eaten: -1,
+          pulled: false,
         };
         // 先摆到自己的位置上。每帧只刷新车附近的那些，没刷到的如果不先摆好，会全堆在世界原点——
         // 正好是出发的地方，开局时鹈鹕脚下就套着一堆金色的圈
@@ -1242,9 +1617,10 @@ export class World {
     }
   }
 
-  // 标记一条鱼被吃掉了，time 是当前时刻
-  collect(index: number, time: number): void {
+  // 标记一条鱼被吃掉了，time 是当前时刻；pulled 是被磁铁吸过来的
+  collect(index: number, time: number, pulled = false): void {
     this.slots[index].eaten = time;
+    this.slots[index].pulled = pulled;
   }
 
   // 刷新 s 在 [from, to] 范围里的鱼：没吃的慢慢转，刚吃的缩小飘走
@@ -1255,7 +1631,14 @@ export class World {
     for (let i = this.fishFrom; i < fish.length && fish[i].s < to; i += 1) {
       const slot = this.slots[i];
       const gone = slot.eaten < 0 ? 0 : Math.min(1, (time - slot.eaten) / 0.2);
-      if (fish[i].kind === 'ring') {
+      if (slot.pulled && slot.eaten >= 0) {
+        // 磁铁吸过来的：0.3 秒里从原地飞进鹈鹕嘴里，越近越小
+        const u = Math.min(1, (time - slot.eaten) / 0.3);
+        const ease = u * u;
+        dummy.position.set(slot.x + (this.mouth.x - slot.x) * ease, slot.y + (this.mouth.y - slot.y) * ease, slot.z + (this.mouth.z - slot.z) * ease);
+        dummy.rotation.set(0, time * 9 + i, 0);
+        dummy.scale.setScalar(ITEM_SIZE[fish[i].kind] * (1 - u * 0.8) * (u < 1 ? 1 : 0));
+      } else if (fish[i].kind === 'ring') {
         // 奖励圈不转也不飘，迎着来路立着，一呼一吸地放大缩小；穿过去的那一下往外胀开再消失
         dummy.position.set(slot.x, slot.y, slot.z);
         dummy.rotation.set(0, -slot.yaw, 0);
@@ -1435,6 +1818,8 @@ export class World {
     this.chunks.forEach((chunk, index) => {
       chunk.visible = index >= current - BEHIND && index <= current + AHEAD;
     });
+    // 鹈鹕的嘴大概在这里：磁铁吸过来的东西往这儿飞
+    this.mouth.set(focus.x, focus.y + 1.5, focus.z);
     this.paintFish(s - 30, s + 320, time);
     this.turnSpinners(this.still ? 0 : time);
     this.flyFlocks(this.still ? 0 : time);
@@ -1445,6 +1830,7 @@ export class World {
       this.stars.rotation.y = time * 0.004;
     }
     this.tumble(time);
+    this.drift(time);
 
     // 天空、雾、灯光：过了门才开始换
     const { a, b, w } = this.blend(s, 0, ARRIVE);
@@ -1482,9 +1868,23 @@ export class World {
     mix(a.far, b.far, w, water.color);
     // 两边的地面窄，外面就是水；是陆地的场景不要高光
     const wet = lerp(a.land < 60 ? 1 : 0, b.land < 60 ? 1 : 0, w);
-    water.specular.copy(this.sun.color).multiplyScalar(wet * 0.55);
+    water.specular.copy(this.sun.color).multiplyScalar(wet * 0.9);
+    this.waterUniforms.uWaterTime.value = this.still ? 0 : time;
+    this.waterUniforms.uWaterReflect.value = wet;
+    // 倒映的是地平线往上一点的天色
+    mix(a.sky[2], b.sky[2], w, this.waterUniforms.uWaterSky.value as THREE.Color).lerp(mix(a.sky[1], b.sky[1], w, colorA), 0.35);
     this.plane.position.set(eye.x, SEA, eye.z);
 
+    // 谷底的雾：这个场景要不要、人离水面多高（低于九米开始散，十八米以上最浓），两层各自慢慢往两个方向飘
+    const mist = lerp(a.mist ?? 0, b.mist ?? 0, w) * smooth((eye.y - SEA - 9) / 9);
+    this.mist.forEach((mesh, k) => {
+      mesh.visible = mist > 0.01;
+      if (!mesh.visible) return;
+      mesh.position.set(eye.x, mesh.position.y, eye.z);
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      material.opacity = mist * (k === 0 ? 0.85 : 0.55);
+      if (material.map && !this.still) material.map.offset.set(time * (k === 0 ? 0.004 : -0.003) + eye.x / (FAR * 2) * (6 + k * 2), time * 0.002 - eye.z / (FAR * 2) * (6 + k * 2));
+    });
     (this.stars.material as THREE.PointsMaterial).opacity = lerp(a.stars, b.stars, w);
     this.stars.visible = a.stars + b.stars > 0;
     this.stars.position.copy(eye);
@@ -1533,6 +1933,13 @@ export class World {
     this.air.geometry.dispose();
     (this.air.material as THREE.Material).dispose();
     this.plane.geometry.dispose();
+    this.mistTexture.dispose();
+    this.mist.forEach((mesh) => {
+      mesh.geometry.dispose();
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      material.map?.dispose();
+      material.dispose();
+    });
     (this.plane.material as THREE.Material).dispose();
     this.backdrops.forEach((mesh) => {
       mesh.geometry.dispose();

@@ -1,6 +1,6 @@
 {
   "stamp": "202611121653",
-  "version": "202611132022",
+  "version": "202611132130",
   "sfx": {
     "fish0": [
       0.2,
@@ -86,63 +86,67 @@
   "songs": {
     "beach": {
       "loopStart": 0.5,
-      "loopEnd": 37.42308
+      "loopEnd": 38.9
     },
     "flower": {
       "loopStart": 0.5,
-      "loopEnd": 34.78571
+      "loopEnd": 36.72642
     },
     "sakura": {
       "loopStart": 0.5,
-      "loopEnd": 42.23913
+      "loopEnd": 44.13636
     },
     "pine": {
       "loopStart": 0.5,
-      "loopEnd": 40.5
+      "loopEnd": 42.23913
     },
     "autumn": {
       "loopStart": 0.5,
-      "loopEnd": 39.68367
+      "loopEnd": 41.35106
     },
     "desert": {
       "loopStart": 0.5,
-      "loopEnd": 38.9
+      "loopEnd": 40.5
     },
     "palm": {
       "loopStart": 0.5,
-      "loopEnd": 41.35106
+      "loopEnd": 43.16667
     },
     "lighthouse": {
       "loopStart": 0.5,
-      "loopEnd": 46.21429
+      "loopEnd": 48.5
     },
     "neon": {
       "loopStart": 0.5,
-      "loopEnd": 33.60345
+      "loopEnd": 36.05556
     },
     "aurora": {
       "loopStart": 0.5,
-      "loopEnd": 48.5
+      "loopEnd": 51.02632
     },
     "dawn": {
       "loopStart": 0.5,
-      "loopEnd": 44.13636
+      "loopEnd": 46.21429
     },
     "balloon": {
       "loopStart": 0.5,
-      "loopEnd": 32.5
+      "loopEnd": 34.78571
     },
     "canyon": {
       "loopStart": 0.5,
-      "loopEnd": 38.9
+      "loopEnd": 40.5
     },
     "creek": {
       "loopStart": 0.5,
-      "loopEnd": 42.23913
+      "loopEnd": 44.13636
     },
     "cave": {
       "loopStart": 0.5,
-      "loopEnd": 47.32927
+      "loopEnd": 49.73077
+    },
+    "cloudbridge": {
+      "loopStart": 0.5,
+      "loopEnd": 39.68367
     }
   },
   "scenes": {
@@ -160,6 +164,7 @@
     "气球之丘": "balloon",
     "高山峡谷": "canyon",
     "溪谷飞瀑": "creek",
-    "水晶洞穴": "cave"
+    "水晶洞穴": "cave",
+    "云海断桥": "cloudbridge"
   }
 }

@@ -5,12 +5,14 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { Bike, BIKE_SPEED, type BikeEvent, type Controls } from './bike';
+import { Bike, BIKE_SPEED, EFFECT_SECONDS, type BikeEvent, type Controls } from './bike';
 import { Course, REFILL, SCORE, shuffledOrder } from './course';
-import { buildRider } from './rider';
+import { buildRider, CHARACTERS, type CharacterKind } from './rider';
 import { createSound } from './sound';
 import type { Scene, TokenKind } from './scenes';
 import type { Track, TrackPoint } from './track';
+import { CELEBRATE_DELAY, CELEBRATIONS, celebratePose, ENTRANCE_SECONDS, entrancePose, ENTRANCES, pickOne, type CelebrateKind, type EntranceKind, type Pose } from './stunts';
+import { scopeLike, ToastStack } from './toasts';
 import { World } from './world';
 
 type State = 'ready' | 'playing' | 'paused' | 'finished';
@@ -29,15 +31,19 @@ const ORBIT = { seconds: 4.6, sweep: Math.PI * 2 + 2.3, radius: 5.4, height: 1.9
 // 离地不到这么高才会撞上路障（米）；撞上之后镜头抖多久（秒）
 const BLOCK_HEIGHT = 0.85;
 const SHAKE_SECONDS = 0.3;
-// 血条（用户要的，先轻一点）：三颗心，每颗两半。撞一次路障掉半颗，掉进深沟掉一颗，每进一个新场景回半颗；掉光了这一趟就到此为止
-const HEARTS = 3;
+// 血条（用户要的，先轻一点）：四颗心，每颗两半。撞一次路障掉半颗，掉进深沟掉一颗，每进一个新场景回半颗；掉光了这一趟就到此为止
+// 2026-11-13 用户把生命挪到左下角、改成四格对四颗心
+const HEARTS = 4;
 const HURT = { block: 1, fall: 2 };
 const FOV = 64;
 const FOV_DASH = 12;
 // 捡到东西时弹框里的小图标：24 格的线条画，和顶栏那些图标一个画法。这里写的是 svg 里面的内容
 const ring = (count: number, rx: number, ry: number, cy: number) =>
   Array.from({ length: count }, (_, i) => `<ellipse cx="12" cy="${cy}" rx="${rx}" ry="${ry}" transform="rotate(${(360 / count) * i} 12 12)"/>`).join('');
-const ICONS: Record<TokenKind | 'chili' | 'rocket', string> = {
+const ICONS: Record<TokenKind | 'chili' | 'rocket' | 'magnet' | 'surge', string> = {
+  magnet: '<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4zM6 8h4M14 8h4"/>',
+  surge: '<path d="M5 6l6 6-6 6M12 6l6 6-6 6"/>',
+  cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.96A5.5 5.5 0 0 0 7.1 9.6 4.2 4.2 0 0 0 7 18z"/>',
   rocket: '<path d="M14.5 4.5c3-1.6 5-1.5 5-1.5s.1 2-1.5 5l-6.5 6.5-3.5-3.5zM9.5 10.5 6 10l-2.5 2.5 3.5 1M13.5 14.5l.5 3.5-2.5 2.5-1-3.5M8 16c-1.6.4-3 1.6-3.5 3.5 1.9-.5 3.1-1.9 3.5-3.5z"/>',
   shell: '<path d="M12 20 4.5 10.5a8 8 0 0 1 15 0zM12 20V6.6M12 20 8 7.6M12 20l4-12.4"/>',
   sunflower: `${ring(10, 1.5, 3, 5.2)}<circle cx="12" cy="12" r="3.2"/>`,
@@ -57,11 +63,20 @@ const ICONS: Record<TokenKind | 'chili' | 'rocket', string> = {
   chili: '<path d="M14.5 6.5c5 2.4 5.5 9-1.5 12.5-3 1.5-7 1-9-1 6 0 8.5-4 8.5-9 0-1.6.8-2.5 2-2.5zM14.5 6.5c0-2 1.5-3.2 3.5-3.2"/>',
 };
 
+// 连续穿圈：上一个圈之后这么多秒（秒）里又穿了一个才算连着
+const COMBO_WINDOW = 2.6;
+// 带着磁铁时能吸多远的鱼：往前、左右、上下（米）
+const MAGNET_REACH = { ahead: 9, across: 7, up: 3.5 };
 // 嘴离鱼多近算吃到：沿路、横向、上下（米）
 const REACH = { along: 1.5, across: 1.5, up: 1.6 };
 // 速度条在这个速度（米每秒）时是满的
 const SPEED_FULL = 34;
 const STORE_KEY = 'nn-pelican-ride';
+// 上次选的角色
+const RIDER_KEY = 'nn-pelican-rider';
+// 出发前在画面上滑多远（像素）算换角色，按住多久（毫秒）算长按——这两种松手时都不算点一下开始
+const SWIPE_DISTANCE = 40;
+const LONG_PRESS = 450;
 // 画质分四档，从高到低：像素比上限、要不要阴影、要不要泛光。机器吃力时往下降，不往回升
 const QUALITY = [
   { ratio: 1.5, shadows: true, bloom: true },
@@ -141,9 +156,12 @@ export function mountPelican(root: HTMLElement): () => void {
   const canvas = pick<HTMLCanvasElement>(root, '[data-canvas]');
   const rushCanvas = pick<HTMLCanvasElement>(root, '[data-rush]');
   const scoreNode = pick<HTMLElement>(root, '[data-score]');
-  const eatenNode = pick<HTMLElement>(root, '[data-eaten]');
-  const keepsakeNode = pick<HTMLElement>(root, '[data-keepsake]');
-  const keepsakeTotal = pick<HTMLElement>(root, '[data-keepsake-total]');
+  const lifeBar = pick<HTMLElement>(root, '[data-life-bar]');
+  const lifeNum = pick<HTMLElement>(root, '[data-life-num]');
+  const comboNode = pick<HTMLElement>(root, '[data-combo]');
+  const comboScoreNode = pick<HTMLElement>(root, '[data-combo-score]');
+  const comboMultNode = pick<HTMLElement>(root, '[data-combo-mult]');
+  const timersBox = pick<HTMLElement>(root, '[data-timers]');
   const progressNode = pick<HTMLElement>(root, '[data-progress]');
   const boostNode = pick<HTMLElement>(root, '[data-boost]');
   const boostBox = pick<HTMLElement>(root, '[data-boost-box]');
@@ -152,11 +170,7 @@ export function mountPelican(root: HTMLElement): () => void {
   const flameBox = pick<HTMLElement>(root, '[data-flames]');
   const flames = Array.from(flameBox.children) as HTMLElement[];
   const recordNode = pick<HTMLElement>(root, '[data-record]');
-  const heartBox = pick<HTMLElement>(root, '[data-hearts]');
-  const hearts = Array.from(heartBox.querySelectorAll<SVGElement>('[data-heart]'));
-  const toastNode = pick<HTMLElement>(root, '[data-toast]');
-  const toastIcon = pick<SVGElement>(root, '[data-toast-icon]');
-  const toastText = pick<HTMLElement>(root, '[data-toast-text]');
+  const toasts = new ToastStack(pick<HTMLElement>(root, '[data-toasts]'));
   const pauseButton = pick<HTMLButtonElement>(root, '[data-pause]');
   const muteButton = pick<HTMLButtonElement>(root, '[data-mute]');
   const overlay = pick<HTMLElement>(root, '[data-overlay]');
@@ -169,10 +183,12 @@ export function mountPelican(root: HTMLElement): () => void {
   const overlayText = pick<HTMLElement>(root, '[data-overlay-text]');
   const overlayButton = pick<HTMLButtonElement>(root, '[data-overlay-btn]');
   const turboButton = pick<HTMLButtonElement>(root, '[data-turbo]');
-  const dashButton = pick<HTMLButtonElement>(root, '[data-dash]');
+  const stick = pick<HTMLElement>(root, '[data-stick]');
+  const knob = pick<HTMLElement>(root, '[data-knob]');
   const gameTitle = root.dataset.title ?? '鹈鹕骑车';
 
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const touchDevice = matchMedia('(pointer: coarse)').matches;
   const sound = createSound();
   // 一进页面就开始下载音效和音乐，等玩家点「开始」时多半已经下完了
   sound.preload();
@@ -195,9 +211,69 @@ export function mountPelican(root: HTMLElement): () => void {
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold));
   composer.addPass(new OutputPass());
 
-  const rider = buildRider();
+  // 骑车的角色（2026-11-13 用户要的开局选角色）：三种鹈鹕、企鹅、白熊。选过的记在本机，下次打开还是它
+  const pickBox = pick<HTMLElement>(root, '[data-picks]');
+  const loadCharacter = (): CharacterKind => {
+    try {
+      const saved = localStorage.getItem(RIDER_KEY);
+      if (CHARACTERS.some((item) => item.kind === saved)) return saved as CharacterKind;
+    } catch {
+      // 读不到就用白鹈鹕
+    }
+    return 'white';
+  };
+  let character = loadCharacter();
+  // 出场动作进行到哪了：刚打开页面时从后面骑过来。back 是上一帧还差多少米、wasAirborne 是上一帧在不在空中（落地那一下要压一压）
+  let entrance: { kind: EntranceKind; t: number; back: number; wasAirborne: boolean } = { kind: pickOne(ENTRANCES), t: 0, back: 0, wasAirborne: false };
+  // 冲过终点后的庆祝动作
+  let celebrate: { kind: CelebrateKind; t: number } = { kind: pickOne(CELEBRATIONS), t: 0 };
+  let rider = buildRider(character);
   rider.group.rotation.order = 'YXZ';
   scene.add(rider.group);
+  // 选角色的小卡片：上面一排这个角色身上的几种颜色，下面是名字
+  const pickButtons = CHARACTERS.map((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pelican-btn pelican__pick';
+    const swatch = document.createElement('span');
+    swatch.className = 'pelican__pick-swatch';
+    item.swatch.forEach((hex) => {
+      const chip = document.createElement('i');
+      chip.style.background = `#${hex.toString(16).padStart(6, '0')}`;
+      scopeLike(chip, pickBox);
+      swatch.append(chip);
+    });
+    const name = document.createElement('span');
+    name.textContent = item.name;
+    [button, swatch, name].forEach((node) => scopeLike(node, pickBox));
+    button.append(swatch, name);
+    button.setAttribute('aria-pressed', String(item.kind === character));
+    button.addEventListener('click', () => setCharacter(item.kind), { signal });
+    pickBox.append(button);
+    return { kind: item.kind, button };
+  });
+  // 换角色：把旧的模型拿掉、建一个新的放在原地。只在出发前能换
+  const setCharacter = (kind: CharacterKind) => {
+    if (kind === character || state !== 'ready') return;
+    character = kind;
+    scene.remove(rider.group);
+    rider.dispose();
+    rider = buildRider(kind);
+    rider.group.rotation.order = 'YXZ';
+    scene.add(rider.group);
+    // 新角色挑一种出场动作登场
+    entrance = { kind: pickOne(ENTRANCES, entrance.kind), t: 0, back: 0, wasAirborne: false };
+    pickButtons.forEach((item) => item.button.setAttribute('aria-pressed', String(item.kind === kind)));
+    try {
+      localStorage.setItem(RIDER_KEY, kind);
+    } catch {
+      // 存不进去就只在这一次有效
+    }
+  };
+  const stepCharacter = (step: number) => {
+    const index = CHARACTERS.findIndex((item) => item.kind === character);
+    setCharacter(CHARACTERS[(index + step + CHARACTERS.length) % CHARACTERS.length].kind);
+  };
 
   // 触屏设备从第二档起步
   let quality = matchMedia('(pointer: coarse)').matches ? 1 : 0;
@@ -257,7 +333,6 @@ export function mountPelican(root: HTMLElement): () => void {
   let time = 0;
   let finishTimer = 0;
   let sceneShown = -1;
-  let toastTimer = 0;
   // 路上的东西按位置排好了，从这个下标往后找就行
   let itemFrom = 0;
   let blockFrom = 0;
@@ -267,6 +342,11 @@ export function mountPelican(root: HTMLElement): () => void {
   let health = HEARTS * 2;
   let out = false;
   let hurtTimer = 0;
+  // 连续穿了几个圈、这一串一共得了多少分、离断掉还有几秒、「连续得分」那一下弹得多猛
+  let combo = 0;
+  let comboScore = 0;
+  let comboTimer = 0;
+  let comboPunch = 0;
 
   // 掉血。掉光了车慢慢停下来，过一会儿出结算面板
   const hurt = (halves: number) => {
@@ -280,6 +360,9 @@ export function mountPelican(root: HTMLElement): () => void {
     finishTimer = 2.2;
   };
 
+  // 扬起来的尘土是什么颜色：这个场景路肩的颜色再提亮一点
+  const dust = () => shade(course.scenes[track.sceneAt(bike.s)].shoulder, 1.25);
+
   const onBikeEvent = (event: BikeEvent) => {
     // 掉进深沟：扣一颗心，鹈鹕自己会飞回对岸
     if (event === 'fall') {
@@ -289,9 +372,20 @@ export function mountPelican(root: HTMLElement): () => void {
       return;
     }
     // 到终点后先让镜头绕一圈再出结算面板；减少动态效果时不绕，等一下就出
-    if (event === 'finish') finishTimer = still ? 1.4 : ORBIT.seconds;
+    if (event === 'finish') {
+      finishTimer = still ? 1.4 : ORBIT.seconds;
+      // 冲过终点挑一种庆祝动作
+      celebrate = { kind: pickOne(CELEBRATIONS, celebrate.kind), t: 0 };
+    }
     // 落地声的大小跟着摔得多重走，轻轻一颠就很小声
-    if (event === 'land') sound.play('land', 0.35 + bike.squash * 0.65);
+    if (event === 'land') {
+      sound.play('land', 0.35 + bike.squash * 0.65);
+      // 落地落得重：轮子底下扬起一圈尘土，镜头往下一沉（用户要「多一点物理」）
+      if (bike.squash > 0.3 && world) {
+        world.puff(rider.group.position.clone().setY(bike.h + 0.15), Math.round(4 + bike.squash * 10), [dust(), 0xffffff], 3 + bike.squash * 4, time);
+        shake = Math.max(shake, 0.1 + bike.squash * 0.18);
+      }
+    }
     // 吃到火箭：整屏一闪
     else if (event === 'blast') {
       flash = 1;
@@ -306,12 +400,14 @@ export function mountPelican(root: HTMLElement): () => void {
   // 按键和触屏各记各的，合起来才是这一步的输入
   // dash 是按住 ↑ 的冲刺，turbo 是按住空格的猛冲。没有起跳键（用户取消的），要飞起来靠跳台和弹簧垫
   const keys = { left: false, right: false, dash: false, turbo: false };
-  const touch = { left: 0, right: 0, dash: false, turbo: false };
+  // 触屏：steer 是摇杆左右推了多少（-1 到 1），dash 是摇杆往上推，turbo 是按住加速键
+  const touch = { steer: 0, dash: false, turbo: false };
   const controls: Controls = { steer: 0, dash: false, turbo: false };
   // 这一下空格是用来开始游戏的，还没松开
   let spaceStarted = false;
 
   const p: TrackPoint = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, curve: 0 };
+  const q: TrackPoint = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, curve: 0 };
   const camPos = new THREE.Vector3();
   const camLook = new THREE.Vector3();
   const wantPos = new THREE.Vector3();
@@ -340,13 +436,8 @@ export function mountPelican(root: HTMLElement): () => void {
     if (button) overlayButton.focus({ preventScroll: true });
   };
 
-  // icon 是 ICONS 里的一项（我们自己写死的线条画）；报场景名的时候不带图标
-  const showToast = (text: string, icon = '') => {
-    toastIcon.innerHTML = icon;
-    toastText.textContent = text;
-    toastNode.dataset.show = '1';
-    toastTimer = 2.6;
-  };
+  // icon 是 ICONS 里的一项（我们自己写死的线条画）；报场景名的时候不带图标。几条同时出现时叠着放（toasts.ts）
+  const showToast = (text: string, icon = '') => toasts.show(text, icon);
 
   const finish = () => {
     const total = course.fishTotal;
@@ -381,7 +472,8 @@ export function mountPelican(root: HTMLElement): () => void {
     }
     if (next === 'paused') sound.pause();
     // 出发前没有面板，只有标题和一行提示，点画面任何地方开始
-    if (next === 'ready') showOverlay(gameTitle, '', '点击任意区域开始');
+    // 出发前的提示分手机和电脑两种说法（用户定的）
+    if (next === 'ready') showOverlay(gameTitle, '', touchDevice ? '左右滑动换角色，点击屏幕开始游戏' : '使用键盘 ← → 切换角色，点击任意区域开始游戏');
     if (next === 'paused') showOverlay('暂停中', '', '点击游戏画面空白处继续');
     if (next === 'finished') finish();
   };
@@ -397,7 +489,12 @@ export function mountPelican(root: HTMLElement): () => void {
     health = HEARTS * 2;
     out = false;
     hurtTimer = 0;
+    combo = 0;
+    comboScore = 0;
+    comboTimer = 0;
+    comboPunch = 0;
     showBest();
+    toasts.clear();
     score = 0;
     eaten = 0;
     keepsakes.clear();
@@ -435,9 +532,45 @@ export function mountPelican(root: HTMLElement): () => void {
       if ((event.target as HTMLElement).closest('button')) return;
       if (state === 'paused') setState('playing');
       else if (state === 'ready') {
+        // 刚才那一下是滑动换角色或者长按，不算点击开始
+        if (swallowClick) {
+          swallowClick = false;
+          return;
+        }
         // 浏览器只允许在点击里开声音，所以放在这里
         sound.start();
         restart();
+      }
+    },
+    { signal },
+  );
+  // 出发前在画面上左右滑动是换角色（手机上没有方向键）；滑过、或者按住超过半秒的那一下，松手时都不当成「点一下开始」
+  let press: { id: number; x: number; y: number; at: number } | null = null;
+  let swallowClick = false;
+  stage.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (state !== 'ready' || (event.target as HTMLElement).closest('button')) return;
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY, at: performance.now() };
+      swallowClick = false;
+    },
+    { signal },
+  );
+  window.addEventListener(
+    'pointerup',
+    (event) => {
+      if (!press || event.pointerId !== press.id) return;
+      const dx = event.clientX - press.x;
+      const dy = event.clientY - press.y;
+      const held = performance.now() - press.at;
+      press = null;
+      if (state !== 'ready') return;
+      if (Math.abs(dx) > SWIPE_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        // 往左滑换下一个，往右滑换上一个
+        stepCharacter(dx < 0 ? 1 : -1);
+        swallowClick = true;
+      } else if (Math.hypot(dx, dy) > 12 || held > LONG_PRESS) {
+        swallowClick = true;
       }
     },
     { signal },
@@ -457,10 +590,13 @@ export function mountPelican(root: HTMLElement): () => void {
       case 'ArrowLeft':
       case 'KeyA':
         keys.left = down;
+        // 出发前左右键是换角色
+        if (down && !event.repeat && state === 'ready') stepCharacter(-1);
         break;
       case 'ArrowRight':
       case 'KeyD':
         keys.right = down;
+        if (down && !event.repeat && state === 'ready') stepCharacter(1);
         break;
       case 'ArrowUp':
       case 'KeyW':
@@ -514,45 +650,80 @@ export function mountPelican(root: HTMLElement): () => void {
     { signal },
   );
 
-  // 触屏：按住画面左半边往左压，右半边往右压
-  const sides = new Map<number, 'left' | 'right'>();
-  const refreshTouch = () => {
-    touch.left = 0;
-    touch.right = 0;
-    sides.forEach((value) => {
-      touch[value] += 1;
-    });
+  // 触屏摇杆（用户要的）：左半边任何地方按下去，摇杆的底盘就挪到手指下面，手指往哪推摇头跟到哪（最多推到底盘边上）。
+  // 左右推多少就压多少（推一点点是轻轻地压），往上推过一半是冲刺。松手摇杆回到左下角，车也回正
+  let stickId = -1;
+  let stickX = 0;
+  let stickY = 0;
+  const STICK_REACH = 46;
+  const STICK_DEAD = 0.14;
+  const moveStick = (event: PointerEvent) => {
+    let dx = event.clientX - stickX;
+    let dy = event.clientY - stickY;
+    const length = Math.hypot(dx, dy);
+    if (length > STICK_REACH) {
+      dx *= STICK_REACH / length;
+      dy *= STICK_REACH / length;
+    }
+    knob.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+    const side = dx / STICK_REACH;
+    touch.steer = Math.abs(side) < STICK_DEAD ? 0 : Math.sign(side) * Math.min(1, (Math.abs(side) - STICK_DEAD) / (1 - STICK_DEAD - 0.2));
+    touch.dash = dy / STICK_REACH < -0.5;
+    stick.toggleAttribute('data-dash', touch.dash);
+  };
+  const dropStick = () => {
+    stickId = -1;
+    touch.steer = 0;
+    touch.dash = false;
+    knob.style.transform = '';
+    stick.removeAttribute('data-held');
+    stick.removeAttribute('data-dash');
+    stick.style.removeProperty('--stick-x');
+    stick.style.removeProperty('--stick-y');
   };
   stage.addEventListener(
     'pointerdown',
     (event) => {
-      if (event.pointerType === 'mouse' || state !== 'playing') return;
+      if (event.pointerType === 'mouse' || state !== 'playing' || stickId >= 0) return;
       if ((event.target as HTMLElement).closest('button')) return;
       const box = stage.getBoundingClientRect();
-      sides.set(event.pointerId, event.clientX - box.left < box.width / 2 ? 'left' : 'right');
-      refreshTouch();
+      if (event.clientX - box.left > box.width / 2) return;
+      stickId = event.pointerId;
+      // 底盘不能贴到画面边上，不然有一半推不过去
+      const x = Math.min(Math.max(event.clientX - box.left, 56), box.width / 2 - 20);
+      const y = Math.min(Math.max(event.clientY - box.top, 56), box.height - 56);
+      stickX = box.left + x;
+      stickY = box.top + y;
+      stick.style.setProperty('--stick-x', `${x}px`);
+      stick.style.setProperty('--stick-y', `${y}px`);
+      stick.setAttribute('data-held', '');
+      moveStick(event);
+    },
+    { signal },
+  );
+  window.addEventListener(
+    'pointermove',
+    (event) => {
+      if (event.pointerId === stickId) moveStick(event);
     },
     { signal },
   );
   const release = (event: PointerEvent) => {
-    if (sides.delete(event.pointerId)) refreshTouch();
+    if (event.pointerId === stickId) dropStick();
   };
   window.addEventListener('pointerup', release, { signal });
   window.addEventListener('pointercancel', release, { signal });
 
-  // 触屏右下角两个键：按住「冲」是冲刺，按住「猛」是猛冲
-  const holdKey = (button: HTMLButtonElement, key: 'dash' | 'turbo') => {
-    const set = (down: boolean) => (event: Event) => {
-      event.preventDefault();
-      touch[key] = down;
-    };
-    button.addEventListener('pointerdown', set(true), { signal });
-    button.addEventListener('pointerup', set(false), { signal });
-    button.addEventListener('pointercancel', set(false), { signal });
-    button.addEventListener('pointerleave', set(false), { signal });
+  // 触屏右下角的加速键：按住就是猛冲（和电脑上按住空格一样）
+  const holdBoost = (down: boolean) => (event: Event) => {
+    event.preventDefault();
+    touch.turbo = down;
+    turboButton.toggleAttribute('data-held', down);
   };
-  holdKey(dashButton, 'dash');
-  holdKey(turboButton, 'turbo');
+  turboButton.addEventListener('pointerdown', holdBoost(true), { signal });
+  turboButton.addEventListener('pointerup', holdBoost(false), { signal });
+  turboButton.addEventListener('pointercancel', holdBoost(false), { signal });
+  turboButton.addEventListener('pointerleave', holdBoost(false), { signal });
 
   const resize = () => {
     const width = stage.clientWidth;
@@ -603,17 +774,40 @@ export function mountPelican(root: HTMLElement): () => void {
     while (itemFrom < items.length && items[itemFrom].s < bike.s - REACH.along) itemFrom += 1;
     // 东西的高度是相对路面记的，嘴的高度也换算成离路面多高
     const mouth = bike.h - track.at(bike.s, p).y + 0.95;
-    for (let i = itemFrom; i < items.length && items[i].s < bike.s + REACH.along; i += 1) {
+    // 带着磁铁时往前多看一段：前面九米、整条路宽里的鱼都吸过来
+    const ahead = bike.magnet > 0 ? MAGNET_REACH.ahead : REACH.along;
+    for (let i = itemFrom; i < items.length && items[i].s < bike.s + ahead; i += 1) {
       if (taken[i]) continue;
       const item = items[i];
-      if (Math.abs(item.x - bike.x) > REACH.across || Math.abs(item.y - mouth) > REACH.up) continue;
+      const near = Math.abs(item.s - bike.s) <= REACH.along && Math.abs(item.x - bike.x) <= REACH.across && Math.abs(item.y - mouth) <= REACH.up;
+      const drawn =
+        bike.magnet > 0 && (item.kind === 'fish' || item.kind === 'gold') && Math.abs(item.x - bike.x) <= MAGNET_REACH.across && Math.abs(item.y - mouth) <= MAGNET_REACH.up;
+      if (!near && !drawn) continue;
       taken[i] = 1;
       if (item.kind === 'fish' || item.kind === 'gold') eaten += 1;
-      score += SCORE[item.kind];
+      if (item.kind === 'ring') {
+        // 连续穿圈（用户要的「连续得分加倍」）：上一个圈之后 COMBO_WINDOW 秒里又穿了一个，这个圈的分就乘上连着的个数
+        combo = comboTimer > 0 ? combo + 1 : 1;
+        comboTimer = COMBO_WINDOW;
+        const gain = SCORE.ring * combo;
+        score += gain;
+        comboScore = combo === 1 ? gain : comboScore + gain;
+        if (combo >= 2) {
+          comboPunch = 1;
+          // 画面微微一震；手机上再轻轻振一下
+          shake = Math.max(shake, 0.14);
+          if (touchDevice) navigator.vibrate?.(Math.min(40, 12 + combo * 4));
+        }
+      } else score += SCORE[item.kind];
       bike.refill(REFILL[item.kind]);
-      world?.collect(i, time);
+      world?.collect(i, time, !near);
       rider.gulp();
-      if (item.kind === 'rocket') {
+      if (item.kind === 'magnet') {
+        // 磁铁：几秒里把周围的鱼吸过来
+        bike.attract();
+        showToast('捡到“磁铁”', ICONS.magnet);
+        sound.play('bolt');
+      } else if (item.kind === 'rocket') {
         // 火箭：三秒多的超级加速
         bike.launch();
         showToast('捡到“火箭”', ICONS.rocket);
@@ -643,7 +837,7 @@ export function mountPelican(root: HTMLElement): () => void {
       if (Math.abs(block.x - bike.x) > block.width / 2 + 0.35 || bike.h - bike.ground > BLOCK_HEIGHT) continue;
       knocked[i] = 1;
       bike.hit(bike.x >= block.x ? 1 : -1);
-      world?.knock(i, time);
+      world?.knock(i, time, bike.v, bike.x >= block.x ? 1 : -1);
       sound.play('bump');
       shake = SHAKE_SECONDS;
       hurt(HURT.block);
@@ -659,6 +853,37 @@ export function mountPelican(root: HTMLElement): () => void {
     const pitch = bike.grounded ? bike.slope : Math.atan2(bike.vy, Math.max(bike.v, 1)) * 0.5;
     riderPitch += (pitch - riderPitch) * Math.min(1, dt * 10);
     rider.group.rotation.set(riderPitch, -(p.yaw + bike.heading), 0);
+    // 花样动作：出发前换角色时的出场、冲过终点后的庆祝（stunts.ts）。减少动态效果时不做
+    let pose: Pose | null = null;
+    if (state === 'ready' && entrance.t < ENTRANCE_SECONDS && !still) {
+      entrance.t += dt;
+      pose = entrancePose(entrance.kind, Math.min(1, entrance.t / ENTRANCE_SECONDS));
+      // 骑过来的那一段轮子要转；落地那一下身子往下一压
+      bike.spin += Math.max(0, entrance.back - pose.back);
+      entrance.back = pose.back;
+      if (entrance.wasAirborne && !pose.airborne) bike.squash = 0.85;
+      entrance.wasAirborne = pose.airborne;
+      bike.grounded = !pose.airborne;
+    } else if (state === 'ready') {
+      bike.grounded = true;
+    } else if (bike.finished && !out && !still) {
+      celebrate.t += dt;
+      if (celebrate.t > CELEBRATE_DELAY) pose = celebratePose(celebrate.kind, celebrate.t - CELEBRATE_DELAY);
+    }
+    // 出发前车不往前骑，落地压下去的那一下要自己回弹
+    if (state === 'ready') bike.squash *= Math.exp(-dt * 7);
+    if (pose) {
+      if (pose.back > 0.01 || Math.abs(pose.side) > 0.01) {
+        track.at(bike.s - pose.back, q);
+        const across = bike.x + pose.side;
+        rider.group.position.set(q.x + Math.cos(q.yaw) * across, q.y, q.z + Math.sin(q.yaw) * across);
+        rider.group.rotation.y = -(q.yaw + bike.heading);
+      }
+      rider.group.position.y += pose.lift;
+      rider.group.rotation.x += pose.pitch;
+      rider.group.rotation.y -= pose.yaw;
+      rider.group.rotation.z = pose.roll;
+    }
     rider.update(bike, dt, eaten / course.fishTotal);
 
     if (state === 'ready') {
@@ -786,54 +1011,120 @@ export function mountPelican(root: HTMLElement): () => void {
     rushCtx.globalAlpha = 1;
   };
 
+  // 右下角的道具计时（用户要的）：正在起作用的道具各一条，按剩下的时间往回缩；最多放三条，多了只放剩得最少的三个
+  const timerRows = Array.from(timersBox.querySelectorAll<HTMLElement>('[data-timer]')).map((row) => ({
+    row,
+    icon: pick<SVGElement>(row, '[data-timer-icon]'),
+    name: pick<HTMLElement>(row, '[data-timer-name]'),
+    bar: pick<HTMLElement>(row, '[data-timer-bar]'),
+    num: pick<HTMLElement>(row, '[data-timer-num]'),
+  }));
+  const EFFECTS = [
+    { key: 'blast', name: '火箭', color: '#3fc8f0', icon: ICONS.rocket, left: () => bike.blast, total: EFFECT_SECONDS.blast },
+    { key: 'fever', name: '辣椒', color: '#f6c12e', icon: ICONS.chili, left: () => bike.fever, total: EFFECT_SECONDS.fever },
+    { key: 'magnet', name: '磁铁', color: '#e5604a', icon: ICONS.magnet, left: () => bike.magnet, total: EFFECT_SECONDS.magnet },
+    { key: 'surge', name: '加速', color: '#8f6fe0', icon: ICONS.surge, left: () => bike.surge, total: EFFECT_SECONDS.surge },
+  ];
+  const paintTimers = () => {
+    const live = state === 'ready' ? [] : EFFECTS.filter((effect) => effect.left() > 0).sort((a, b) => a.left() - b.left()).slice(0, 3);
+    // 用 data-on 而不是 hidden：hidden 一去掉就看不见了，没法播弹出去的动画
+    if (timersBox.hasAttribute('data-on') !== live.length > 0) timersBox.toggleAttribute('data-on', live.length > 0);
+    timerRows.forEach((slot, k) => {
+      const effect = live[k];
+      // 到时间的那一条留着原来的内容往右弹出去
+      if (slot.row.hasAttribute('data-on') !== !!effect) slot.row.toggleAttribute('data-on', !!effect);
+      if (!effect) return;
+      if (slot.row.dataset.key !== effect.key) {
+        slot.row.dataset.key = effect.key;
+        slot.icon.innerHTML = effect.icon;
+        slot.name.textContent = effect.name;
+        slot.row.style.setProperty('--meter', effect.color);
+      }
+      const share = Math.min(1, effect.left() / effect.total);
+      slot.bar.style.transform = `scaleX(${share.toFixed(3)})`;
+      const seconds = effect.left().toFixed(1);
+      if (slot.num.textContent !== seconds) slot.num.textContent = seconds;
+      // 线的颜色跟着剩下的时间变：一半以上是道具自己的颜色，往下是琥珀，最后四分之一是红
+      const level = share < 0.25 ? 'low' : share < 0.5 ? 'mid' : '';
+      if ((slot.row.dataset.left ?? '') !== level) {
+        if (level) slot.row.dataset.left = level;
+        else delete slot.row.dataset.left;
+      }
+    });
+  };
+
+  // 顶上正中的「连续得分」：每穿一个圈猛地放大一下、左右抖几下再收回去，断了以后慢慢淡掉。都是脚本每帧算的，不是自己循环的动画
+  let comboFade = 0;
+  let comboShown = '';
+  const paintCombo = (dt: number) => {
+    if (state === 'playing') {
+      comboTimer = Math.max(0, comboTimer - dt);
+      if (comboTimer <= 0) combo = 0;
+    }
+    comboPunch = Math.max(0, comboPunch - dt * 3.2);
+    const visible = combo >= 2 && state === 'playing';
+    comboFade += ((visible ? 1 : 0) - comboFade) * Math.min(1, dt * (visible ? 16 : 3.5));
+    if (visible) {
+      const text = `${comboScore}|${combo}`;
+      if (text !== comboShown) {
+        comboShown = text;
+        comboScoreNode.textContent = String(comboScore);
+        comboMultNode.textContent = `×${combo}`;
+      }
+    }
+    if (comboFade < 0.01) {
+      if (comboNode.style.opacity !== '0') comboNode.style.opacity = '0';
+      return;
+    }
+    const punch = still ? 0 : comboPunch;
+    const grow = 1 + 0.55 * punch * punch;
+    const jx = Math.sin(time * 71) * 5 * punch;
+    const jy = Math.cos(time * 53) * 2.5 * punch;
+    const turn = Math.sin(time * 43) * 3 * punch;
+    comboNode.style.opacity = comboFade.toFixed(3);
+    comboNode.style.transform = `translate(calc(-50% + ${jx.toFixed(1)}px), ${jy.toFixed(1)}px) scale(${grow.toFixed(3)}) rotate(${turn.toFixed(2)}deg)`;
+  };
+
   let shownScore = -1;
   let shownSpeed = -1;
   let shownHealth = -1;
-  let shownEaten = -1;
-  let shownKeepsakes = -1;
   const paint = (dt: number) => {
     if (score !== shownScore) {
       shownScore = score;
       scoreNode.textContent = String(score);
     }
-    if (eaten !== shownEaten) {
-      shownEaten = eaten;
-      eatenNode.textContent = String(eaten);
-    }
-    if (keepsakes.size !== shownKeepsakes) {
-      shownKeepsakes = keepsakes.size;
-      keepsakeNode.textContent = String(keepsakes.size);
-      keepsakeTotal.textContent = `/${course.scenes.length}`;
-    }
+    // 生命：左下角第三行，四格对四颗心，右边写还剩百分之几（用户要的）
     if (health !== shownHealth) {
       shownHealth = health;
-      hearts.forEach((heart, i) => {
-        heart.dataset.fill = String(Math.max(0, Math.min(2, health - i * 2)));
-      });
-      heartBox.setAttribute('aria-label', `生命 ${health / 2} 颗心`);
+      const share = health / (HEARTS * 2);
+      lifeBar.style.transform = `scaleX(${share.toFixed(3)})`;
+      lifeNum.textContent = `${Math.round(share * 100)}%`;
+      boostBox.dataset.life = share <= 0.25 ? 'low' : share <= 0.5 ? 'mid' : 'high';
     }
     if (hurtTimer > 0) {
       hurtTimer -= dt;
-      heartBox.toggleAttribute('data-hurt', hurtTimer > 0);
+      boostBox.toggleAttribute('data-hurt', hurtTimer > 0);
     }
+    paintTimers();
+    paintCombo(dt);
     progressNode.style.transform = `scaleX(${Math.min(1, Math.max(0, bike.s / track.finish)).toFixed(4)})`;
-    boostNode.style.transform = `scaleX(${(bike.blast > 0 ? bike.blastLeft : bike.boost).toFixed(3)})`;
+    boostNode.style.transform = `scaleX(${bike.boost.toFixed(3)})`;
     boostBox.toggleAttribute('data-active', bike.rushing);
     // 冲刺时冲刺条上烧着一排火苗，猛冲时烧得更高（用户要求）。火苗的高矮每帧在这里算，不用自己循环的动画
     // 吃了辣椒的那几秒一直烧着，冲刺条是金色的
     // 火箭那几秒是第四种：青色，冲刺条变成倒计时
     const burn = bike.blast > 0 ? '4' : bike.fever > 0 ? '3' : bike.turbo ? '2' : bike.dashing ? '1' : '';
-    // 状态栏上那两个字和右边的小字也跟着换：冲刺 / 猛冲（耗双倍）/ 辣椒（不掉）/ 超级加速（还剩几秒）
+    // 状态栏上那两个字跟着换：冲刺 / 猛冲 / 辣椒 / 超速；右边是还剩多少体力（用户要的），道具还剩几秒放在右下角
     const label = burn === '4' ? '超速' : burn === '3' ? '辣椒' : burn === '2' ? '猛冲' : '冲刺';
     if (boostLabel.textContent !== label) boostLabel.textContent = label;
-    const note = burn === '4' ? (bike.blast).toFixed(1) : burn === '3' ? '∞' : burn === '2' ? '×2' : '';
+    const note = String(Math.round(bike.boost * 100));
     if (boostNum.textContent !== note) boostNum.textContent = note;
     if ((boostBox.dataset.burn ?? '') !== burn) {
       if (burn) boostBox.dataset.burn = burn;
       else delete boostBox.dataset.burn;
     }
     if (burn) {
-      flameBox.style.width = `${((bike.blast > 0 ? bike.blastLeft : bike.boost) * 100).toFixed(1)}%`;
+      flameBox.style.width = `${(bike.boost * 100).toFixed(1)}%`;
       const tall = burn === '1' ? 0.55 : burn === '4' ? 1.25 : 1;
       flames.forEach((flame, i) => {
         // 越靠近冲刺条的头上烧得越高；几个不成倍数的正弦叠起来，每根火苗各跳各的
@@ -843,7 +1134,7 @@ export function mountPelican(root: HTMLElement): () => void {
       });
     }
     // 画面外框上的十字键和两颗圆键跟着按键亮
-    const press = `${keys.left || touch.left > 0 ? 'l ' : ''}${keys.right || touch.right > 0 ? 'r ' : ''}${keys.dash || touch.dash ? 'u ' : ''}${keys.turbo || touch.turbo ? 'a' : ''}`;
+    const press = `${keys.left || touch.steer < -0.3 ? 'l ' : ''}${keys.right || touch.steer > 0.3 ? 'r ' : ''}${keys.dash || touch.dash ? 'u ' : ''}${keys.turbo || touch.turbo ? 'a' : ''}`;
     if (root.dataset.press !== press) root.dataset.press = press;
     // 冲刺条的颜色跟着余量走：多、不多、快没了
     const level = bike.boost < 0.25 ? 'low' : bike.boost < 0.6 ? 'mid' : 'high';
@@ -878,10 +1169,7 @@ export function mountPelican(root: HTMLElement): () => void {
     }
     // 出发前那行提示一明一暗地呼吸
     overlayText.style.opacity = state === 'ready' && !still ? (0.62 + Math.sin(time * 2.4) * 0.38).toFixed(2) : '';
-    if (toastTimer > 0 && state !== 'paused') {
-      toastTimer -= dt;
-      if (toastTimer <= 0) delete toastNode.dataset.show;
-    }
+    toasts.tick(dt, state === 'paused');
   };
 
   let raf = 0;
@@ -904,7 +1192,9 @@ export function mountPelican(root: HTMLElement): () => void {
       time += dt;
       accumulator += dt;
       while (accumulator >= TICK) {
-        controls.steer = (keys.right || touch.right > 0 ? 1 : 0) - (keys.left || touch.left > 0 ? 1 : 0);
+        // 键盘是按下就压满；摇杆推多少压多少
+        const keySteer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+        controls.steer = keySteer !== 0 ? keySteer : touch.steer;
         controls.dash = keys.dash || touch.dash;
         // 按住空格是冲刺的更快一档（用户要求）：比按方向键还快，冲刺条耗得快一倍
         controls.turbo = keys.turbo || touch.turbo;

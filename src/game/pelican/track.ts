@@ -37,6 +37,8 @@ export interface TrackStep {
   gap?: number;
   // 断口是不是一道掉得下去的深沟：骑得够快才飞得过去，慢了会掉下去。不写就是照常骑一定飞得过去的断层
   deep?: boolean;
+  // 路面不变高低，只在这里横着放一整条高跳弹簧，把车弹起这么多米再落回原地（drop 写 0）
+  bounce?: number;
 }
 
 // 深沟有多深（米）
@@ -190,7 +192,7 @@ export class Track {
           this.py[i] += (level - this.py[i]) * u * u * (3 - 2 * u);
         }
         if (step.drop > 0) this.faults.push({ s: at, drop: step.drop, gap: step.gap ?? 0, deep: !!step.deep });
-        else this.ledges.push({ s: at, rise: -step.drop });
+        else if (step.drop < 0) this.ledges.push({ s: at, rise: -step.drop });
       }
       const climb = style.climb;
       if (!climb && steps.length === 0) return;

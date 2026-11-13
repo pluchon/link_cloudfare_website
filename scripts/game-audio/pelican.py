@@ -60,13 +60,25 @@ Note = tuple[float, float, int, int]
 # 一轨：乐器名、音符、相对音量（dB）。乐器名是 VOICES 里的名字，打击乐写 "kit"
 Part = tuple[str, list[Note], float]
 
-# 有音高的乐器：采样文件夹、文件名里取音名的正则、余音多长（秒）、校准时弹哪个音
+# 管弦乐和钢琴：VSCO 2 社区版（CC0），和 VCSL 放在同一个 samples 目录下
+VSCO = STUDIO / "samples" / "VSCO-2-CE" / "VSCO-2-CE-master"
+STEINWAY = VCSL / "Chordophones" / "Zithers" / "Grand Piano, Steinway B" / "NoSus"
+
+# 有音高的乐器：采样文件夹、文件名里取音名的正则、余音多长（秒）、校准时弹哪个音、同一个音有好几个录音时挑文件名里带什么的、起音多慢（秒）。
+# 音效还用卡林巴、钟琴、马林巴这些敲的；配乐用户两次嫌「尖锐、像电子合成的」，2026-11-13 起换成钢琴、长笛、单簧管领奏，
+# 弦乐组铺底，大提琴、低音提琴拨弦做低音，挑的都是轻的那一档力度
 PITCHED = {
-    "kalimba": (VCSL / "Idiophones" / "Plucked Idiophones" / "Kalimba, Kenya", r"_([A-G][#b]?\d)_k\d+", 0.9, "B3"),
-    "glock": (STRUCK / "Glockenspiel", r"loud_([A-G][#b]?\d)_", 1.4, "C6"),
-    "marimba": (STRUCK / "Marimba", r"_([A-G][#b]?\d)_med_", 0.7, "C4"),
-    "harp": (VCSL / "Chordophones" / "Composite Chordophones" / "Folk Harp", r"_([A-G][#b]?\d)_v3_", 1.3, "C4"),
-    "chimes": (STRUCK / "Hand Chimes", r"sus_([A-G][#b]?\d)_r01", 2.0, "C5"),
+    "kalimba": (VCSL / "Idiophones" / "Plucked Idiophones" / "Kalimba, Kenya", r"_([A-G][#b]?\d)_k\d+", 0.9, "B3", "", 0.0),
+    "glock": (STRUCK / "Glockenspiel", r"loud_([A-G][#b]?\d)_", 1.4, "C6", "", 0.0),
+    "marimba": (STRUCK / "Marimba", r"_([A-G][#b]?\d)_med_", 0.7, "C4", "", 0.0),
+    "harp": (VCSL / "Chordophones" / "Composite Chordophones" / "Folk Harp", r"_([A-G][#b]?\d)_v3_", 1.3, "C4", "", 0.0),
+    "chimes": (STRUCK / "Hand Chimes", r"sus_([A-G][#b]?\d)_r01", 2.0, "C5", "", 0.0),
+    "piano": (STEINWAY, r"_Close_([A-G][#b]?\d)_vl", 1.4, "C4", "_vl2_", 0.0),
+    "flute": (VSCO / "Woodwinds" / "Flute" / "susNV", r"_susNV_([A-G][#b]?\d)_", 0.5, "C5", "_v1", 0.06),
+    "clarinet": (VSCO / "Woodwinds" / "Clarinet" / "susLong", r"_susLong_([A-G][#b]?\d)_", 0.45, "C4", "_v1_rr1", 0.05),
+    "strings": (VSCO / "Strings" / "Violin Section" / "susVib", r"_susVib_([A-G][#b]?\d)_", 0.9, "A4", "_v1", 0.28),
+    "cello": (VSCO / "Strings" / "Cello Section" / "susvib", r"susvib_([A-G][#b]?\d)_", 0.8, "C3", "_v1_", 0.2),
+    "pizz": (VSCO / "Strings" / "Solo Contrabass" / "Pizz", r"_Pizz_([A-G][#b]?\d)_", 0.6, "C2", "_v1_rr1", 0.0),
 }
 
 # 打击乐：键号 -> 录音文件、在整套鼓里比别人大多少小多少（dB）
@@ -146,8 +158,10 @@ def measure(name: str, sfz: Path, note: int) -> float:
 
 def prepare() -> None:
     """给每样乐器写 sfz 映射，并校准音量。"""
-    for name, (folder, pattern, release, probe) in PITCHED.items():
-        sfz = mr.sfz_from_notes(folder, WORK / f"{name}.sfz", pattern=pattern, extra=f"ampeg_release={release} amp_veltrack=45")
+    for name, (folder, pattern, release, probe, prefer, attack) in PITCHED.items():
+        if not folder.exists():
+            raise SystemExit(f"采样目录不存在：{folder}")
+        sfz = mr.sfz_from_notes(folder, WORK / f"{name}.sfz", pattern=pattern, prefer=prefer, extra=f"ampeg_attack={attack} ampeg_release={release} amp_veltrack=45")
         trim = measure(name, sfz, key(probe))
         VOICES[name] = (sfz, trim)
         logger.info("校准 %-8s 补 %+.1f dB", name, trim)
@@ -360,26 +374,27 @@ RHYTHMS = [
 # 每个场景一首：场景名（和 scenes.ts 里的 name 一样）、文件名里用的短名、主音（领奏那个八度的键号）、大调小调、速度、
 # 领奏、伴奏、节奏型、种子
 SONGS = [
-    ("海滨晨光", "beach", 62, "maj", 104, "marimba", "harp", "light", 11),
-    ("花田风车", "flower", 65, "maj", 112, "kalimba", "harp", "folk", 23),
-    ("樱花大道", "sakura", 57, "min", 92, "harp", "kalimba", "soft", 37),
-    ("松林小屋", "pine", 55, "maj", 96, "harp", "marimba", "folk", 41),
-    ("秋日山谷", "autumn", 64, "min", 98, "marimba", "harp", "light", 53),
-    ("沙漠峡谷", "desert", 62, "min", 100, "kalimba", "marimba", "dance", 67),
-    ("棕榈晚霞", "palm", 58, "maj", 94, "marimba", "kalimba", "light", 71),
-    ("灯塔夜海", "lighthouse", 56, "maj", 84, "harp", "chimes", "sparse", 83),
-    ("霓虹都市", "neon", 57, "min", 116, "marimba", "kalimba", "dance", 97),
-    ("极光雪原", "aurora", 64, "maj", 80, "harp", "chimes", "sparse", 101),
-    ("雪山黎明", "dawn", 60, "maj", 88, "harp", "chimes", "soft", 113),
-    ("气球之丘", "balloon", 67, "maj", 120, "kalimba", "marimba", "folk", 127),
-    ("高山峡谷", "canyon", 62, "maj", 100, "harp", "marimba", "folk", 131),
-    ("溪谷飞瀑", "creek", 65, "maj", 92, "kalimba", "harp", "soft", 139),
-    ("水晶洞穴", "cave", 54, "min", 82, "harp", "chimes", "sparse", 149),
+    ("海滨晨光", "beach", 62, "maj", 100, "flute", "harp", "light", 11),
+    ("花田风车", "flower", 65, "maj", 106, "clarinet", "piano", "folk", 23),
+    ("樱花大道", "sakura", 57, "min", 88, "piano", "harp", "soft", 37),
+    ("松林小屋", "pine", 55, "maj", 92, "clarinet", "harp", "folk", 41),
+    ("秋日山谷", "autumn", 64, "min", 94, "piano", "harp", "light", 53),
+    ("沙漠峡谷", "desert", 62, "min", 96, "clarinet", "pizz", "light", 67),
+    ("棕榈晚霞", "palm", 58, "maj", 90, "flute", "piano", "soft", 71),
+    ("灯塔夜海", "lighthouse", 56, "maj", 80, "piano", "harp", "sparse", 83),
+    ("霓虹都市", "neon", 57, "min", 108, "piano", "pizz", "dance", 97),
+    ("极光雪原", "aurora", 64, "maj", 76, "flute", "harp", "sparse", 101),
+    ("雪山黎明", "dawn", 60, "maj", 84, "piano", "harp", "soft", 113),
+    ("气球之丘", "balloon", 67, "maj", 112, "flute", "pizz", "folk", 127),
+    ("高山峡谷", "canyon", 62, "maj", 96, "clarinet", "harp", "folk", 131),
+    ("溪谷飞瀑", "creek", 65, "maj", 88, "flute", "piano", "soft", 139),
+    ("水晶洞穴", "cave", 54, "min", 78, "piano", "harp", "sparse", 149),
+    ("云海断桥", "cloudbridge", 63, "maj", 98, "flute", "harp", "light", 163),
 ]
-# 各轨相对音量（dB）。乐器都校准过了，这里的数字就是真正的大小关系
-GAINS = {"lead": 0.0, "comp": -7.0, "bass": -5.0, "drums": -7.0}
-# 混完接的滤镜：混响、削高频（尖不尖主要在这一刀）、统一响度。响度比早先那首低一点
-MUSIC_CHAIN = ",aecho=0.85:0.9:90|173|287:0.22|0.16|0.1,lowpass=f=4800,treble=g=-3:f=3000,loudnorm=I=-21:TP=-3:LRA=8,alimiter=limit=0.85"
+# 各轨相对音量（dB）。乐器都校准过了，这里的数字就是真正的大小关系：领奏最清楚，弦乐铺在底下，打击乐只是一点点
+GAINS = {"lead": 0.0, "pad": -10.0, "comp": -9.0, "bass": -6.0, "drums": -13.0}
+# 混完接的滤镜：大厅一样长一点的混响、轻轻削一点最高的频率、统一响度
+MUSIC_CHAIN = ",aecho=0.8:0.88:110|210|330:0.24|0.18|0.12,lowpass=f=7000,loudnorm=I=-21:TP=-3:LRA=9,alimiter=limit=0.85"
 
 
 def chord_notes(tonic: int, degree: str) -> list[int]:
@@ -449,72 +464,75 @@ class Seeded:
         return items[int(self() * len(items))]
 
 
-def one_loop(offset: float, tonic: int, chords: list[str], melody: list[Note], comp: str, groove: str) -> dict[str, list[Note]]:
-    """一圈 16 小节里每一轨弹什么，offset 是这一圈从第几拍开始。"""
+def one_loop(offset: float, tonic: int, chords: list[str], melody: list[Note], comp: str, groove: str, slow: bool) -> dict[str, list[Note]]:
+    """一圈 16 小节里每一轨弹什么，offset 是这一圈从第几拍开始。
+    领奏、弦乐铺底、低音、伴奏、一点点打击乐。都是轻的力度，没有敲得很脆的东西"""
     bass: list[Note] = []
+    pad: list[Note] = []
     backing: list[Note] = []
     drums: list[Note] = []
     for bar, degree in enumerate(chords):
         low, mid, top = chord_notes(tonic, degree)
         start = offset + bar * 4
-        # 低音：再往下一个八度，一拍和三拍
-        bass += [(start, 1.5, low - 12, 80), (start + 2.5, 0.5, low - 12, 60), (start + 3, 1, low - 12, 72)]
+        # 弦乐组：每小节一个长和弦，慢慢起来，垫在底下
+        pad += [(start, 4.1, note + 12, 48) for note in (low, mid, top)]
+        # 低音：慢歌是大提琴拉长音；快一点的是低音提琴拨弦，一拍和三拍
+        if slow:
+            bass.append((start, 4.1, low - 12, 56))
+        else:
+            bass += [(start, 1.5, low - 12, 70), (start + 2, 1.5, low - 12, 60)]
         if comp == "harp":
             # 竖琴：八分音符的分解和弦
             for step, note in enumerate([low, top, mid + 12, top, low + 12, top, mid + 12, top]):
-                backing.append((start + step * 0.5, 1.5, note, 64 if step % 2 == 0 else 52))
-        elif comp == "kalimba":
-            # 卡林巴：反拍上的和弦
-            for beat in (1.5, 3.5):
-                backing += [(start + beat, 0.5, note + 12, 58) for note in (low, mid, top)]
-        elif comp == "marimba":
-            # 马林巴：每拍滚一个和弦音，第一拍重一点
-            for beat, note in enumerate((low, top, mid, top)):
-                backing.append((start + beat, 0.9, note + 12, 66 if beat == 0 else 52))
+                backing.append((start + step * 0.5, 1.5, note, 58 if step % 2 == 0 else 46))
+        elif comp == "piano":
+            # 钢琴：四分音符的分解和弦，轻轻地
+            for beat, note in enumerate((low, top, mid + 12, top)):
+                backing.append((start + beat, 1.2, note, 52 if beat == 0 else 42))
         else:
-            # 手钟：每小节一个长长的和弦，垫在底下
-            backing += [(start, 4, note + 12, 56) for note in (low, mid, top)]
+            # 拨弦：反拍上一下一下的和弦音
+            for beat, note in ((0.5, mid), (1.5, top), (2.5, mid), (3.5, top)):
+                backing.append((start + beat, 0.5, note + 12, 54))
         if groove == "light":
             for step in range(8):
-                drums.append((start + step * 0.5, 0.25, 42 if step % 2 == 0 else 44, 54 if step % 2 == 0 else 38))
-            drums += [(start, 0.5, 36, 76), (start + 2.5, 0.5, 36, 58), (start + 1, 0.5, 38, 52), (start + 3, 0.5, 38, 56)]
+                drums.append((start + step * 0.5, 0.25, 42 if step % 2 == 0 else 44, 40 if step % 2 == 0 else 28))
+            drums += [(start, 0.5, 36, 58), (start + 2.5, 0.5, 36, 44)]
         elif groove == "folk":
-            drums += [(start, 0.5, 36, 78), (start + 1.5, 0.5, 36, 56), (start + 2, 0.5, 36, 70)]
-            drums += [(start + beat, 0.25, 65, 52) for beat in (0.5, 1.5, 2.5, 3.5)]
-            if bar % 2 == 1:
-                drums.append((start + 3, 0.5, 54, 48))
+            drums += [(start, 0.5, 36, 60), (start + 2, 0.5, 36, 52)]
+            drums += [(start + beat, 0.25, 44, 32) for beat in (0.5, 1.5, 2.5, 3.5)]
         elif groove == "dance":
-            drums += [(start + beat, 0.5, 36, 76) for beat in range(4)]
-            drums += [(start + 1, 0.5, 38, 60), (start + 3, 0.5, 38, 64)]
-            drums += [(start + beat + 0.5, 0.25, 56, 46) for beat in range(4)]
+            drums += [(start + beat, 0.5, 36, 58) for beat in range(4)]
+            drums += [(start + beat + 0.5, 0.25, 44, 34) for beat in range(4)]
         elif groove == "soft":
-            drums += [(start, 0.5, 36, 62), (start + 1, 0.25, 44, 40), (start + 3, 0.25, 44, 44)]
+            drums += [(start, 0.5, 36, 46), (start + 2, 0.25, 44, 30)]
             if bar % 4 == 0:
-                drums.append((start, 2, 64, 60))
+                drums.append((start, 2, 64, 44))
         else:
-            if bar % 2 == 0:
-                drums.append((start, 0.5, 36, 56))
             if bar % 4 == 0:
-                drums.append((start, 2, 64, 58))
-            if bar % 4 == 2:
-                drums.append((start + 2, 1, 81, 44))
+                drums.append((start, 2, 64, 42))
     lead = [(offset + beat, dur, note, vel) for beat, dur, note, vel in melody]
-    return {"lead": lead, "comp": backing, "bass": bass, "drums": drums}
+    return {"lead": lead, "pad": pad, "comp": backing, "bass": bass, "drums": drums}
 
 
 def build_song(slug: str, tonic: int, mode: str, bpm: float, lead: str, comp: str, groove: str, seed: int) -> dict[str, float]:
     random = Seeded(seed)
     chords = PROGRESSIONS[mode][int(random() * len(PROGRESSIONS[mode]))]
-    melody = write_melody(tonic, mode, chords, bpm < 92, random)
+    slow = bpm < 92
+    melody = write_melody(tonic, mode, chords, slow, random)
+    # 长笛在低音区发虚，旋律整体抬一个八度
+    if lead == "flute" and tonic < 64:
+        melody = [(beat, dur, note + 12, vel) for beat, dur, note, vel in melody]
+    # 管乐和钢琴领奏都压轻一点
+    melody = [(beat, dur, note, vel - 8) for beat, dur, note, vel in melody]
     beats = BARS * 4
     length = beats * 60 / bpm
     # 连着渲三圈，取中间那一圈：它的开头带着上一圈的余音，接起来才没有缝
     tracks: dict[str, list[Note]] = {}
     for turn in range(3):
-        for name, notes in one_loop(turn * beats, tonic, chords, melody, comp, groove).items():
+        for name, notes in one_loop(turn * beats, tonic, chords, melody, comp, groove, slow).items():
             tracks.setdefault(name, []).extend(notes)
-    instruments = {"lead": lead, "comp": comp, "bass": "marimba", "drums": "kit"}
-    parts: list[Part] = [(instruments[name], tracks[name], GAINS[name]) for name in ("lead", "comp", "bass", "drums")]
+    instruments = {"lead": lead, "pad": "strings", "comp": comp, "bass": "cello" if slow else "pizz", "drums": "kit"}
+    parts: list[Part] = [(instruments[name], tracks[name], GAINS[name]) for name in ("lead", "pad", "comp", "bass", "drums")]
     full = mix(f"bgm_{slug}_full", bpm, parts, MUSIC_CHAIN)
     cut = WORK / f"bgm_{slug}_cut.wav"
     run(["ffmpeg", "-v", "error", "-y", "-ss", f"{length - BGM_PAD:.5f}", "-t", f"{length + BGM_PAD * 2:.5f}", "-i", str(full), "-c:a", "pcm_s16le", "-ac", "2", "-ar", str(RATE), str(cut)])

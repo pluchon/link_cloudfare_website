@@ -25,6 +25,8 @@ const MIN_SPEED = 6;
 const MAX_SPEED = 48;
 // 火箭（超级加速）：这么多秒里一下子冲到这么快，不耗冲刺条（用户要的「持续时间短」）
 const BLAST_SECONDS = 3.2;
+// 磁铁：这么多秒里把周围的鱼吸过来
+const MAGNET_SECONDS = 8;
 const BLAST_SPEED = 46;
 const ACCEL_BLAST = 5;
 // 吃到辣椒：这么多秒里冲刺条不掉，各档速度都再快一点
@@ -129,6 +131,8 @@ export class Bike {
   fever = 0;
   // 火箭的劲儿还剩多少秒
   blast = 0;
+  // 磁铁还吸多少秒
+  magnet = 0;
   finished = false;
   // 掉进深沟以后，离飞回对岸还有多少秒；0 就是没掉下去
   rescue = 0;
@@ -172,6 +176,7 @@ export class Bike {
     this.surge = 0;
     this.fever = 0;
     this.blast = 0;
+    this.magnet = 0;
     this.finished = false;
     this.rescue = 0;
     this.spin = 0;
@@ -188,9 +193,9 @@ export class Bike {
     return this.dashing || this.surge > 0 || this.blast > 0;
   }
 
-  // 火箭剩下几成（0 到 1），状态栏倒计时用
-  get blastLeft(): number {
-    return this.blast / BLAST_SECONDS;
+  // 吃到磁铁：一段时间里把周围的鱼吸过来（吸的事在 game.ts 里做，这里只记时间）
+  attract(): void {
+    this.magnet = MAGNET_SECONDS;
   }
 
   // 吃到火箭：一小段时间里冲到最快
@@ -288,6 +293,7 @@ export class Bike {
     if (turbo && !this.turbo) this.emit('turbo');
     this.turbo = turbo;
     this.fever = Math.max(0, this.fever - dt);
+    this.magnet = Math.max(0, this.magnet - dt);
     this.blast = Math.max(0, this.blast - dt);
     // 吃了辣椒、或者火箭正在推着走的时候，冲刺条都不掉
     if (this.fever > 0) this.boost = 1;
@@ -432,3 +438,5 @@ export class Bike {
 }
 
 export const BIKE_SPEED = { cruise: CRUISE, sprint: SPRINT, turbo: TURBO } as const;
+// 各种道具一共管多少秒，右下角的计时条按这个算还剩几成
+export const EFFECT_SECONDS = { blast: BLAST_SECONDS, fever: FEVER_SECONDS, magnet: MAGNET_SECONDS, surge: SURGE_SECONDS } as const;

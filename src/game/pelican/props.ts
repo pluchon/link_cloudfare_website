@@ -266,16 +266,36 @@ function balloon(colors: readonly number[]): PropShape {
   };
 }
 
-// 云不受光照，自己是什么颜色就画什么颜色：受光的话，云底会被地面的反光染成草地的绿色
+// 云不受光照，自己是什么颜色就画什么颜色：受光的话，云底会被地面的反光染成草地的绿色。
+// 用户嫌过早先那种三四团压扁的球「假」：现在是十来团大小不一的圆球挤成一朵，中间高两边低，
+// 底下削平（真的积云底是平的），颜色按高度从云底的灰蓝慢慢过渡到顶上的白，看得出体积
 function cloud(top: number, under: number): PropShape {
-  return {
-    flat: join([
-      part(blob(4), top, { s: [1.5, 0.62, 1] }),
-      part(blob(3), top, { p: [5, -0.3, 0.6], s: [1.4, 0.6, 1] }),
-      part(blob(2.6), top, { p: [-5.2, -0.4, -0.4], s: [1.4, 0.6, 1] }),
-      part(blob(2.4), under, { p: [0.5, -1.2, 0.2], s: [2.6, 0.4, 1.2] }),
-    ]),
-  };
+  const random = seeded(top % 9973);
+  const puffs: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 11; i += 1) {
+    const angle = random() * Math.PI * 2;
+    const reach = Math.sqrt(random());
+    const radius = 1.4 + random() * 1.6 + (1 - reach) * 1.6;
+    puffs.push(part(blob(radius, 1), top, { p: [Math.cos(angle) * reach * 6.5, radius * 0.45 + (1 - reach) * 1.2, Math.sin(angle) * reach * 2.8] }));
+  }
+  const geometry = join(puffs);
+  const position = geometry.getAttribute('position');
+  const color = geometry.getAttribute('color');
+  let highest = 0;
+  for (let i = 0; i < position.count; i += 1) {
+    // 低于云底的那一截压平
+    if (position.getY(i) < 0) position.setY(i, position.getY(i) * 0.1);
+    highest = Math.max(highest, position.getY(i));
+  }
+  const low = new THREE.Color(under);
+  const high = new THREE.Color(top);
+  for (let i = 0; i < position.count; i += 1) {
+    const u = Math.min(1, Math.max(0, position.getY(i) / (highest * 0.7)));
+    tint.copy(low).lerp(high, u * u * (3 - 2 * u));
+    color.setXYZ(i, tint.r, tint.g, tint.b);
+  }
+  geometry.computeVertexNormals();
+  return { flat: geometry };
 }
 
 function house(wall: number, roof: number, trim: number, window: number): PropShape {
@@ -511,16 +531,54 @@ function cluster(seed: number, radius: number, items: Array<[() => PropShape, nu
   return { lit: lit.length ? join(lit) : undefined, glow: glow.length ? join(glow) : undefined };
 }
 
-// 海里的礁石柱：一高一矮两根，高的那根顶上长着草
+// 一根礁石柱：一层一层的岩层往上收窄、每层错开一点，颜色深浅相间；贴着水的那一截被海水泡得发黑，顶上一片草皮
+function stackColumn(x: number, z: number, layers: number, width: number, seed: number, grassy: boolean): THREE.BufferGeometry[] {
+  const random = seeded(seed);
+  const strata = [0x7f8490, 0x8d919c, 0x737885, 0x9a9ea8];
+  const out: THREE.BufferGeometry[] = [part(roughen(tube(width * 1.05, width * 1.15, 1.2, 7), 0.12), 0x4b505b, { p: [x, 0.3, z] })];
+  let y = 0.8;
+  for (let k = 0; k < layers; k += 1) {
+    const height = 1.6 + random() * 0.9;
+    const radius = width * (1 - (k / layers) * 0.45);
+    out.push(part(roughen(tube(radius * 0.9, radius, height, 7), 0.14), strata[k % strata.length], { p: [x + (random() - 0.5) * 0.5, y + height / 2, z + (random() - 0.5) * 0.5], r: [0, random() * 3, 0] }));
+    y += height * 0.92;
+  }
+  if (grassy) {
+    const top = width * 0.6;
+    out.push(part(roughen(blob(1, 0), 0.3), 0x6fa86a, { p: [x, y + 0.1, z], s: [top * 1.1, 0.45, top * 1.1] }));
+    out.push(part(blob(0.6, 0), 0x5a9a58, { p: [x + top * 0.4, y + 0.5, z + 0.2] }));
+  }
+  return out;
+}
+
+// 海里的礁石柱：一高一矮两根层层叠叠的石柱，高的顶上长着草，脚下散着几块圆石头，四周一圈白浪
 function seaStack(): PropShape {
   return {
     lit: join([
-      part(roughen(tube(2.1, 3.6, 10, 6), 0.2), 0x7f8490, { p: [0, 4.6, 0] }),
-      part(roughen(blob(1, 0), 0.3), 0x6fa86a, { p: [0, 9.7, 0], s: [2.3, 0.8, 2.3] }),
-      part(roughen(tube(1.3, 2.4, 5.5, 6), 0.2), 0x8d919c, { p: [4.6, 2.4, 1.6] }),
-      part(roughen(blob(1, 0), 0.4), 0x9a9ea8, { p: [-3.6, 0.5, -1.4], s: [2, 1.1, 1.6] }),
+      ...stackColumn(0, 0, 5, 3.4, 311, true),
+      ...stackColumn(4.8, 1.8, 3, 2.1, 523, false),
+      part(roughen(blob(1, 0), 0.4), 0x5d626e, { p: [-3.4, 0.4, -1.4], s: [1.8, 0.9, 1.4] }),
+      part(roughen(blob(0.7, 0), 0.4), 0x6b707c, { p: [2.4, 0.3, -2.6], s: [1.4, 0.8, 1.2] }),
+      part(new THREE.TorusGeometry(4.3, 0.45, 4, 18), 0xf2f7fa, { p: [1, 0.06, 0.4], r: [Math.PI / 2, 0, 0], s: [1.15, 0.8, 0.25] }),
     ]),
   };
+}
+
+// 岸边的一堆礁石：几块大小不一的圆石头挤在浅水里，下半截湿得发黑，石缝间一圈一圈的白浪
+function shoreRocks(): PropShape {
+  const random = seeded(887);
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const angle = random() * Math.PI * 2;
+    const reach = random() * 3.2;
+    const size = 0.6 + random() * 1.1;
+    const x = Math.cos(angle) * reach;
+    const z = Math.sin(angle) * reach;
+    parts.push(part(roughen(blob(size, 0), 0.35), i % 2 ? 0x8d919c : 0x7a7f8a, { p: [x, size * 0.35, z], s: [1.2, 0.8, 1], r: [0, random() * 3, 0] }));
+    parts.push(part(roughen(blob(size * 1.05, 0), 0.3), 0x484d58, { p: [x, size * 0.05, z], s: [1.25, 0.32, 1.05] }));
+  }
+  parts.push(part(new THREE.TorusGeometry(3.6, 0.35, 4, 16), 0xf2f7fa, { p: [0, 0.05, 0], r: [Math.PI / 2, 0, 0], s: [1.2, 0.8, 0.25] }));
+  return { lit: join(parts) };
 }
 
 // 一段栅栏，顺着路摆
@@ -1424,6 +1482,7 @@ const BUILDERS: Record<Exclude<PropKind, FlockKind>, () => PropShape> = {
       [() => pine(true), 3],
     ]),
   seaStack,
+  shoreRocks,
   fenceWhite: () => fence(0xfdf6ea, 0xfdf6ea),
   fenceWood: () => fence(0x7a5540, 0x9a6b4a),
   grass: () => grass(0x5fae62, 0x7cc272),
@@ -1484,27 +1543,304 @@ export function buildProp(kind: Exclude<PropKind, FlockKind>): PropShape {
   return BUILDERS[kind]();
 }
 
-// 场景交界处的门：两根柱子、一道横梁，梁下挂一排小旗
-export function buildGate(width: number, finish: boolean): THREE.BufferGeometry {
-  const half = width / 2 + 1.6;
-  const parts = [
-    part(box(0.55, 7, 0.55), 0xfdf6ea, { p: [-half, 3.5, 0] }),
-    part(box(0.55, 7, 0.55), 0xfdf6ea, { p: [half, 3.5, 0] }),
-    part(box(half * 2 + 1.4, 0.9, 0.6), finish ? 0x2b2d33 : 0xe56a54, { p: [0, 7.1, 0] }),
-  ];
-  const flags = finish ? [0xfdf6ea, 0x2b2d33] : [0xf2c14e, 0xfdf6ea, 0x4fb3a4, 0xfdf6ea];
+// 场景交界处的门（用户要「每个场景的龙门架都要有不同的主题和建模」）：进哪个场景，门就是那个场景的样子。
+// 每种门是两根柱子、一道横梁加各自的装饰，全是简单几何体按面上色；发光的部分（灯笼、霓虹、水晶、火把）单独一份，用发光材质
+export type GateTheme =
+  | 'driftwood'
+  | 'flowers'
+  | 'sakura'
+  | 'log'
+  | 'harvest'
+  | 'adobe'
+  | 'tiki'
+  | 'harbor'
+  | 'neon'
+  | 'ice'
+  | 'prayer'
+  | 'balloons'
+  | 'stone'
+  | 'bamboo'
+  | 'crystal'
+  | 'pailou'
+  | 'finish';
+
+type Pieces = { lit: THREE.BufferGeometry[]; glow: THREE.BufferGeometry[] };
+
+// 从左柱顶到右柱顶垂下来的一根绳上等距挂 count 个东西：make 拿到每个的位置和序号
+function hang(half: number, top: number, sag: number, count: number, make: (x: number, y: number, i: number) => THREE.BufferGeometry[]): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const u = (i + 0.5) / count;
+    const x = -half + u * half * 2;
+    out.push(...make(x, top - sag * 4 * u * (1 - u), i));
+  }
+  return out;
+}
+
+// 一道从左柱顶到右柱顶的拱：沿着半个椭圆等距摆 count 个东西
+function arch(half: number, base: number, rise: number, count: number, make: (x: number, y: number, angle: number, i: number) => THREE.BufferGeometry[]): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  for (let i = 0; i <= count; i += 1) {
+    const angle = (i / count) * Math.PI;
+    out.push(...make(-Math.cos(angle) * half, base + Math.sin(angle) * rise, angle, i));
+  }
+  return out;
+}
+
+// 一根竹子：一节一节的，节上一圈深一点的箍
+function bamboo(x: number, height: number, radius: number, hex: number, joint: number, z = 0): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  const segments = Math.round(height / 1.1);
+  for (let k = 0; k < segments; k += 1) {
+    const y = (k + 0.5) * (height / segments);
+    out.push(part(tube(radius, radius, height / segments - 0.04, 7), hex, { p: [x, y, z] }));
+    out.push(part(tube(radius + 0.03, radius + 0.03, 0.08, 7), joint, { p: [x, (k + 1) * (height / segments), z] }));
+  }
+  return out;
+}
+
+const GATE_STYLES: Record<Exclude<GateTheme, 'finish'>, (half: number) => Pieces> = {
+  // 海滨：两根歪歪的浮木，横一根浮木，绳上挂一串贝壳，柱脚靠着两块冲浪板
+  driftwood: (half) => ({
+    lit: [
+      ...[-1, 1].map((side) => part(roughen(tube(0.26, 0.36, 7.4, 6), 0.06), 0xc9b49a, { p: [side * half, 3.6, 0], r: [0, 0, -side * 0.06] })),
+      part(roughen(tube(0.25, 0.25, half * 2 + 1.8, 6), 0.06), 0xb89f84, { p: [0, 7.15, 0], r: [0, 0, Math.PI / 2] }),
+      ...hang(half - 0.4, 6.9, 0.9, 11, (x, y, i) => [
+        part(blob(0.2, 0), i % 2 ? 0xffd9c2 : 0xfdf6ea, { p: [x, y - 0.25, 0], s: [1, 1.1, 0.4] }),
+        part(box(0.03, 0.35, 0.03), 0x8a6a4a, { p: [x, y, 0] }),
+      ]),
+      part(blob(1, 1), 0x4fb3a4, { p: [-half - 1, 1.6, 0.4], r: [0, 0.3, 0.22], s: [0.45, 1.7, 0.1] }),
+      part(blob(1, 1), 0xe56a54, { p: [half + 1, 1.5, -0.3], r: [0, -0.4, -0.2], s: [0.42, 1.6, 0.1] }),
+    ],
+    glow: [],
+  }),
+  // 花田：白色的格栅柱子，顶上一道开满花的拱
+  flowers: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(box(0.42, 6.4, 0.42), 0xfdfaf2, { p: [side * half, 3.2, 0] }),
+        ...[1.2, 2.6, 4, 5.4].map((y) => part(box(0.9, 0.08, 0.5), 0xfdfaf2, { p: [side * half, y, 0] })),
+        ...[1.6, 3.4, 5].map((y) => part(blob(0.32, 0), 0x6fb064, { p: [side * (half + 0.15), y, 0.2] })),
+      ]),
+      ...arch(half, 6.2, 2.2, 16, (x, y, _, i) => [
+        part(blob(0.62, 0), 0x5f9e58, { p: [x, y, -0.15], s: [1, 0.9, 0.8] }),
+        part(blob(0.36, 0), [0xf58fb2, 0xf2c14e, 0xfdf6ea, 0xe5604a][i % 4], { p: [x, y + 0.15, 0.32] }),
+      ]),
+    ],
+    glow: [],
+  }),
+  // 樱花：深红漆的柱子，两道横梁，上面那道两头翘起来，梁上压着一团团樱花
+  sakura: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(tube(0.3, 0.36, 7.2, 8), 0xb8352c, { p: [side * half, 3.6, 0] }),
+        part(box(0.8, 0.4, 0.8), 0x3a3d52, { p: [side * half, 0.2, 0] }),
+        part(box(1.6, 0.28, 0.7), 0x2f2f3a, { p: [side * (half + 1.3), 7.75, 0], r: [0, 0, side * 0.28] }),
+      ]),
+      part(box(half * 2 + 1, 0.35, 0.45), 0xb8352c, { p: [0, 6.3, 0] }),
+      part(box(half * 2 + 1.8, 0.45, 0.7), 0x2f2f3a, { p: [0, 7.55, 0] }),
+      ...Array.from({ length: 9 }, (_, i) => part(blob(0.75, 0), i % 2 ? 0xf7b8cc : 0xfbd0de, { p: [-half + (i / 8) * half * 2, 8.1 + (i % 3) * 0.2, (i % 2) * 0.3 - 0.15], s: [1.2, 0.8, 1] })),
+    ],
+    glow: [],
+  }),
+  // 松林：两根粗原木，顶上横一根原木，梁下用两根绳挂一块木牌，柱顶各戴一棵小松树
+  log: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(tube(0.45, 0.5, 7.2, 8), 0x7a5540, { p: [side * half, 3.6, 0] }),
+        part(tube(0.47, 0.47, 0.06, 8), 0xc9a27a, { p: [side * half, 7.22, 0] }),
+        part(cone(0.9, 1.9, 7), 0x2f6a46, { p: [side * half, 8.6, 0] }),
+        part(cone(0.65, 1.3, 7), 0x3d7c52, { p: [side * half, 9.5, 0] }),
+        part(box(0.04, 1.1, 0.04), 0x5a4638, { p: [side * 1.6, 6.3, 0] }),
+      ]),
+      part(tube(0.4, 0.4, half * 2 + 1.6, 8), 0x8a6248, { p: [0, 7.2, 0], r: [0, 0, Math.PI / 2] }),
+      part(box(4, 1.1, 0.16), 0xd9b27a, { p: [0, 5.4, 0] }),
+      part(box(3.6, 0.12, 0.18), 0x7a5540, { p: [0, 5.85, 0] }),
+      part(box(3.6, 0.12, 0.18), 0x7a5540, { p: [0, 4.95, 0] }),
+    ],
+    glow: [],
+  }),
+  // 秋日：木头柱子，柱顶各蹲一只南瓜，柱脚堆着干草捆，横梁下挂一串红黄橙的枫叶
+  harvest: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(box(0.5, 6.8, 0.5), 0x8a5d40, { p: [side * half, 3.4, 0] }),
+        part(blob(0.62, 1), 0xe8822a, { p: [side * half, 7.6, 0], s: [1.2, 0.85, 1.2] }),
+        part(tube(0.07, 0.09, 0.4, 5), 0x5a7a3a, { p: [side * half, 8.25, 0] }),
+        part(box(1.6, 0.9, 1.1), 0xe2c26a, { p: [side * (half + 0.9), 0.45, 0.4] }),
+        part(box(1.2, 0.8, 1), 0xd8b45a, { p: [side * (half + 0.6), 1.3, 0.5] }),
+      ]),
+      part(box(half * 2 + 1.4, 0.55, 0.55), 0x7a5540, { p: [0, 6.9, 0] }),
+      ...hang(half - 0.3, 6.6, 1.1, 14, (x, y, i) => [part(new THREE.OctahedronGeometry(0.28, 0), [0xe5604a, 0xf2a23a, 0xf2c14e][i % 3], { p: [x, y - 0.2, 0], s: [1, 1.3, 0.25], r: [0, 0, i * 0.7] })]),
+    ],
+    glow: [],
+  }),
+  // 沙漠：两根粗粗的土坯柱子，顶上一道土坯的拱，柱脚各长一棵仙人掌
+  adobe: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(box(1.3, 6, 1.3), 0xd9a06a, { p: [side * half, 3, 0] }),
+        part(box(1.6, 0.4, 1.6), 0xc48a58, { p: [side * half, 6.1, 0] }),
+        part(tube(0.28, 0.32, 2.6, 7), 0x5a9a4a, { p: [side * (half + 1.9), 1.3, 0.6] }),
+        part(tube(0.18, 0.18, 1, 6), 0x5a9a4a, { p: [side * (half + 2.35), 1.8, 0.6], r: [0, 0, side * 0.9] }),
+      ]),
+      ...arch(half, 6.1, 2, 14, (x, y, angle) => [part(box(1.25, 0.9, 1.2), 0xcf9560, { p: [x, y, 0], r: [0, 0, angle - Math.PI / 2] })]),
+    ],
+    glow: [],
+  }),
+  // 棕榈：竹竿搭的门，顶上一道茅草檐，两边各插一支烧着的火把
+  tiki: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        ...bamboo(side * half, 7, 0.24, 0xc9a86a, 0x8a6a3a),
+        part(tube(0.07, 0.09, 3, 5), 0x6a4a2a, { p: [side * (half + 1.5), 1.5, 0.5] }),
+        part(tube(0.18, 0.12, 0.4, 6), 0x3a2a1a, { p: [side * (half + 1.5), 3.1, 0.5] }),
+      ]),
+      ...bamboo(0, half * 2 + 1.6, 0.22, 0xc9a86a, 0x8a6a3a).map((piece) => piece.rotateZ(Math.PI / 2).translate(half + 0.8, 7, 0)),
+      part(cone(1.6, 1.4, 4), 0xd8b46a, { p: [0, 7.9, 0], r: [0, Math.PI / 4, 0], s: [half * 0.92, 1, 0.6] }),
+    ],
+    glow: [-1, 1].map((side) => part(cone(0.22, 0.6, 6), 0xffa040, { p: [side * (half + 1.5), 3.6, 0.5] })),
+  }),
+  // 夜海：深色的木桩，柱脚盘着缆绳，梁下挂一排暖色的船灯，正中挂一只锚
+  harbor: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(tube(0.38, 0.42, 7.2, 8), 0x4a3a30, { p: [side * half, 3.6, 0] }),
+        part(new THREE.TorusGeometry(0.5, 0.12, 5, 10), 0xd9c8a0, { p: [side * half, 1.2, 0], r: [Math.PI / 2, 0, 0] }),
+        part(new THREE.TorusGeometry(0.5, 0.12, 5, 10), 0xd9c8a0, { p: [side * half, 1.45, 0], r: [Math.PI / 2, 0, 0] }),
+      ]),
+      part(box(half * 2 + 1.4, 0.5, 0.5), 0x3a2e28, { p: [0, 7.1, 0] }),
+      part(new THREE.TorusGeometry(0.7, 0.12, 5, 12, Math.PI), 0x8d919c, { p: [0, 5.3, 0], r: [0, 0, Math.PI] }),
+      part(box(0.18, 1.6, 0.18), 0x8d919c, { p: [0, 5.9, 0] }),
+      part(box(0.9, 0.14, 0.18), 0x8d919c, { p: [0, 6.4, 0] }),
+      ...hang(half - 0.6, 6.85, 0.5, 6, (x, y) => [part(box(0.04, 0.5, 0.04), 0x2a2a30, { p: [x, y - 0.1, 0] })]),
+    ],
+    glow: hang(half - 0.6, 6.85, 0.5, 6, (x, y) => [part(tube(0.18, 0.18, 0.4, 6), 0xffd08a, { p: [x, y - 0.55, 0] })]),
+  }),
+  // 霓虹：两层发光的灯管框，外层粉、内层青，柱脚一截深色的底座
+  neon: (half) => ({
+    lit: [-1, 1].map((side) => part(box(0.8, 0.6, 0.8), 0x24253a, { p: [side * half, 0.3, 0] })),
+    glow: [
+      ...[-1, 1].flatMap((side) => [
+        part(box(0.16, 7, 0.16), 0xff5fa8, { p: [side * half, 3.8, 0] }),
+        part(box(0.12, 5.8, 0.12), 0x5fe8ff, { p: [side * (half - 0.7), 3.6, 0] }),
+      ]),
+      part(box(half * 2 + 0.16, 0.16, 0.16), 0xff5fa8, { p: [0, 7.3, 0] }),
+      part(box(half * 2 - 1.4, 0.12, 0.12), 0x5fe8ff, { p: [0, 6.5, 0] }),
+      ...Array.from({ length: 5 }, (_, i) => part(box(0.5, 0.5, 0.08), [0xffd84a, 0xff5fa8, 0x5fe8ff][i % 3], { p: [-2.4 + i * 1.2, 7.9, 0] })),
+    ],
+  }),
+  // 极光雪原：冰砖垒的柱子和拱，顶上几块发着光的冰晶
+  ice: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => Array.from({ length: 6 }, (_, k) => part(box(1.2, 1.05, 1.1), k % 2 ? 0xcfeaf6 : 0xbfe0f0, { p: [side * half + (k % 2 ? 0.08 : -0.08), 0.52 + k * 1.05, 0] }))),
+      ...arch(half, 6.3, 1.8, 12, (x, y, angle, i) => [part(box(1.15, 0.85, 1.1), i % 2 ? 0xcfeaf6 : 0xbfe0f0, { p: [x, y, 0], r: [0, 0, angle - Math.PI / 2] })]),
+    ],
+    glow: [
+      part(new THREE.OctahedronGeometry(0.55, 0), 0x8fe8ff, { p: [0, 8.8, 0], s: [0.7, 1.4, 0.7] }),
+      ...[-1, 1].map((side) => part(new THREE.OctahedronGeometry(0.4, 0), 0xb4f0ff, { p: [side * half, 7.1, 0], s: [0.7, 1.4, 0.7] })),
+    ],
+  }),
+  // 雪山黎明：顶着雪的石柱，柱顶之间拉一串五色经幡
+  prayer: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(roughen(box(1, 7, 1), 0.05), 0x8d8f9c, { p: [side * half, 3.5, 0] }),
+        part(blob(0.75, 0), 0xf4f6fa, { p: [side * half, 7.1, 0], s: [1, 0.5, 1] }),
+        part(tube(0.05, 0.05, 2.4, 5), 0x6a4a3a, { p: [side * half, 8.4, 0] }),
+      ]),
+      ...hang(half, 9.4, 1.8, 18, (x, y, i) => [part(cone(0.35, 0.6, 3), [0x4f8fe0, 0xfdfaf2, 0xe5604a, 0x55b86a, 0xf2c14e][i % 5], { p: [x, y - 0.32, 0], r: [Math.PI, 0, 0], s: [1, 1, 0.2] })]),
+    ],
+    glow: [],
+  }),
+  // 气球之丘：两根柱子和一道拱全是一串串彩色气球
+  balloons: (half) => {
+    const colors = [0xe5604a, 0xf2c14e, 0x4fb3a4, 0x6f8fe0, 0xf58fb2, 0xfdf6ea];
+    return {
+      lit: [
+        ...[-1, 1].flatMap((side) =>
+          Array.from({ length: 10 }, (_, k) => part(blob(0.5, 1), colors[(k + (side > 0 ? 3 : 0)) % colors.length], { p: [side * half + Math.sin(k * 2.1) * 0.25, 0.5 + k * 0.62, Math.cos(k * 2.1) * 0.25], s: [1, 1.12, 1] })),
+        ),
+        ...arch(half, 6.6, 2.3, 18, (x, y, _, i) => [
+          part(blob(0.52, 1), colors[i % colors.length], { p: [x, y, 0.18], s: [1, 1.12, 1] }),
+          part(blob(0.45, 1), colors[(i + 2) % colors.length], { p: [x, y - 0.1, -0.3], s: [1, 1.12, 1] }),
+        ]),
+      ],
+      glow: [],
+    };
+  },
+  // 高山峡谷：两根粗粗的石柱、一块压顶的大石条，石头上长着青苔，梁下挂两盏石灯
+  stone: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(roughen(box(1.7, 7, 1.7), 0.08), 0x8f8a80, { p: [side * half, 3.5, 0] }),
+        part(roughen(blob(0.9, 0), 0.2), 0x6fa25e, { p: [side * half, 7.15, 0], s: [1.3, 0.35, 1.3] }),
+        part(box(0.06, 0.8, 0.06), 0x3a3a40, { p: [side * 3, 6.3, 0] }),
+      ]),
+      part(roughen(box(half * 2 + 3, 1.2, 2), 0.06), 0x9a948a, { p: [0, 7.5, 0] }),
+      part(roughen(blob(1, 0), 0.25), 0x6fa25e, { p: [0, 8.15, 0], s: [half * 0.9, 0.25, 1.2] }),
+    ],
+    glow: [-1, 1].map((side) => part(box(0.5, 0.6, 0.5), 0xffd98a, { p: [side * 3, 5.7, 0] })),
+  }),
+  // 溪谷飞瀑：青竹搭的门，横梁上缠着绿叶，下面挂三盏粉色的荷花灯
+  bamboo: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [...bamboo(side * half, 7, 0.22, 0x6fae5a, 0x4f8a42), ...bamboo(side * (half + 0.55), 6, 0.17, 0x7fbe68, 0x4f8a42)]),
+      ...bamboo(0, half * 2 + 1.6, 0.2, 0x6fae5a, 0x4f8a42).map((piece) => piece.rotateZ(Math.PI / 2).translate(half + 0.8, 6.9, 0)),
+      ...Array.from({ length: 10 }, (_, i) => part(new THREE.OctahedronGeometry(0.35, 0), i % 2 ? 0x5f9e58 : 0x7fbe68, { p: [-half + (i / 9) * half * 2, 7.15, 0.15], s: [1.4, 0.5, 0.8], r: [0, i, 0.4] })),
+      ...[-2.6, 0, 2.6].map((x) => part(box(0.04, 0.9, 0.04), 0x3a5a2a, { p: [x, 6.3, 0] })),
+    ],
+    glow: [-2.6, 0, 2.6].flatMap((x) => [
+      ...[0, 1, 2, 3, 4].map((k) => part(new THREE.OctahedronGeometry(0.28, 0), 0xffa8c8, { p: [x + Math.cos(k * 1.26) * 0.2, 5.75, Math.sin(k * 1.26) * 0.2], r: [0, k * 1.26, 0.6], s: [0.6, 1.2, 0.6] })),
+      part(blob(0.16, 0), 0xffe9a0, { p: [x, 5.8, 0] }),
+    ]),
+  }),
+  // 水晶洞穴：深色的岩柱，柱上和顶上的拱长满发光的紫色、青色水晶
+  crystal: (half) => ({
+    lit: [
+      ...[-1, 1].map((side) => part(roughen(tube(0.9, 1.2, 7, 6), 0.12), 0x4a4664, { p: [side * half, 3.5, 0] })),
+      ...arch(half, 6.6, 1.6, 10, (x, y) => [part(roughen(blob(0.8, 0), 0.25), 0x544f72, { p: [x, y, 0] })]),
+    ],
+    glow: [
+      ...[-1, 1].flatMap((side) =>
+        [1.2, 2.8, 4.6, 6].map((y, k) => part(new THREE.OctahedronGeometry(0.4, 0), k % 2 ? 0x8fd8ff : 0xb48cff, { p: [side * (half + 0.8), y, (k % 2) * 0.4 - 0.2], r: [0, 0, side * 0.6], s: [0.6, 1.6, 0.6] })),
+      ),
+      ...arch(half, 7.4, 1.6, 8, (x, y, _, i) => [part(new THREE.OctahedronGeometry(0.45, 0), i % 2 ? 0x8fd8ff : 0xb48cff, { p: [x, y + 0.3, 0], s: [0.6, 1.8, 0.6] })]),
+    ],
+  }),
+  // 云海断桥：一座牌楼——白石底座上的朱红柱子，青绿琉璃瓦的屋顶两头翘起，正中一块金匾
+  pailou: (half) => ({
+    lit: [
+      ...[-1, 1].flatMap((side) => [
+        part(box(1.2, 0.8, 1.2), 0xeeeae2, { p: [side * half, 0.4, 0] }),
+        part(tube(0.34, 0.38, 7, 8), 0xc0392b, { p: [side * half, 4.2, 0] }),
+        part(box(1.8, 0.3, 0.6), 0x2f6f6a, { p: [side * (half + 0.6), 8.55, 0], r: [0, 0, side * 0.3] }),
+      ]),
+      part(box(half * 2 + 0.8, 0.5, 0.5), 0xc0392b, { p: [0, 6.6, 0] }),
+      part(box(half * 2 + 0.6, 0.7, 0.6), 0x2a8a7a, { p: [0, 7.35, 0] }),
+      part(cone(1.7, 1.3, 4), 0x2f6f6a, { p: [0, 8.3, 0], r: [0, Math.PI / 4, 0], s: [half * 0.95, 1, 0.7] }),
+      part(box(2.8, 1, 0.2), 0x2b2d33, { p: [0, 5.7, 0.05] }),
+    ],
+    glow: [part(box(2.4, 0.7, 0.08), 0xf2c14e, { p: [0, 5.7, 0.16] })],
+  }),
+};
+
+// 终点门：黑白格的横梁
+function finishGate(half: number): Pieces {
+  const parts = [part(box(0.55, 7, 0.55), 0xfdf6ea, { p: [-half, 3.5, 0] }), part(box(0.55, 7, 0.55), 0xfdf6ea, { p: [half, 3.5, 0] }), part(box(half * 2 + 1.4, 0.9, 0.6), 0x2b2d33, { p: [0, 7.1, 0] })];
   const count = 14;
   for (let i = 0; i < count; i += 1) {
     const x = -half + 0.9 + (i / (count - 1)) * (half * 2 - 1.8);
-    if (finish) {
-      // 终点门的横梁贴黑白格
-      parts.push(part(box(0.62, 0.46, 0.64), flags[i % 2], { p: [x, 7.33, 0] }));
-      parts.push(part(box(0.62, 0.46, 0.64), flags[(i + 1) % 2], { p: [x, 6.87, 0] }));
-    } else {
-      parts.push(part(cone(0.3, 0.7, 3), flags[i % flags.length], { p: [x, 6.25, 0], r: [Math.PI, 0, 0] }));
-    }
+    parts.push(part(box(0.62, 0.46, 0.64), i % 2 ? 0x2b2d33 : 0xfdf6ea, { p: [x, 7.33, 0] }));
+    parts.push(part(box(0.62, 0.46, 0.64), i % 2 ? 0xfdf6ea : 0x2b2d33, { p: [x, 6.87, 0] }));
   }
-  return join(parts);
+  return { lit: parts, glow: [] };
+}
+
+export function buildGate(width: number, theme: GateTheme): { lit: THREE.BufferGeometry; glow: THREE.BufferGeometry | null } {
+  const half = width / 2 + 1.6;
+  const pieces = theme === 'finish' ? finishGate(half) : GATE_STYLES[theme](half);
+  return { lit: join(pieces.lit), glow: pieces.glow.length ? join(pieces.glow) : null };
 }
 
 // 一圈花瓣（或者一把扇骨）立在竖着的平面里：鱼和纪念品都是绕竖轴转的，转起来像一枚硬币。
@@ -1563,6 +1899,12 @@ const TOKENS: Record<TokenKind, () => THREE.BufferGeometry[]> = {
     part(box(0.04, 0.5, 0.04), 0xfdf6ea, { p: [0.22, -0.5, 0], r: [0, 0, -0.3] }),
   ],
   lotus: () => [...petals(around(8, Math.PI / 8), 0xf7a8c8, 0.46, 0.2), ...petals(around(8), 0xfbd0de, 0.3, 0.16), disc(0.12, 0xfde27a)],
+  cloud: () => [
+    part(blob(0.3, 1), 0xffffff, { p: [0, 0.06, 0] }),
+    part(blob(0.22, 1), 0xeef6ff, { p: [-0.3, -0.03, 0] }),
+    part(blob(0.24, 1), 0xeef6ff, { p: [0.3, -0.03, 0] }),
+    part(blob(0.18, 1), 0xdcecff, { p: [0.12, 0.26, 0] }),
+  ],
   crystal: () => [gem(0.4, 0xb48cff, { s: [0.62, 1.5, 0.62] }), gem(0.26, 0xd0b4ff, { p: [0.3, -0.24, 0], r: [0, 0, -0.55], s: [0.6, 1.3, 0.6] }), gem(0.24, 0x9a78f0, { p: [-0.28, -0.28, 0], r: [0, 0, 0.5], s: [0.6, 1.2, 0.6] })],
 };
 
@@ -1580,6 +1922,19 @@ export function buildChili(): THREE.BufferGeometry {
     part(cone(0.08, 0.24, 6), 0xe0322a, { p: [0.27, -0.52, 0], r: [0, 0, 0.85 + Math.PI] }),
     part(tube(0.05, 0.1, 0.2, 5), 0x4fae5a, { p: [-0.03, 0.46, 0], r: [0, 0, 0.3] }),
     part(new THREE.TorusGeometry(0.17, 0.04, 4, 8), 0x62c26a, { p: [0, 0.37, 0], r: [Math.PI / 2, 0, 0] }),
+  ]);
+}
+
+// 磁铁：一块红色的马蹄铁，两只脚尖是银白色的，中间夹着两道小闪光
+export function buildMagnet(): THREE.BufferGeometry {
+  return join([
+    part(new THREE.TorusGeometry(0.34, 0.12, 6, 12, Math.PI), 0xe5604a, { p: [0, 0.12, 0] }),
+    part(box(0.24, 0.32, 0.24), 0xe5604a, { p: [-0.34, -0.04, 0] }),
+    part(box(0.24, 0.32, 0.24), 0xe5604a, { p: [0.34, -0.04, 0] }),
+    part(box(0.25, 0.16, 0.25), 0xeef2fa, { p: [-0.34, -0.28, 0] }),
+    part(box(0.25, 0.16, 0.25), 0xeef2fa, { p: [0.34, -0.28, 0] }),
+    part(box(0.05, 0.22, 0.05), 0xffe27a, { p: [-0.12, -0.42, 0], r: [0, 0, 0.5] }),
+    part(box(0.05, 0.22, 0.05), 0xffe27a, { p: [0.12, -0.42, 0], r: [0, 0, -0.5] }),
   ]);
 }
 

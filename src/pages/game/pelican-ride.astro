@@ -35,39 +35,12 @@ const summary = entry?.data.summary ?? '';
         <div class="pelican__progress" aria-hidden="true"><i data-progress></i></div>
 
         <div class="pelican__hud">
-          <!-- 左上角一排小格子（用户要「一个个小格子分开展示，每格加个图标」）：分数、小鱼、纪念品、生命 -->
+          <!-- 左上角的小格子：只放分数（小鱼和纪念品数用户说顶上不用放，生命挪到了左下角） -->
           <div class="pelican__cells">
             <p class="pelican__cell pelican__panel">
               <svg class="pelican__cell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z" /></svg>
               <span class="pelican__label">分数</span>
               <b data-score>0</b>
-            </p>
-            <p class="pelican__cell pelican__panel">
-              <svg class="pelican__cell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c3-4.6 8.6-5.8 13-2.6L20.5 6v12L16 14.6C11.6 17.8 6 16.6 3 12zM8 11.2h.01" /></svg>
-              <span class="pelican__label">小鱼</span>
-              <b data-eaten>0</b>
-            </p>
-            <p class="pelican__cell pelican__panel">
-              <svg class="pelican__cell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7C10.5 4 7 3.6 7 5.6S10 7 12 7zM12 7c1.5-3 5-3.4 5-1.4S14 7 12 7z" /></svg>
-              <span class="pelican__label">纪念品</span>
-              <b><span data-keepsake>0</span><small data-keepsake-total>/12</small></b>
-            </p>
-            <p class="pelican__cell pelican__panel">
-              <span class="pelican__label">生命</span>
-              <span class="pelican__hearts" data-hearts role="img" aria-label="生命 3 颗心">
-                <svg class="pelican__heart" data-heart viewBox="0 0 24 24">
-                  <path class="pelican__heart-fill" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
-                  <path class="pelican__heart-line" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
-                </svg>
-                <svg class="pelican__heart" data-heart viewBox="0 0 24 24">
-                  <path class="pelican__heart-fill" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
-                  <path class="pelican__heart-line" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
-                </svg>
-                <svg class="pelican__heart" data-heart viewBox="0 0 24 24">
-                  <path class="pelican__heart-fill" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
-                  <path class="pelican__heart-line" d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" />
-                </svg>
-              </span>
             </p>
           </div>
           <div class="pelican__tools">
@@ -89,14 +62,19 @@ const summary = entry?.data.summary ?? '';
           </div>
         </div>
 
-        <!-- 进新场景时报一次站名，几秒后自己淡掉 -->
-        <p class="pelican__toast pelican__panel" data-toast aria-live="polite">
-          <svg class="pelican__toast-icon" data-toast-icon viewBox="0 0 24 24" aria-hidden="true"></svg>
-          <span data-toast-text></span>
+        <!-- 连续穿圈时顶上正中的「连续得分」 -->
+        <p class="pelican__combo" data-combo aria-live="polite">
+          <span class="pelican__combo-label">连续得分</span>
+          <b data-combo-score>0</b>
+          <em data-combo-mult>×1</em>
         </p>
+
+        <!-- 进新场景时报一次站名，几秒后自己淡掉 -->
+        <div class="pelican__toasts" data-toasts aria-live="polite"></div>
 
         <!-- 左下角两条线：冲刺还剩多少，现在骑多快。每条线分四格：i 是长度，三个 b 是刻度 -->
         <div class="pelican__meters pelican__panel" data-boost-box data-level="high" aria-hidden="true">
+          <p class="pelican__panel-title">状态<small>STATUS</small></p>
           <div class="pelican__meter pelican__meter--boost">
             <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M13.5 2.5 5.5 13.5h5.5l-1 8 8.5-11.5h-5.5z" /></svg>
             <span class="pelican__label" data-boost-label>冲刺</span>
@@ -114,17 +92,47 @@ const summary = entry?.data.summary ?? '';
             <span class="pelican__meter-line"><i data-speed></i><b></b><b></b><b></b></span>
             <em class="pelican__meter-num" data-speed-num>0</em>
           </div>
+          <!-- 生命：四格对四颗心，每颗心掉得了半颗；右边是还剩百分之几 -->
+          <div class="pelican__meter pelican__meter--life" data-life>
+            <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M12 20.4C5.6 15.6 3 12.2 3 8.8A4.6 4.6 0 0 1 12 7.2a4.6 4.6 0 0 1 9 1.6c0 3.4-2.6 6.8-9 11.6z" /></svg>
+            <span class="pelican__label">生命</span>
+            <span class="pelican__meter-line"><i data-life-bar></i><b></b><b></b><b></b></span>
+            <em class="pelican__meter-num" data-life-num>100%</em>
+          </div>
         </div>
 
-        <!-- 只在触屏上出现：左右半屏压车，这两个按钮按住是冲刺和猛冲 -->
-        <div class="pelican__touch">
-          <button type="button" class="pelican-btn pelican-btn--pad" data-dash>冲</button>
-          <button type="button" class="pelican-btn pelican-btn--pad" data-turbo>猛</button>
+        <!-- 右下角：吃到的道具还剩多久，一条一条往回缩，最多三条（同时有更多时只放剩得最少的三个） -->
+        <div class="pelican__timers pelican__panel" data-timers aria-hidden="true">
+          <p class="pelican__panel-title">道具<small>ITEMS</small></p>
+          <div class="pelican__meter pelican__timer" data-timer>
+            <svg class="pelican__meter-icon" viewBox="0 0 24 24" data-timer-icon></svg>
+            <span class="pelican__label" data-timer-name></span>
+            <span class="pelican__meter-line"><i data-timer-bar></i><b></b><b></b><b></b></span>
+            <em class="pelican__meter-num" data-timer-num></em>
+          </div>
+          <div class="pelican__meter pelican__timer" data-timer>
+            <svg class="pelican__meter-icon" viewBox="0 0 24 24" data-timer-icon></svg>
+            <span class="pelican__label" data-timer-name></span>
+            <span class="pelican__meter-line"><i data-timer-bar></i><b></b><b></b><b></b></span>
+            <em class="pelican__meter-num" data-timer-num></em>
+          </div>
+          <div class="pelican__meter pelican__timer" data-timer>
+            <svg class="pelican__meter-icon" viewBox="0 0 24 24" data-timer-icon></svg>
+            <span class="pelican__label" data-timer-name></span>
+            <span class="pelican__meter-line"><i data-timer-bar></i><b></b><b></b><b></b></span>
+            <em class="pelican__meter-num" data-timer-num></em>
+          </div>
         </div>
+
+        <!-- 只在触屏上出现：左边是摇杆（左右换道、往上推冲刺），右下角按住是加速（和电脑上的空格一样） -->
+        <div class="pelican__stick" data-stick aria-hidden="true"><i class="pelican__knob" data-knob></i></div>
+        <button type="button" class="pelican-btn pelican__boost" data-turbo>加速</button>
 
         <div class="pelican__overlay" data-overlay hidden>
           <div class="pelican__card pelican__panel">
             <p class="pelican__overlay-title" data-overlay-title></p>
+            <!-- 出发前选角色，按钮由脚本按 rider.ts 的 CHARACTERS 生成 -->
+            <div class="pelican__picks" data-picks role="group" aria-label="选角色"></div>
             <dl class="pelican__stats" data-overlay-stats hidden>
               <div>
                 <dt>分数</dt>
@@ -465,47 +473,6 @@ const summary = entry?.data.summary ?? '';
     color: var(--hud-soft);
   }
 
-  /* 血条：三颗心，每颗能掉半颗；掉血的那一下三颗心一起放大一下再收回去 */
-  .pelican__hearts {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
-    transition: transform var(--dur-2) var(--ease-out);
-  }
-
-  .pelican__hearts[data-hurt] {
-    transform: scale(1.22);
-  }
-
-  .pelican__heart {
-    width: 1.05rem;
-    height: 1.05rem;
-    overflow: visible;
-  }
-
-  .pelican__heart-line {
-    fill: none;
-    stroke: var(--hud-ink);
-    stroke-width: 1.5;
-    stroke-linejoin: round;
-    opacity: 0.55;
-  }
-
-  .pelican__heart-fill {
-    fill: #e5604a;
-    stroke: none;
-    clip-path: inset(0 0 0 0);
-    transition: clip-path var(--dur-2) var(--ease-out);
-  }
-
-  .pelican__heart[data-fill="1"] .pelican__heart-fill {
-    clip-path: inset(0 50% 0 0);
-  }
-
-  .pelican__heart[data-fill="0"] .pelican__heart-fill {
-    clip-path: inset(0 100% 0 0);
-  }
-
   .pelican__meters {
     position: absolute;
     left: 1.1rem;
@@ -620,6 +587,125 @@ const summary = entry?.data.summary ?? '';
     --meter: #f0642e;
   }
 
+  /* 生命：多是绿，不多是琥珀，快没了是红；掉血那一下整行的字和线换成红色 */
+  .pelican__meter--life {
+    --meter: #55b86a;
+  }
+
+  .pelican__meters[data-life="mid"] .pelican__meter--life {
+    --meter: #e0a02a;
+  }
+
+  .pelican__meters[data-life="low"] .pelican__meter--life {
+    --meter: #e0563e;
+  }
+
+  .pelican__meters[data-hurt] .pelican__meter--life .pelican__label,
+  .pelican__meters[data-hurt] .pelican__meter--life .pelican__meter-num {
+    color: #e0563e;
+  }
+
+  .pelican__meters[data-hurt] .pelican__meter--life .pelican__meter-icon {
+    fill: #e0563e;
+  }
+
+  /* 右下角的道具计时：和左下角同一种线；每条用道具自己的颜色，剩一半以下变琥珀，剩四分之一以下变红 */
+  /* 右下角道具计时的进出场（用户要「向左弹入、向右弹出」）：整块面板没有道具时缩在画面右边外面，有了就弹进来；
+     每一条也一样，开始时从右边弹进来、到时间往右弹出去，同时把高度收起来，下面的往上补。弹的那一下用越过头再回来的缓动 */
+  .pelican__timers {
+    position: absolute;
+    right: 1.1rem;
+    bottom: 1rem;
+    display: grid;
+    gap: 0;
+    padding: 0.5rem 0.7rem;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(calc(100% + 2rem));
+    transition:
+      transform var(--dur-3) cubic-bezier(0.34, 1.45, 0.64, 1),
+      opacity var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__timers[data-on] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .pelican__timer {
+    grid-template-columns: 0.85rem 2.6rem clamp(4.5rem, 12vw, 7rem) 1.9rem;
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    transform: translateX(120%);
+    transition:
+      transform var(--dur-3) cubic-bezier(0.34, 1.45, 0.64, 1),
+      opacity var(--dur-2) var(--ease-out),
+      max-height var(--dur-2) var(--ease-out),
+      margin-top var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__timer[data-on] {
+    max-height: 1.6rem;
+    margin-top: 0.4rem;
+    opacity: 1;
+    transform: none;
+  }
+
+  .pelican__timer[data-left="mid"] {
+    --meter: #e0a02a !important;
+  }
+
+  .pelican__timer[data-left="low"] {
+    --meter: #e0563e !important;
+  }
+
+  .pelican__timer .pelican__meter-icon {
+    fill: none;
+  }
+
+  /* 连续穿圈：画面顶上正中一块「连续得分」，每穿一个圈弹一下、抖一下，大小和位置由脚本每帧给 */
+  .pelican__combo {
+    position: absolute;
+    top: 0.9rem;
+    left: 50%;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0.3rem 0.9rem 0.4rem;
+    border-bottom: 2px solid var(--hud-accent);
+    color: var(--hud-ink);
+    background: color-mix(in srgb, var(--hud-paper) 80%, transparent);
+    pointer-events: none;
+    transform: translateX(-50%);
+    transform-origin: center top;
+    opacity: 0;
+  }
+
+  .pelican__combo-label {
+    font-family: var(--font-serif);
+    font-size: 0.875rem;
+    letter-spacing: 0.12em;
+  }
+
+  .pelican__combo b {
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--hud-accent);
+  }
+
+  .pelican__combo em {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-style: normal;
+    font-weight: 600;
+    color: #e0563e;
+  }
+
   /* 吃了火箭（超级加速）：整条变成青色、按剩下的时间往回缩，火苗也是青白色的 */
   .pelican__meters[data-burn="4"] .pelican__meter--boost {
     --meter: #3fc8f0;
@@ -690,6 +776,171 @@ const summary = entry?.data.summary ?? '';
 
   .pelican__meters[data-active] .pelican__meter--boost .pelican__meter-icon {
     fill: var(--meter);
+  }
+
+  /* ---- 画面上的几块面板和按钮（2026-11-13 用户要「左右两块面板颜色样式不一样、分数和静音暂停也设计一下，半透明，加点装饰」）----
+     左下「状态」：深色的毛玻璃，浅色的字，左边一道场景强调色的竖条，右上角一个折角；
+     右下「道具」：浅色的毛玻璃，右边一道琥珀色的竖条，左下角一个折角；
+     分数和两个小按钮：半透明的毛玻璃，左上角一个小折角。都还是发丝线，不加阴影 */
+  .pelican__meters,
+  .pelican__timers {
+    -webkit-backdrop-filter: blur(7px) saturate(1.2);
+    backdrop-filter: blur(7px) saturate(1.2);
+  }
+
+  .pelican__meters {
+    padding: 0.45rem 0.75rem 0.55rem 1rem;
+    border-color: color-mix(in srgb, #ffffff 24%, transparent);
+    background: color-mix(in srgb, #0f1720 58%, transparent);
+    color: #f2f4f6;
+  }
+
+  .pelican__meters .pelican__label {
+    color: color-mix(in srgb, #f2f4f6 74%, transparent);
+  }
+
+  .pelican__meters .pelican__meter-num {
+    color: color-mix(in srgb, #f2f4f6 88%, transparent);
+  }
+
+  .pelican__meters .pelican__meter-line {
+    background: color-mix(in srgb, #ffffff 15%, transparent);
+  }
+
+  .pelican__meters .pelican__meter-line b {
+    background: color-mix(in srgb, #0f1720 85%, transparent);
+  }
+
+  .pelican__meters .pelican__meter-line::before,
+  .pelican__meters .pelican__meter-line::after {
+    background: color-mix(in srgb, #ffffff 34%, transparent);
+  }
+
+  .pelican__meters::before,
+  .pelican__timers::before {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 3px;
+  }
+
+  .pelican__meters::before {
+    left: 0;
+    background: var(--hud-accent);
+  }
+
+  .pelican__meters::after,
+  .pelican__timers::after,
+  .pelican__cell::after,
+  .pelican__tools .pelican-btn::after {
+    content: "";
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    pointer-events: none;
+  }
+
+  .pelican__meters::after {
+    top: -1px;
+    right: -1px;
+    border-top: 2px solid var(--hud-accent);
+    border-right: 2px solid var(--hud-accent);
+  }
+
+  .pelican__timers {
+    padding: 0.45rem 1rem 0.55rem 0.75rem;
+    border-color: color-mix(in srgb, var(--hud-ink) 26%, transparent);
+    background: color-mix(in srgb, var(--hud-paper) 46%, transparent);
+  }
+
+  .pelican__timers::before {
+    right: 0;
+    background: #f2b93a;
+  }
+
+  .pelican__timers::after {
+    bottom: -1px;
+    left: -1px;
+    border-bottom: 2px solid #f2b93a;
+    border-left: 2px solid #f2b93a;
+  }
+
+  /* 两块面板顶上一行小标题：中文加一行等宽的英文，下面一道发丝线 */
+  .pelican__panel-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0 0 0.1rem;
+    padding-bottom: 0.25rem;
+    border-bottom: var(--hair) solid color-mix(in srgb, currentColor 22%, transparent);
+    font-family: var(--font-serif);
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+  }
+
+  .pelican__panel-title small {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    letter-spacing: 0.22em;
+    opacity: 0.6;
+  }
+
+  .pelican__timers .pelican__panel-title {
+    color: var(--hud-ink);
+  }
+
+  /* 分数：半透明的毛玻璃，底边一道强调色，左上角一个小折角，数字用强调色 */
+  .pelican__cell {
+    position: relative;
+    border-color: color-mix(in srgb, var(--hud-ink) 24%, transparent);
+    border-bottom: 2px solid var(--hud-accent);
+    background: color-mix(in srgb, var(--hud-paper) 42%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  .pelican__cell b {
+    color: var(--hud-accent);
+    font-size: 1.05rem;
+  }
+
+  .pelican__cell::after {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid var(--hud-accent);
+    border-left: 2px solid var(--hud-accent);
+  }
+
+  /* 右上角的静音和暂停：深色半透明的小方块，白色图标，左上角一个折角；指上去时边框和折角换成强调色 */
+  .pelican__tools .pelican-btn {
+    position: relative;
+    border-color: color-mix(in srgb, #ffffff 30%, transparent);
+    background: color-mix(in srgb, #0f1720 40%, transparent);
+    color: #f6f7f8;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  .pelican__tools .pelican-btn::after {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid color-mix(in srgb, #ffffff 70%, transparent);
+    border-left: 2px solid color-mix(in srgb, #ffffff 70%, transparent);
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .pelican__tools .pelican-btn:hover::after,
+  .pelican__tools .pelican-btn:focus-visible::after {
+    border-color: var(--hud-accent);
+  }
+
+  /* 顶上的提示也半透明一点 */
+  .pelican__toast {
+    background: color-mix(in srgb, var(--hud-paper) 70%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
   }
 
   .pelican-btn {
@@ -764,26 +1015,86 @@ const summary = entry?.data.summary ?? '';
   }
 
   /* 触屏上的冲刺和猛冲：右下角两个方块，鼠标设备上不出现 */
-  .pelican__touch {
+  /* 手机上的摇杆（用户要的）：左半边任何地方按下去，摇杆就出现在手指下面；平时停在左下角冲刺条上面。
+     往左右推是换道（推得越多压得越狠），往上推是冲刺。圆的底盘和圆的摇头，都是发丝线 */
+  .pelican__stick {
+    position: absolute;
+    left: var(--stick-x, 4.2rem);
+    top: var(--stick-y, calc(100% - 11.6rem));
+    display: none;
+    width: 6.4rem;
+    height: 6.4rem;
+    margin: -3.2rem 0 0 -3.2rem;
+    border: var(--hair) solid var(--hud-line);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--hud-paper) 34%, transparent);
+    pointer-events: none;
+    opacity: 0.55;
+    transition: opacity var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__stick[data-held] {
+    opacity: 1;
+  }
+
+  /* 往上推到冲刺的那一截，底盘上沿画一道强调色的弧 */
+  .pelican__stick::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 2px solid transparent;
+    border-top-color: var(--hud-accent);
+    border-radius: 50%;
+    opacity: 0.35;
+  }
+
+  .pelican__stick[data-dash]::before {
+    opacity: 1;
+  }
+
+  .pelican__knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2.6rem;
+    height: 2.6rem;
+    margin: -1.3rem 0 0 -1.3rem;
+    border: var(--hair) solid var(--hud-ink);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--hud-paper) 80%, transparent);
+  }
+
+  /* 右下角一颗大圆键：按住就是猛冲，和电脑上按住空格一样 */
+  .pelican__boost {
     position: absolute;
     right: 1.1rem;
     bottom: 1rem;
     display: none;
-    gap: 0.6rem;
-  }
-
-  .pelican-btn--pad {
-    width: 3.5rem;
-    height: 3.5rem;
+    width: 4.8rem;
+    height: 4.8rem;
     padding: 0;
+    border-radius: 50%;
     font-family: var(--font-serif);
     font-size: 1.05rem;
+    letter-spacing: 0.1em;
     touch-action: none;
   }
 
+  .pelican__boost[data-held] {
+    border-color: var(--hud-accent);
+    color: var(--hud-accent);
+  }
+
   @media (hover: none) and (pointer: coarse) {
-    .pelican[data-state="playing"] .pelican__touch {
-      display: flex;
+    .pelican[data-state="playing"] .pelican__stick,
+    .pelican[data-state="playing"] .pelican__boost {
+      display: block;
+    }
+
+    /* 右下角让给加速键；下面左边是状态，道具计时挪到右上角两个小按钮下面，不和状态叠在一起 */
+    .pelican__timers {
+      top: 3.6rem;
+      bottom: auto;
     }
 
     .pelican__keys,
@@ -912,6 +1223,76 @@ const summary = entry?.data.summary ?? '';
     padding: 1.7rem 2.6rem;
   }
 
+  /* 出发前选角色：标题下面一排小卡片（用户要「装饰一下」）。每张卡片上面一排这个角色身上的几种颜色、下面名字；
+     半透明的毛玻璃（用户说下面那行英文不要），选中的那张往上浮一点，边框、名字换成强调色，底边一道强调色的线，左上角一个折角。只在出发前出现 */
+  .pelican__picks {
+    display: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.45rem;
+    max-width: 34rem;
+    padding-top: 0.2rem;
+  }
+
+  .pelican[data-state="ready"] .pelican__picks {
+    display: flex;
+  }
+
+  .pelican__stage .pelican__pick {
+    position: relative;
+    flex-direction: column;
+    gap: 0.28rem;
+    min-width: 4.9rem;
+    padding: 0.5rem 0.7rem 0.42rem;
+    border-color: color-mix(in srgb, var(--hud-ink) 26%, transparent);
+    background: color-mix(in srgb, var(--hud-paper) 50%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    font-family: var(--font-serif);
+    font-size: 0.875rem;
+    letter-spacing: 0.06em;
+    box-shadow: inset 0 -2px 0 transparent;
+    transition:
+      transform var(--dur-1) var(--ease-out),
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out),
+      box-shadow var(--dur-1) var(--ease-out);
+  }
+
+  .pelican__pick-swatch {
+    display: flex;
+    gap: 3px;
+  }
+
+  .pelican__pick-swatch i {
+    width: 0.62rem;
+    height: 0.62rem;
+    border: var(--hair) solid color-mix(in srgb, var(--hud-ink) 30%, transparent);
+  }
+
+  .pelican__stage .pelican__pick[aria-pressed="true"] {
+    border-color: var(--hud-accent);
+    color: var(--hud-accent);
+    box-shadow: inset 0 -2px 0 var(--hud-accent);
+    transform: translateY(-3px);
+  }
+
+  .pelican__pick::after {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 8px;
+    height: 8px;
+    border-top: 2px solid transparent;
+    border-left: 2px solid transparent;
+    transition: border-color var(--dur-1) var(--ease-out);
+  }
+
+  .pelican__pick[aria-pressed="true"]::after {
+    border-color: var(--hud-accent);
+  }
+
   .pelican__overlay-title {
     margin: 0;
     font-family: var(--font-serif);
@@ -970,12 +1351,23 @@ const summary = entry?.data.summary ?? '';
     display: none;
   }
 
-  /* 放在左上角那排小格子下面，不压着格子 */
+  /* 放在左上角格子和顶上「连续得分」的下面，不压着它们 */
+  /* 顶上的提示：一条一条叠着放，最多三行（toasts.ts）。--row 是第几行，换行时滑过去 */
+  .pelican__toasts {
+    position: absolute;
+    top: 4.4rem;
+    left: 50%;
+    width: 0;
+    pointer-events: none;
+  }
+
   .pelican__toast {
     position: absolute;
-    top: 3.6rem;
-    left: 50%;
+    top: 0;
+    left: 0;
     display: flex;
+    /* 外面那层宽度是零（只用来定位），不写的话会被挤成一个字一行 */
+    width: max-content;
     align-items: center;
     gap: 0.5rem;
     margin: 0;
@@ -985,10 +1377,10 @@ const summary = entry?.data.summary ?? '';
     letter-spacing: 0.08em;
     white-space: nowrap;
     opacity: 0;
-    transform: translate(-50%, -0.4rem);
+    transform: translate(calc(-50% + 5rem), calc(var(--row, 0) * 2.6rem));
     transition:
-      opacity var(--dur-3) var(--ease-out),
-      transform var(--dur-3) var(--ease-out),
+      opacity var(--dur-2) var(--ease-out),
+      transform var(--dur-3) cubic-bezier(0.34, 1.45, 0.64, 1),
       background-color var(--dur-3) var(--ease-out),
       border-color var(--dur-3) var(--ease-out),
       color var(--dur-3) var(--ease-out);
@@ -1013,7 +1405,13 @@ const summary = entry?.data.summary ?? '';
 
   .pelican__toast[data-show] {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, calc(var(--row, 0) * 2.6rem));
+  }
+
+  /* 进场从右边往左弹进来；到时间往右弹出去淡掉，下面几条同时往上补位（用户要「向左弹入、向右弹出」「第一行消失了，下面的自动往上靠」） */
+  .pelican__toast[data-leave] {
+    opacity: 0;
+    transform: translate(calc(-50% + 5rem), calc(var(--row, 0) * 2.6rem));
   }
 
   .pelican__nogl {
@@ -1097,6 +1495,18 @@ const summary = entry?.data.summary ?? '';
       padding: 0.7rem 0.75rem;
     }
 
+    /* 出发前那行提示在窄屏上放不下一行：收紧一点，两行折得一样长，不会剩一个字掉到第二行 */
+    .pelican__overlay-text {
+      font-size: 0.6875rem;
+      letter-spacing: 0.02em;
+      text-wrap: balance;
+    }
+
+    /* 窄屏上两块面板不要小标题，省一行的高度 */
+    .pelican__panel-title {
+      display: none;
+    }
+
     /* 窄屏上格子里只留图标和数字，名字藏起来，四格才挤得下 */
     .pelican__cell .pelican__label {
       display: none;
@@ -1111,7 +1521,7 @@ const summary = entry?.data.summary ?? '';
       bottom: 0.75rem;
     }
 
-    .pelican__touch {
+    .pelican__boost {
       right: 0.75rem;
       bottom: 0.75rem;
     }

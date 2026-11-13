@@ -14,10 +14,10 @@ const songUrl = (slug: string) => `${OSS_DIR}/bgm_${slug}_${marks.stamp}.mp3?v=$
 export type SoundName = 'fish' | 'gold' | 'bolt' | 'ring' | 'pad' | 'spring' | 'bump' | 'jump' | 'land' | 'dash' | 'gate' | 'bell' | 'finish' | 'fall' | 'super';
 
 const STORE_KEY = 'nn-pelican-sound';
-// 用户嫌过「音乐有点大，音效也是，音效应该比音乐小一点」：配乐平均响度约 -22 dB、音效约 -24 dB，
-// 按这两个数配的音量，听起来音乐比以前小 3 dB 左右，音效再比音乐小 3 dB 左右
+// 用户嫌过「音乐有点大，音效也是，音效应该比音乐小一点」：配乐（钢琴、木管、弦乐那一版）平均响度约 -23.5 dB、音效约 -24 dB，
+// 按这两个数配的音量，音效比音乐小 3 dB 左右
 const MUSIC_VOLUME = 0.5;
-const EFFECT_VOLUME = 0.45;
+const EFFECT_VOLUME = 0.38;
 // 换场景时新旧两首交叉淡入淡出多久（秒）（用户要「切换要有个小过渡」）
 const CROSSFADE = 3;
 // 连着吃鱼时一条比一条高，隔了这么久（秒）没吃就从头数
