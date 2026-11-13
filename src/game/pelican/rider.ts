@@ -16,6 +16,10 @@ const POUCH = 0xf8c766;
 const DARK = 0x2b2d33;
 const FRAME = 0xc6462f;
 const STEEL = 0xb9bcc6;
+// 翅尖和尾巴两侧的深色飞羽
+const TIP = 0x3d3f49;
+// 贴地时翅膀扶车把的姿势：往前转多少、往下垂多少（弧度）
+const HOLD = { forward: 1.42, down: -0.5 };
 
 type Vec = [number, number, number];
 
@@ -132,72 +136,113 @@ export function buildRider(): Rider {
   crank.position.set(...bracket);
   lean.add(crank);
 
-  // 两只脚各带一块脚踏，位置每帧跟着曲柄算
+  // 两只脚各带一块脚踏，位置每帧跟着曲柄算。脚是一片带蹼的三角，前宽后窄
+  const web = new THREE.CylinderGeometry(0.035, 0.12, 0.26, 3);
+  web.rotateY(Math.PI);
   const footGeometry = join([
-    part(new THREE.BoxGeometry(0.11, 0.03, 0.2), ORANGE, { p: [0, 0.03, -0.03] }),
+    part(web, ORANGE, { p: [0, 0.035, -0.05], r: [-Math.PI / 2, 0, 0], s: [1, 1, 0.22] }),
     part(new THREE.BoxGeometry(0.1, 0.025, 0.12), DARK),
   ]);
   const feet = [mesh(footGeometry), mesh(footGeometry)];
-  const legGeometry = part(new THREE.CylinderGeometry(0.028, 0.028, 1, 5), ORANGE);
+  const legGeometry = part(new THREE.CylinderGeometry(0.03, 0.03, 1, 5), ORANGE);
   const legs = [mesh(legGeometry), mesh(legGeometry), mesh(legGeometry), mesh(legGeometry)];
   lean.add(...feet, ...legs);
 
-  // 身子：落地时整个往下压一下
+  // 身子：落地时整个往下压一下。鹈鹕是个圆滚滚的大个子：胸脯往前挺，屁股往后收成一把短尾巴
   const body = new THREE.Group();
   body.position.set(0, 1.0, 0.3);
   lean.add(body);
+  const tail = (side: number) =>
+    part(new THREE.ConeGeometry(0.1, 0.36, 4), side === 0 ? SHADE : TIP, { p: [side * 0.1, 0.33, 0.58], r: [-1.3, side * -0.4, 0], s: [1.5, 1, 0.3] });
   body.add(
     mesh(
       join([
-        part(new THREE.IcosahedronGeometry(0.4, 1), WHITE, { p: [0, 0.34, -0.04], r: [-0.3, 0, 0], s: [0.84, 0.86, 1.22] }),
-        part(new THREE.ConeGeometry(0.17, 0.42, 5), SHADE, { p: [0, 0.3, 0.52], r: [-1.25, 0, 0], s: [1, 1, 0.45] }),
+        part(new THREE.IcosahedronGeometry(0.42, 2), WHITE, { p: [0, 0.34, -0.02], r: [-0.32, 0, 0], s: [0.92, 0.84, 1.2] }),
+        // 胸脯
+        part(new THREE.IcosahedronGeometry(0.3, 1), WHITE, { p: [0, 0.38, -0.33], s: [0.96, 1, 0.9] }),
+        // 大腿根：腿从这两团毛里伸出来，不是直接插在身子上
+        part(new THREE.IcosahedronGeometry(0.15, 1), SHADE, { p: [-0.15, 0.13, -0.03], s: [0.8, 1.1, 1] }),
+        part(new THREE.IcosahedronGeometry(0.15, 1), SHADE, { p: [0.15, 0.13, -0.03], s: [0.8, 1.1, 1] }),
+        tail(-1),
+        tail(0),
+        tail(1),
         // 脖子根上围一条红围巾
-        part(new THREE.CylinderGeometry(0.15, 0.17, 0.1, 8), FRAME, { p: [0, 0.62, -0.3], r: [-0.35, 0, 0] }),
+        part(new THREE.CylinderGeometry(0.17, 0.2, 0.11, 8), FRAME, { p: [0, 0.64, -0.3], r: [-0.3, 0, 0] }),
       ]),
     ),
   );
 
   // 围巾飘在身后的那一截，跟着速度和倾斜摆
   const scarf = mesh(part(new THREE.BoxGeometry(0.1, 0.03, 0.44), FRAME, { p: [0, 0, 0.22] }));
-  scarf.position.set(0, 0.62, -0.16);
+  scarf.position.set(0, 0.64, -0.14);
   body.add(scarf);
 
-  // 翅膀：平时收在身侧，腾空时张开
+  // 翅膀：三截，肩上白、中间浅灰、翅尖是鹈鹕那种黑色的飞羽。平时往前伸着扶车把，腾空时张开
   const wingGeometry = join([
-    part(new THREE.IcosahedronGeometry(0.3, 1), WHITE, { p: [0.26, 0, 0.02], s: [1, 0.2, 0.62] }),
-    part(new THREE.IcosahedronGeometry(0.2, 0), 0x8d8f9c, { p: [0.56, 0, 0.06], s: [1, 0.18, 0.6] }),
+    part(new THREE.IcosahedronGeometry(0.3, 1), WHITE, { p: [0.24, 0, 0.02], s: [1, 0.24, 0.66] }),
+    part(new THREE.IcosahedronGeometry(0.24, 1), SHADE, { p: [0.44, -0.01, 0.07], s: [1, 0.2, 0.6] }),
+    part(new THREE.IcosahedronGeometry(0.2, 0), TIP, { p: [0.62, -0.01, 0.1], s: [1.05, 0.16, 0.5] }),
   ]);
   const wingRight = mesh(wingGeometry);
   const wingLeft = mesh(wingGeometry);
-  wingRight.position.set(0.24, 0.42, -0.04);
-  wingLeft.position.set(-0.24, 0.42, -0.04);
+  wingRight.position.set(0.27, 0.48, -0.1);
+  wingLeft.position.set(-0.27, 0.48, -0.1);
   wingLeft.scale.x = -1;
   body.add(wingRight, wingLeft);
 
-  // 脖子和头：比车晚一拍跟上倾斜，看起来才是在努力保持平衡
+  // 脖子和头：比车晚一拍跟上倾斜，看起来才是在努力保持平衡。脖子是一道 S 形的弯
   const neck = new THREE.Group();
   neck.position.set(0, 0.64, -0.3);
   body.add(neck);
+  const bend = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, -0.06, 0.02),
+    new THREE.Vector3(0, 0.18, 0.13),
+    new THREE.Vector3(0, 0.42, 0.1),
+    new THREE.Vector3(0, 0.62, -0.05),
+  ]);
   neck.add(
     mesh(
       join([
-        rod([0, 0, 0], [0, 0.34, 0.06], 0.09, WHITE, 7),
-        rod([0, 0.34, 0.06], [0, 0.56, -0.08], 0.085, WHITE, 7),
-        part(new THREE.IcosahedronGeometry(0.17, 1), WHITE, { p: [0, 0.62, -0.16], s: [0.95, 0.95, 1.1] }),
-        // 上喙：又长又扁，尖上一个小钩
-        part(new THREE.ConeGeometry(0.075, 0.74, 5), ORANGE, { p: [0, 0.62, -0.66], r: [-Math.PI / 2, 0, 0], s: [1.25, 1, 0.5] }),
-        part(new THREE.ConeGeometry(0.03, 0.09, 4), 0xd9772f, { p: [0, 0.59, -1.04], r: [Math.PI, 0, 0] }),
-        part(new THREE.IcosahedronGeometry(0.028, 0), DARK, { p: [0.12, 0.69, -0.26] }),
-        part(new THREE.IcosahedronGeometry(0.028, 0), DARK, { p: [-0.12, 0.69, -0.26] }),
-        // 头顶翘起来的一小撮毛
-        part(new THREE.ConeGeometry(0.05, 0.2, 4), WHITE, { p: [0, 0.8, -0.04], r: [0.7, 0, 0] }),
+        part(new THREE.TubeGeometry(bend, 8, 0.105, 7), WHITE),
+        part(new THREE.IcosahedronGeometry(0.2, 1), WHITE, { p: [0, 0.7, -0.12], s: [0.96, 0.95, 1.14] }),
+        // 眼睛周围一圈没毛的黄皮，中间一粒黑眼珠
+        part(new THREE.IcosahedronGeometry(0.06, 1), POUCH, { p: [0.15, 0.75, -0.2], s: [0.45, 1, 1.15] }),
+        part(new THREE.IcosahedronGeometry(0.06, 1), POUCH, { p: [-0.15, 0.75, -0.2], s: [0.45, 1, 1.15] }),
+        part(new THREE.IcosahedronGeometry(0.03, 0), DARK, { p: [0.172, 0.755, -0.21] }),
+        part(new THREE.IcosahedronGeometry(0.03, 0), DARK, { p: [-0.172, 0.755, -0.21] }),
+        // 后脑勺翘起来的两撮毛
+        part(new THREE.ConeGeometry(0.05, 0.22, 4), WHITE, { p: [0, 0.86, 0.02], r: [0.9, 0, 0] }),
+        part(new THREE.ConeGeometry(0.04, 0.17, 4), SHADE, { p: [0, 0.79, 0.08], r: [1.25, 0, 0] }),
       ]),
     ),
   );
-  // 喉囊：挂在下喙上，吃得越多越鼓
-  const pouch = mesh(part(new THREE.IcosahedronGeometry(0.2, 1), POUCH, { p: [0, -0.2, 0], s: [0.5, 1, 1.5] }));
-  pouch.position.set(0, 0.6, -0.56);
-  neck.add(pouch);
+
+  // 嘴：又长又宽又扁，往前下方伸着，尖上一个小钩；下面兜着喉囊。单独一组，方便整个往下低一点
+  const bill = new THREE.Group();
+  bill.position.set(0, 0.68, -0.28);
+  bill.rotation.x = -0.3;
+  neck.add(bill);
+  const slab = (top: number, bottom: number, length: number) => {
+    const geometry = new THREE.CylinderGeometry(top, bottom, length, 4);
+    // 转 45 度，四棱柱才是平的一面朝上
+    geometry.rotateY(Math.PI / 4);
+    return geometry;
+  };
+  bill.add(
+    mesh(
+      join([
+        part(slab(0.03, 0.1, 0.84), ORANGE, { p: [0, 0.02, -0.42], r: [-Math.PI / 2, 0, 0], s: [1.25, 1, 0.42] }),
+        // 上喙正中一道浅色的棱
+        part(new THREE.BoxGeometry(0.035, 0.02, 0.74), POUCH, { p: [0, 0.062, -0.4], r: [0.045, 0, 0] }),
+        part(slab(0.02, 0.075, 0.8), 0xe38f2c, { p: [0, -0.035, -0.4], r: [-Math.PI / 2, 0, 0], s: [1.2, 1, 0.26] }),
+        part(new THREE.ConeGeometry(0.035, 0.1, 4), 0xd9772f, { p: [0, -0.01, -0.85], r: [Math.PI, 0, 0] }),
+      ]),
+    ),
+  );
+  // 喉囊：挂在下喙底下的半个口袋，开口朝上贴着嘴，吃得越多往下坠得越鼓
+  const pouch = mesh(part(new THREE.SphereGeometry(0.2, 8, 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), POUCH, { s: [0.5, 1, 1.75] }));
+  pouch.position.set(0, -0.04, -0.37);
+  bill.add(pouch);
 
   const hip = [new THREE.Vector3(-0.13, 1.12, 0.26), new THREE.Vector3(0.13, 1.12, 0.26)];
   const pedal = new THREE.Vector3();
@@ -239,16 +284,19 @@ export function buildRider(): Rider {
 
       // 腾空时张开翅膀扑腾；到了终点也张开，算是庆祝
       const flying = !bike.grounded || bike.finished;
-      spread += ((flying ? 1 : bike.rushing ? 0.25 : 0) - spread) * Math.min(1, dt * 9);
+      spread += ((flying ? 1 : 0) - spread) * Math.min(1, dt * 9);
       const flap = flying ? Math.sin(clock * (bike.finished ? 10 : 16)) * (bike.finished ? 0.3 : 0.16) : 0;
-      wingRight.rotation.set(0, -0.5 + spread * 0.5, -1.25 + spread * 1.45 + flap);
-      wingLeft.rotation.set(0, 0.5 - spread * 0.5, 1.25 - spread * 1.45 - flap);
+      // 贴地时两只翅膀往前下方伸，翅尖搭在车把上；腾空就往两边张开
+      const reach = HOLD.forward * (1 - spread);
+      const droop = HOLD.down * (1 - spread) + 0.2 * spread + flap;
+      wingRight.rotation.set(0, reach, droop);
+      wingLeft.rotation.set(0, -reach, -droop);
 
       scarf.rotation.y = bike.lean * 1.4 + Math.sin(clock * 9) * 0.18 * Math.min(1, bike.v / 16);
       scarf.rotation.x = 0.5 - Math.min(0.5, bike.v / 40);
 
       pulse += (0 - pulse) * Math.min(1, dt * 7);
-      pouch.scale.set(0.8 + fill * 0.9 + pulse * 0.4, 0.55 + fill * 1.2 + pulse * 0.6, 1);
+      pouch.scale.set(0.85 + fill * 0.75 + pulse * 0.35, 0.5 + fill * 1.3 + pulse * 0.6, 1);
     },
     gulp() {
       pulse = 1;

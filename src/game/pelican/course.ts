@@ -13,6 +13,8 @@ export interface Ramp {
   len: number;
   width: number;
   height: number;
+  // 第几档：0 矮、1 中、2 高
+  grade: number;
 }
 
 // 加速带：骑上去白送一段冲刺，不耗冲刺条
@@ -59,8 +61,17 @@ const CRUISE = 16;
 const GRAVITY = 19;
 // 三条车道的中心
 const LANES = [-LANE_WIDTH, 0, LANE_WIDTH];
-// 跳台和加速带都比车道窄一点，两边露出车道线
-const RAMP = { len: 7, width: LANE_WIDTH - 0.5, height: 1.3 };
+// 跳台和加速带都比车道窄一点，两边露出车道线。跳台分矮、中、高三档（用户要求），越高越长越陡，飞得越高越远
+const RAMP_WIDTH = LANE_WIDTH - 0.5;
+const RAMP_GRADES = [
+  { len: 6, height: 0.9, rings: 2 },
+  { len: 7.5, height: 1.6, rings: 3 },
+  { len: 9, height: 2.5, rings: 4 },
+] as const;
+// 车在坡面上每秒多得的速度（米每二次方秒），物理从这里取
+export const RAMP_KICK = 8;
+// 平常往巡航速度靠的快慢，和 bike.ts 的 ACCEL 是同一个数：算飞出去的弧线要用，改一处要改另一处
+const SETTLE = 1.1;
 const PAD = { len: 7, width: LANE_WIDTH - 0.5 };
 // 一段场景里最多放几个跳台；平均下来两段才有一个
 const RAMPS_PER_SCENE = 1;
@@ -72,7 +83,7 @@ const OBSTACLE_WIDTH = LANE_WIDTH - 0.8;
 // 离路面的高度：贴地骑就能吃到的，和要跳起来才够得着的
 const LOW = 0.95;
 const HIGH = 3.3;
-// 自己起跳的速度，和 bike.ts 里的是同一个数：跳台上的奖励圈按「在坡顶再跳一下」的弧线排
+// 自己起跳的速度，物理从这里取
 export const JUMP_SPEED = 10.5;
 
 // 把所有场景打乱成这一局的顺序
@@ -166,20 +177,29 @@ export class Course {
         } else if (roll < 0.71) {
           // 跳台：只放在左右两条车道上，中间那条始终留给不想跳的人。鱼排在飞出去的那道弧线上，最高点是一条金鱼
           const x = random() < 0.5 ? LANES[0] : LANES[2];
-          ramps.push({ s, x, ...RAMP });
+          const pick = random();
+          const grade = pick < 0.4 ? 0 : pick < 0.75 ? 1 : 2;
+          const { len, height, rings } = RAMP_GRADES[grade];
+          ramps.push({ s, x, len, width: RAMP_WIDTH, height, grade });
           jumps += 1;
-          const lip = s + RAMP.len;
-          const up = ((2 * RAMP.height) / RAMP.len) * CRUISE;
-          [0.12, 0.27, 0.42, 0.57, 0.72].forEach((t, i) => {
-            const y = RAMP.height + up * t - 0.5 * GRAVITY * t * t;
-            items.push({ s: lip + CRUISE * t, x, y: y + 0.8, kind: i === 2 ? 'gold' : 'fish', scene });
-          });
-          // 在坡顶再跳一下会飞得高得多，那道更高的弧线上挂三个奖励圈
-          for (const t of [0.5, 0.86, 1.22]) {
-            const y = RAMP.height + (up + JUMP_SPEED) * t - 0.5 * GRAVITY * t * t;
-            items.push({ s: lip + CRUISE * t, x, y: y + 0.8, kind: 'ring', scene });
+          // 不起跳、照平常速度骑上去会怎么飞：坡面上先白得一点速度，离开坡顶后速度慢慢回落
+          let fast = CRUISE;
+          for (let d = 0; d < len; d += fast / 120) fast += (RAMP_KICK + (CRUISE - fast) * SETTLE) / 120;
+          const up = ((2 * height) / len) * fast;
+          const air = (up + Math.sqrt(up * up + 2 * GRAVITY * height)) / GRAVITY;
+          const lip = s + len;
+          const along = (t: number) => CRUISE * t + ((fast - CRUISE) * (1 - Math.exp(-SETTLE * t))) / SETTLE;
+          const rise = (t: number) => height + up * t - 0.5 * GRAVITY * t * t;
+          // 奖励圈就挂在这道弧线上（用户要求按不起跳的轨迹排），圈和圈之间各一条鱼，落地的地方等着一条金鱼
+          for (let k = 0; k <= rings; k += 1) {
+            const fish = (air * (k + 0.5)) / (rings + 1);
+            if (k < rings) items.push({ s: lip + along(fish), x, y: rise(fish) + 0.8, kind: 'fish', scene });
+            if (k === 0) continue;
+            const t = (air * k) / (rings + 1);
+            items.push({ s: lip + along(t), x, y: rise(t) + 0.8, kind: 'ring', scene });
           }
-          s += 26;
+          items.push({ s: lip + along(air) + 3, x, y: LOW, kind: 'gold', scene });
+          s += len + along(air) + 4;
         } else if (roll < 0.8) {
           // 要跳一下才够得着的三条，中间是金鱼
           const x = lane();

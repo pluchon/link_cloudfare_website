@@ -20,6 +20,12 @@ const summary = entry?.data.summary ?? '';
     </header>
 
     <div class="pelican" data-pelican data-state="ready" data-title={title}>
+      <!-- 外框画成一台掌机（用户要求）：上沿是铭牌、出声孔和电源灯，下沿是十字键、按键说明和两颗圆键 -->
+      <div class="pelican__top" aria-hidden="true">
+        <span class="pelican__brand">NUONUO · PELICAN RIDE</span>
+        <span class="pelican__vents"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="pelican__lamp"></span>
+      </div>
       <div class="pelican__stage" data-stage>
         <canvas class="pelican__canvas" data-canvas aria-label="鹈鹕骑车游戏画面：左右压车，空格起跳，按住上方向键或长按空格冲刺"></canvas>
 
@@ -58,7 +64,12 @@ const summary = entry?.data.summary ?? '';
           <div class="pelican__meter pelican__meter--boost">
             <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M13.5 2.5 5.5 13.5h5.5l-1 8 8.5-11.5h-5.5z" /></svg>
             <span class="pelican__label">冲刺</span>
-            <span class="pelican__meter-line"><i data-boost></i><b></b><b></b><b></b></span>
+            <span class="pelican__meter-line">
+              <i data-boost></i><b></b><b></b><b></b>
+              <span class="pelican__flames" data-flames>
+                {Array.from({ length: 14 }, () => <u />)}
+              </span>
+            </span>
           </div>
           <div class="pelican__meter pelican__meter--speed">
             <svg class="pelican__meter-icon" viewBox="0 0 24 24"><path d="M4 17a8.5 8.5 0 1 1 16 0M12 16l4.5-6" /></svg>
@@ -97,14 +108,28 @@ const summary = entry?.data.summary ?? '';
 
       <!-- 画面下面一行：左边是成绩，右边是按键说明 -->
       <div class="pelican__foot">
+        <svg class="pelican__dpad" viewBox="0 0 44 44" aria-hidden="true">
+          <rect class="pelican__key pelican__key--l" x="4" y="16" width="12" height="12" />
+          <rect class="pelican__key pelican__key--r" x="28" y="16" width="12" height="12" />
+          <rect class="pelican__key pelican__key--u" x="16" y="4" width="12" height="12" />
+          <path d="M16 4h12v12h12v12H28v12H16V28H4V16h12z" />
+          <path d="M22 8.5v3M8.5 22h3M32.5 22h3M22 32.5v3" />
+        </svg>
         <p class="pelican__record" data-record aria-live="polite"></p>
         <p class="pelican__keys">
           <span><kbd>←</kbd><kbd>→</kbd> 压车</span>
           <span><kbd>空格</kbd> 起跳</span>
-          <span><kbd>↑</kbd> 或长按 <kbd>空格</kbd> 冲刺</span>
+          <span><kbd>↑</kbd> 冲刺</span>
+          <span>长按 <kbd>空格</kbd> 猛冲</span>
           <span><kbd>P</kbd> 暂停</span>
           <span><kbd>M</kbd> 静音</span>
         </p>
+        <svg class="pelican__ab" viewBox="0 0 50 44" aria-hidden="true">
+          <circle class="pelican__key pelican__key--u" cx="13" cy="29" r="9.5" />
+          <circle class="pelican__key pelican__key--a" cx="37" cy="15" r="9.5" />
+          <text x="13" y="32">B</text>
+          <text x="37" y="18">A</text>
+        </svg>
       </div>
     </div>
   </section>
@@ -193,6 +218,9 @@ const summary = entry?.data.summary ?? '';
   /* 画面里的面板和按钮跟着场景换颜色（用户要求）：底色取这个场景地平线的颜色，字按底色深浅取黑或白，
      强调色取这个场景路沿的颜色。三个值由脚本在进新场景时写到 .pelican 上，没写之前先用站点自己的颜色 */
   .pelican {
+    padding: 0.55rem 0.8rem 0.6rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 74%, transparent);
     --hud-paper: var(--bg);
     --hud-ink: var(--fg);
     --hud-accent: var(--accent);
@@ -211,12 +239,92 @@ const summary = entry?.data.summary ?? '';
       color var(--dur-3) var(--ease-out);
   }
 
+  /* 掌机上沿：铭牌、一排出声孔、电源灯（骑着的时候亮） */
+  .pelican__top {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    height: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .pelican__brand {
+    margin-right: auto;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.22em;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  .pelican__vents {
+    display: flex;
+    gap: 3px;
+  }
+
+  .pelican__vents i {
+    width: var(--hair);
+    height: 0.6rem;
+    background: var(--line-strong);
+    transform: skewX(-18deg);
+  }
+
+  .pelican__lamp {
+    width: 0.4rem;
+    height: 0.4rem;
+    border: var(--hair) solid var(--line-strong);
+    transition:
+      background-color var(--dur-2) var(--ease-out),
+      border-color var(--dur-2) var(--ease-out);
+  }
+
+  .pelican[data-state="playing"] .pelican__lamp {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  /* 十字键和圆键：只是线条，按下对应的键时那一格填上强调色 */
+  .pelican__dpad,
+  .pelican__ab {
+    flex: none;
+    height: 2.6rem;
+    fill: none;
+    stroke: var(--line-strong);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .pelican__ab text {
+    fill: var(--fg-faint);
+    stroke: none;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    text-anchor: middle;
+  }
+
+  .pelican__key {
+    stroke: none;
+    fill: transparent;
+    transition: fill var(--dur-1) var(--ease-out);
+  }
+
+  .pelican__ab .pelican__key {
+    stroke: var(--line-strong);
+  }
+
+  .pelican[data-press~="l"] .pelican__key--l,
+  .pelican[data-press~="r"] .pelican__key--r,
+  .pelican[data-press~="u"] .pelican__key--u,
+  .pelican[data-press~="a"] .pelican__key--a {
+    fill: color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+
   /* 画面占满一整块，界面只在四个角各放一样东西 */
   .pelican__stage {
     position: relative;
-    /* 顶栏、标题行、按键说明和上下留白加起来约 15rem，剩下的都给画面 */
+    /* 顶栏、标题行、掌机外框的上下两沿和留白加起来约 18.5rem，剩下的都给画面 */
     /* 用 svh 不用 dvh：手机滑动时地址栏收起、展开，dvh 跟着变，画面会被一下一下地缩放 */
-    height: clamp(20rem, calc(100svh - 15rem), 46rem);
+    height: clamp(20rem, calc(100svh - 18.5rem), 46rem);
     border: var(--hair) solid var(--line-strong);
     background: var(--bg-sunken);
     overflow: hidden;
@@ -397,6 +505,47 @@ const summary = entry?.data.summary ?? '';
     color: var(--hud-soft);
   }
 
+  /* 猛冲时整条烧成橙红 */
+  .pelican__meters[data-burn="2"] .pelican__meter--boost {
+    --meter: #f0642e;
+  }
+
+  /* 冲刺时烧在冲刺条上的一排火苗：每根是一个三角，高矮由脚本每帧给 */
+  .pelican__flames {
+    position: absolute;
+    left: 0;
+    bottom: 100%;
+    display: flex;
+    align-items: flex-end;
+    width: 100%;
+    height: 13px;
+    opacity: 0;
+    transition: opacity var(--dur-2) var(--ease-out);
+  }
+
+  .pelican__meters[data-burn] .pelican__flames {
+    opacity: 1;
+  }
+
+  .pelican__flames u {
+    flex: 1 1 0;
+    height: 100%;
+    margin-inline: -1px;
+    background: #f2a23a;
+    clip-path: polygon(0 100%, 55% 0, 100% 100%);
+    transform: scaleY(0);
+    transform-origin: center bottom;
+  }
+
+  .pelican__flames u:nth-child(3n + 1) {
+    background: #e0563e;
+  }
+
+  .pelican__flames u:nth-child(3n + 2) {
+    background: #f6cf5a;
+    clip-path: polygon(0 100%, 40% 20%, 100% 100%);
+  }
+
   /* 正在冲刺：闪电填满，「冲刺」两个字也换成冲刺条的颜色 */
   .pelican__meters[data-active] .pelican__meter--boost .pelican__label {
     color: var(--meter);
@@ -500,7 +649,9 @@ const summary = entry?.data.summary ?? '';
       display: flex;
     }
 
-    .pelican__keys {
+    .pelican__keys,
+    .pelican__dpad,
+    .pelican__ab {
       display: none;
     }
   }
@@ -602,9 +753,15 @@ const summary = entry?.data.summary ?? '';
     letter-spacing: 0.2em;
   }
 
+  /* 小字不描边：字太细，描边会把笔画吃掉。改成垫一圈底色的晕 */
   .pelican[data-state="ready"] .pelican__overlay-text {
-    -webkit-text-stroke-width: 0.09em;
+    -webkit-text-stroke-width: 0;
+    text-shadow:
+      0 0 2px var(--hud-paper),
+      0 0 4px var(--hud-paper),
+      0 0 8px var(--hud-paper);
     font-size: 0.875rem;
+    font-weight: 600;
     letter-spacing: 0.24em;
     color: var(--hud-ink);
   }
@@ -729,8 +886,8 @@ const summary = entry?.data.summary ?? '';
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem 1.6rem;
-    margin-top: 0.9rem;
+    gap: 0.5rem 1.2rem;
+    margin-top: 0.55rem;
   }
 
   .pelican__record {
@@ -766,8 +923,17 @@ const summary = entry?.data.summary ?? '';
   }
 
   @media (max-width: 40rem) {
+    .pelican {
+      padding: 0.4rem 0.45rem 0.45rem;
+    }
+
     .pelican__stage {
-      height: clamp(22rem, calc(100svh - 13rem), 40rem);
+      height: clamp(22rem, calc(100svh - 15.5rem), 40rem);
+    }
+
+    .pelican__dpad,
+    .pelican__ab {
+      display: none;
     }
 
     .pelican__hud {

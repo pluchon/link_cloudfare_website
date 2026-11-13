@@ -1,7 +1,7 @@
 // 车的物理：沿路的位置、横向偏移、倾角、速度、离地高度。
 // 这个文件不依赖 three，可以脱离画面单独跑
 
-import { JUMP_SPEED, SPRING_SPEED, type Course } from './course';
+import { JUMP_SPEED, RAMP_KICK, SPRING_SPEED, type Course } from './course';
 import type { TrackPoint } from './track';
 
 export interface Controls {
@@ -11,18 +11,24 @@ export interface Controls {
   jump: boolean;
   // 按住冲刺
   dash: boolean;
+  // 长按空格：比冲刺再快一档的猛冲，冲刺条耗得快一倍
+  turbo: boolean;
 }
 
-export type BikeEvent = 'jump' | 'land' | 'finish' | 'dash' | 'pad' | 'spring';
+export type BikeEvent = 'jump' | 'land' | 'finish' | 'dash' | 'turbo' | 'pad' | 'spring';
 
 // 平常的速度和冲刺时的速度（米每秒）
 const CRUISE = 16;
 const SPRINT = 25;
+// 猛冲（长按空格）：在冲刺上面再加一档，冲刺条耗得快一倍
+const TURBO = 31;
+const TURBO_DRAIN = 2;
 const MIN_SPEED = 6;
-const MAX_SPEED = 33;
+const MAX_SPEED = 36;
 // 追上目标速度的快慢
 const ACCEL = 1.1;
 const ACCEL_DASH = 2.4;
+const ACCEL_TURBO = 3.2;
 // 压上加速带：比冲刺还快一点，持续这么久，不耗冲刺条
 const SURGE_SPEED = 29;
 const SURGE_SECONDS = 1.9;
@@ -102,6 +108,8 @@ export class Bike {
   // 冲刺条，0 到 1，出发时是满的
   boost = 1;
   dashing = false;
+  // 是不是在猛冲（冲刺的更快一档）
+  turbo = false;
   // 加速带的劲儿还剩多少秒
   surge = 0;
   finished = false;
@@ -137,6 +145,7 @@ export class Bike {
     this.rough = false;
     this.boost = 1;
     this.dashing = false;
+    this.turbo = false;
     this.surge = 0;
     this.finished = false;
     this.spin = 0;
@@ -159,6 +168,7 @@ export class Bike {
     this.v *= 0.5;
     this.surge = 0;
     this.dashing = false;
+    this.turbo = false;
     this.leanVel += side * 3.2;
     this.squash = 0.7;
   }
@@ -178,13 +188,18 @@ export class Bike {
     this.rough = Math.abs(this.x) > half + 0.9;
 
     // 速度：平常回到巡航，按住冲刺且还有余量时冲上去；骑到路外面会慢下来
-    const wantDash = controls.dash && !this.finished;
+    const wantTurbo = controls.turbo && !this.finished;
+    const wantDash = (controls.dash || wantTurbo) && !this.finished;
     if (wantDash && !this.dashing && this.boost > DASH_START) {
       this.dashing = true;
-      this.emit('dash');
+      if (!wantTurbo) this.emit('dash');
     }
     if (!wantDash || this.boost <= 0) this.dashing = false;
-    if (this.dashing) this.boost = Math.max(0, this.boost - dt / DASH_SECONDS);
+    // 猛冲是冲刺的更快一档：速度更高，冲刺条耗得快一倍
+    const turbo = this.dashing && wantTurbo;
+    if (turbo && !this.turbo) this.emit('turbo');
+    this.turbo = turbo;
+    if (this.dashing) this.boost = Math.max(0, this.boost - (dt / DASH_SECONDS) * (turbo ? TURBO_DRAIN : 1));
     else this.boost = Math.min(1, this.boost + dt * REGEN);
 
     if (this.grounded && !this.finished && course.onPad(this.s, this.x)) {
@@ -194,10 +209,12 @@ export class Bike {
     }
     this.surge = Math.max(0, this.surge - dt);
 
-    let target = this.finished ? 0 : this.surge > 0 ? SURGE_SPEED : this.dashing ? SPRINT : CRUISE;
+    let target = this.finished ? 0 : this.turbo ? TURBO : this.surge > 0 ? SURGE_SPEED : this.dashing ? SPRINT : CRUISE;
     if (this.rough && this.grounded) target *= ROUGH_SPEED;
-    const pull = this.surge > 0 ? ACCEL_SURGE : this.dashing ? ACCEL_DASH : ACCEL;
+    const pull = this.turbo ? ACCEL_TURBO : this.surge > 0 ? ACCEL_SURGE : this.dashing ? ACCEL_DASH : ACCEL;
     this.v += (target - this.v) * pull * dt;
+    // 上跳台的那一段白送一点速度，飞出去更远更爽；course.ts 排奖励圈时用的是同一个数
+    if (this.grounded && !this.finished && course.rampHeight(this.s, this.x) > 0) this.v += RAMP_KICK * dt;
     if (this.grounded) this.v -= 9.8 * Math.sin(point.pitch) * SLOPE * dt;
     this.v = clamp(this.v, this.finished ? 0 : MIN_SPEED, MAX_SPEED);
 
@@ -288,9 +305,10 @@ export class Bike {
     if (!this.finished && this.s >= track.finish) {
       this.finished = true;
       this.dashing = false;
+      this.turbo = false;
       this.emit('finish');
     }
   }
 }
 
-export const BIKE_SPEED = { cruise: CRUISE, sprint: SPRINT } as const;
+export const BIKE_SPEED = { cruise: CRUISE, sprint: SPRINT, turbo: TURBO } as const;

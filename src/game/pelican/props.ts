@@ -1186,8 +1186,16 @@ export function buildObstacle(width: number): { lit: THREE.BufferGeometry; glow:
 }
 
 // 跳台：一块往前翘起来的坡板，侧面一道提示色
-export function buildRamp(length: number, width: number, height: number): THREE.BufferGeometry {
+// 三档的坡面条纹和侧面各一种颜色，远远就认得出哪个高：矮的青绿、中的琥珀、高的朱红
+const RAMP_TINT = [
+  [0x58bfa8, 0x2f8f7c],
+  [0xf2c14e, 0xe08a2a],
+  [0xf08a6a, 0xd24a36],
+] as const;
+
+export function buildRamp(length: number, width: number, height: number, grade = 1): THREE.BufferGeometry {
   const steps = 6;
+  const [band, wall] = RAMP_TINT[grade] ?? RAMP_TINT[1];
   const position: number[] = [];
   const half = width / 2;
   // 坡面按 u² 往上翘，和物理里用的高度公式一致
@@ -1212,7 +1220,7 @@ export function buildRamp(length: number, width: number, height: number): THREE.
     // 坡面一条深一条浅，侧面和背面用提示色
     const top = i < steps * 18 && i % 18 < 6;
     const stripe = Math.floor(i / 18) % 2 === 0;
-    tint.setHex(top ? (stripe ? 0xfdf6ea : 0xf2c14e) : 0xe56a54);
+    tint.setHex(top ? (stripe ? 0xfdf6ea : band) : wall);
     color[i * 3] = tint.r;
     color[i * 3 + 1] = tint.g;
     color[i * 3 + 2] = tint.b;

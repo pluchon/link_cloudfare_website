@@ -742,22 +742,18 @@ export class World {
     const track = this.course.track;
     const ramps = this.course.ramps.filter((ramp) => ramp.s >= from && ramp.s < to);
     if (ramps.length === 0) return;
-    const first = ramps[0];
-    const geometry = buildRamp(first.len, first.width, first.height);
-    this.disposables.push(geometry);
-    const mesh = new THREE.InstancedMesh(geometry, this.lit, ramps.length);
-    ramps.forEach((ramp, i) => {
+    // 三档跳台长短高矮都不一样，一段场景里最多一个，各建各的
+    for (const ramp of ramps) {
+      const geometry = buildRamp(ramp.len, ramp.width, ramp.height, ramp.grade);
+      this.disposables.push(geometry);
+      const mesh = new THREE.Mesh(geometry, this.lit);
       track.at(ramp.s, p);
-      dummy.position.set(p.x + Math.cos(p.yaw) * ramp.x, p.y + 0.02, p.z + Math.sin(p.yaw) * ramp.x);
-      dummy.rotation.set(0, -p.yaw, 0);
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    });
-    mesh.frustumCulled = false;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    chunk.add(mesh);
+      mesh.position.set(p.x + Math.cos(p.yaw) * ramp.x, p.y + 0.02, p.z + Math.sin(p.yaw) * ramp.x);
+      mesh.rotation.set(0, -p.yaw, 0);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      chunk.add(mesh);
+    }
   }
 
   private addPads(chunk: THREE.Group, from: number, to: number): void {

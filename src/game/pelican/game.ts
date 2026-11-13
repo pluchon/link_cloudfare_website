@@ -36,7 +36,7 @@ const REACH = { along: 1.5, across: 1.5, up: 1.6 };
 // 空格按住超过这么久（秒）算长按，是冲刺；没到就松开才是起跳
 const HOLD_SECONDS = 0.2;
 // 速度条在这个速度（米每秒）时是满的
-const SPEED_FULL = 30;
+const SPEED_FULL = 34;
 const STORE_KEY = 'nn-pelican-ride';
 // 画质分四档，从高到低：像素比上限、要不要阴影、要不要泛光。机器吃力时往下降，不往回升
 const QUALITY = [
@@ -119,6 +119,8 @@ export function mountPelican(root: HTMLElement): () => void {
   const progressNode = pick<HTMLElement>(root, '[data-progress]');
   const boostNode = pick<HTMLElement>(root, '[data-boost]');
   const boostBox = pick<HTMLElement>(root, '[data-boost-box]');
+  const flameBox = pick<HTMLElement>(root, '[data-flames]');
+  const flames = Array.from(flameBox.children) as HTMLElement[];
   const recordNode = pick<HTMLElement>(root, '[data-record]');
   const toastNode = pick<HTMLElement>(root, '[data-toast]');
   const pauseButton = pick<HTMLButtonElement>(root, '[data-pause]');
@@ -227,7 +229,8 @@ export function mountPelican(root: HTMLElement): () => void {
     if (event === 'finish') finishTimer = still ? 1.4 : ORBIT.seconds;
     // 落地声的大小跟着摔得多重走，轻轻一颠就很小声
     if (event === 'land') sound.play('land', 0.35 + bike.squash * 0.65);
-    else sound.play(event);
+    // 猛冲没有单独的声音，再响一次冲刺那一声
+    else sound.play(event === 'turbo' ? 'dash' : event);
   };
   const bike: Bike = new Bike(onBikeEvent);
   bike.reset(course);
@@ -238,7 +241,7 @@ export function mountPelican(root: HTMLElement): () => void {
   let spaceDown = false;
   let spaceSince = 0;
   const touch = { left: 0, right: 0, dash: false };
-  const controls: Controls = { steer: 0, jump: false, dash: false };
+  const controls: Controls = { steer: 0, jump: false, dash: false, turbo: false };
   let jumpQueued = false;
 
   const p: TrackPoint = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, curve: 0 };
@@ -608,7 +611,8 @@ export function mountPelican(root: HTMLElement): () => void {
       camLook.copy(wantLook);
       snapCamera = false;
     } else {
-      camPos.lerp(wantPos, 1 - Math.exp(-dt * 6));
+      // 骑得越快镜头追得越紧：追的快慢不变的话，猛冲时车会甩开镜头五六米，鹈鹕小得看不清
+      camPos.lerp(wantPos, 1 - Math.exp(-dt * 6 * Math.max(1, bike.v / 19)));
       camLook.lerp(wantLook, 1 - Math.exp(-dt * 8));
     }
     camera.position.copy(camPos);
@@ -620,7 +624,7 @@ export function mountPelican(root: HTMLElement): () => void {
     }
 
     // 冲刺时视野稍微拉宽一点
-    const rush = Math.min(1, Math.max(0, (bike.v - BIKE_SPEED.cruise) / (BIKE_SPEED.sprint - BIKE_SPEED.cruise)));
+    const rush = Math.min(1.3,Math.max(0, (bike.v - BIKE_SPEED.cruise) / (BIKE_SPEED.sprint - BIKE_SPEED.cruise)));
     const fov = FOV + (still ? 0 : rush * FOV_DASH) + (camera.aspect < 1 ? 14 : 0);
     camFov += (fov - camFov) * Math.min(1, dt * 5);
     if (Math.abs(camera.fov - camFov) > 0.01) {
@@ -640,6 +644,25 @@ export function mountPelican(root: HTMLElement): () => void {
     progressNode.style.transform = `scaleX(${Math.min(1, Math.max(0, bike.s / track.finish)).toFixed(4)})`;
     boostNode.style.transform = `scaleX(${bike.boost.toFixed(3)})`;
     boostBox.toggleAttribute('data-active', bike.rushing);
+    // 冲刺时冲刺条上烧着一排火苗，猛冲时烧得更高（用户要求）。火苗的高矮每帧在这里算，不用自己循环的动画
+    const burn = bike.turbo ? '2' : bike.dashing ? '1' : '';
+    if ((boostBox.dataset.burn ?? '') !== burn) {
+      if (burn) boostBox.dataset.burn = burn;
+      else delete boostBox.dataset.burn;
+    }
+    if (burn) {
+      flameBox.style.width = `${(bike.boost * 100).toFixed(1)}%`;
+      const tall = burn === '2' ? 1 : 0.55;
+      flames.forEach((flame, i) => {
+        // 越靠近冲刺条的头上烧得越高；几个不成倍数的正弦叠起来，每根火苗各跳各的
+        const lead = 0.4 + 0.6 * (i / (flames.length - 1));
+        const flick = still ? 0.8 : 0.62 + 0.24 * Math.sin(time * 23 + i * 2.4) + 0.14 * Math.sin(time * 37 + i * 5.1);
+        flame.style.transform = `scaleY(${(tall * lead * flick).toFixed(3)})`;
+      });
+    }
+    // 画面外框上的十字键和两颗圆键跟着按键亮
+    const press = `${keys.left || touch.left > 0 ? 'l ' : ''}${keys.right || touch.right > 0 ? 'r ' : ''}${keys.dash || touch.dash ? 'u ' : ''}${spaceDown ? 'a' : ''}`;
+    if (root.dataset.press !== press) root.dataset.press = press;
     // 冲刺条的颜色跟着余量走：多、不多、快没了
     const level = bike.boost < 0.25 ? 'low' : bike.boost < 0.6 ? 'mid' : 'high';
     if (boostBox.dataset.level !== level) boostBox.dataset.level = level;
@@ -676,10 +699,14 @@ export function mountPelican(root: HTMLElement): () => void {
   let accumulator = 0;
 
   const frame = (now: number) => {
+    // 先取消上一次排的：调试时会手动多调几次这个函数，不取消的话每调一次就多出一条一直跑下去的循环
+    cancelAnimationFrame(raf);
     raf = requestAnimationFrame(frame);
     const real = (now - last) / 1000;
     // 切走再回来时这一帧会特别长，按上限算，免得车一下子冲出去
-    const dt = Math.min(real, 0.1);
+    // 下限是 0：调试时手动把时钟往前推过以后，浏览器自己的下一帧时刻反而更早，
+    // 时间差是负的，镜头的缓动会被反着算，越追越远，画面只剩天空甚至全黑
+    const dt = Math.min(Math.max(real, 0), 0.1);
     last = now;
 
     if (state === 'playing') {
@@ -689,7 +716,9 @@ export function mountPelican(root: HTMLElement): () => void {
       while (accumulator >= TICK) {
         controls.steer = (keys.right || touch.right > 0 ? 1 : 0) - (keys.left || touch.left > 0 ? 1 : 0);
         if (spaceDown && !keys.hold && performance.now() - spaceSince > HOLD_SECONDS * 1000) keys.hold = true;
-        controls.dash = keys.dash || keys.hold || touch.dash;
+        controls.dash = keys.dash || touch.dash;
+        // 长按空格是冲刺的更快一档（用户要求）：比按方向键还快，冲刺条耗得快一倍
+        controls.turbo = keys.hold;
         controls.jump = jumpQueued;
         jumpQueued = false;
         bike.step(TICK, course, controls);
