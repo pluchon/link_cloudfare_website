@@ -125,6 +125,9 @@
   cursor: zoom-in;
 }
 
+/* 包在链接里的图点了是跳转，不放大 */
+.prose a img { cursor: pointer; }
+
 .prose figure { margin: 2rem 0; }
 
 .prose figcaption {

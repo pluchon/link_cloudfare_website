@@ -195,14 +195,18 @@ const items =
                     </header>
 
                     <div class="game-album-modal__body">
-                      <ol class="game-album__grid">
+                      <ol class:list={['game-album__grid', item.album.length === 9 && 'game-album__grid--nine']}>
                         {item.album.map((shot, shotIdx) => {
                           const hasSrc = Boolean(shot.src);
                           return (
                             <li
                               class:list={[
                                 'game-album-card',
-                                shotIdx < 2 ? 'game-album-card--wide' : 'game-album-card--std',
+                                item.album.length === 9
+                                  ? 'game-album-card--cell'
+                                  : shotIdx < 2
+                                    ? 'game-album-card--wide'
+                                    : 'game-album-card--std',
                                 !hasSrc && 'game-album-card--empty',
                               ]}
                             >
@@ -806,7 +810,7 @@ const items =
   }
 
   .game-rules-modal__body :global(li::after) {
-    content: "0" counter(rule);
+    content: counter(rule, decimal-leading-zero);
     position: absolute;
     top: 0.65rem;
     right: 0.85rem;
@@ -856,6 +860,46 @@ const items =
     margin: 0 0.45rem 0.2em 0;
     vertical-align: middle;
     background: var(--icon-pink);
+  }
+
+  /* 一格里有几条小规则时写成嵌套列表，每条一行、开头一个粉色的「·」。
+     选择器是 li li，特异性比上面和窄屏里的 li 高，格子的边框、编号、折角都不会套到小规则上 */
+  .game-rules-modal__body :global(li ul) {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .game-rules-modal__body :global(li li) {
+    padding: 0 0 0 0.85rem;
+    border: 0;
+    background: none;
+    counter-increment: none;
+  }
+
+  .game-rules-modal__body :global(li li + li) {
+    margin-top: 0.12rem;
+  }
+
+  .game-rules-modal__body :global(li li::after) {
+    content: none;
+  }
+
+  .game-rules-modal__body :global(li li::before) {
+    content: "·";
+    top: 0;
+    left: 0.15rem;
+    width: auto;
+    height: auto;
+    border: 0;
+    opacity: 1;
+    font-weight: 700;
+    color: var(--icon-pink);
+  }
+
+  .game-rules-modal__body :global(li li:hover) {
+    background: none;
   }
 
   .game-rules-modal::backdrop,
@@ -936,7 +980,7 @@ const items =
     scrollbar-width: none;
   }
 
-  /* 游戏画册：6 列展陈网格，前 2 张各占半行，后 3 张均分第二行 */
+  /* 游戏画册：五张的是 6 列展陈网格，前 2 张各占半行、后 3 张均分第二行；九张的排成三行三列的九宫格 */
   .game-album-modal {
     width: min(54rem, calc(100vw - 2 * var(--gut)));
     max-height: calc(100dvh - 2rem);
@@ -966,6 +1010,14 @@ const items =
 
   .game-album-card--std {
     grid-column: span 2;
+  }
+
+  .game-album__grid--nine {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .game-album-card--cell {
+    grid-column: span 1;
   }
 
   .game-album-card:not(.game-album-card--empty):hover {
@@ -1064,6 +1116,20 @@ const items =
     .game-album-card--wide,
     .game-album-card--std {
       grid-column: span 1;
+    }
+
+    /* 九宫格在平板上仍是三列，两列会剩下孤零零的一张；标题和说明放不下一行就上下排 */
+    .game-album__grid--nine {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .game-album__grid--nine .game-album-card__meta {
+      flex-wrap: wrap;
+      row-gap: 0.1rem;
+    }
+
+    .game-album__grid--nine .game-album-card__caption {
+      text-align: left;
     }
 
     .game-head__row {

@@ -2,6 +2,7 @@
 // 加新场景只往 SCENES 里添一项
 
 import type { GateTheme } from './props';
+import type { Pave } from './pave';
 import type { TrackStyle } from './track';
 
 export type PropKind =
@@ -236,6 +237,8 @@ export interface Scene extends TrackStyle {
   fog: [number, number];
   light: { sun: number; sunPower: number; sky: number; ground: number; power: number };
   road: number;
+  // 这个场景专属的路面（pave.ts，2026-11-14 用户要「每个场景一种路面」），贴图盖在 road 这个底色上
+  pave: Pave;
   line: number;
   curb: [number, number];
   shoulder: number;
@@ -261,8 +264,9 @@ export interface Scene extends TrackStyle {
 }
 
 // 每个场景骑多长（米）。必须是 4 的倍数：崖壁是按 4 米一排建的，两段场景要在同一排上接缝。
-// 用户两次要「每个场景路程长一点」：380 -> 560 -> 700。场景里按几成写的位置（cover、widen、part）会跟着伸缩，按米写的（climb、steps）不会
-export const SCENE_LENGTH = 700;
+// 用户三次要「每个场景路程长一点」：380 -> 560 -> 700 -> 900。场景里按几成写的位置（cover、widen、part）会跟着伸缩，按米写的（climb、steps）不会，
+// 改长度要回头看高山峡谷和云海断桥：隧道、崖壁退开、湖边景物这几处按几成写的，要和按米写的断层对上
+export const SCENE_LENGTH = 900;
 
 export const SCENES: readonly Scene[] = [
   {
@@ -278,6 +282,8 @@ export const SCENES: readonly Scene[] = [
     fog: [140, 620],
     light: { sun: 0xfff2d6, sunPower: 2.2, sky: 0xd9f0ff, ground: 0xe8d3a8, power: 1.5 },
     road: 0x5d5f6b,
+    // 海边的柏油路，两边吹上来一片片沙
+    pave: 'sandy',
     line: 0xfdfaf0,
     curb: [0xe56a54, 0xfdf6ea],
     shoulder: 0xf1dcae,
@@ -317,7 +323,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0,
     fog: [150, 640],
     light: { sun: 0xfff7e0, sunPower: 2.3, sky: 0xd4ecff, ground: 0xa8cf86, power: 1.5 },
-    road: 0x62646f,
+    road: 0x9c5a46,
+    // 乡间的红砖路
+    pave: 'brick',
     line: 0xfdfaf0,
     curb: [0xf2c14e, 0xfdf6ea],
     shoulder: 0xc9d99a,
@@ -358,7 +366,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0,
     fog: [110, 520],
     light: { sun: 0xfff0ea, sunPower: 2.1, sky: 0xf1e2ff, ground: 0xd9c2c8, power: 1.6 },
-    road: 0x6a6672,
+    road: 0x9a929c,
+    // 浅色方石板，落满樱花瓣
+    pave: 'petals',
     line: 0xfff6f6,
     curb: [0xf3a3bd, 0xfdf3f5],
     shoulder: 0xf3d6dc,
@@ -398,7 +408,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0,
     fog: [70, 380],
     light: { sun: 0xf0f7dc, sunPower: 1.9, sky: 0xcfe8e2, ground: 0x6f9a72, power: 1.5 },
-    road: 0x555b62,
+    road: 0x7a6650,
+    // 林间土路，两道车辙、一地松针
+    pave: 'dirt',
     line: 0xf2f4ea,
     curb: [0x7b8f6a, 0xe9eedd],
     shoulder: 0x8aa57a,
@@ -441,6 +453,8 @@ export const SCENES: readonly Scene[] = [
     fog: [120, 560],
     light: { sun: 0xffe6b8, sunPower: 2.2, sky: 0xdde9f2, ground: 0xc9a468, power: 1.5 },
     road: 0x5f5b60,
+    // 柏油路上落满枫叶和银杏叶
+    pave: 'leaves',
     line: 0xfbf3e2,
     curb: [0xd9772f, 0xfbf0dc],
     shoulder: 0xd9bd84,
@@ -484,7 +498,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0,
     fog: [150, 650],
     light: { sun: 0xffe7b4, sunPower: 2.4, sky: 0xe3eef6, ground: 0xe0a868, power: 1.5 },
-    road: 0x6b6058,
+    road: 0xa47c58,
+    // 大块砂岩板，缝里积着沙
+    pave: 'sandstone',
     line: 0xfbf0d8,
     curb: [0xc45a34, 0xf8e6c4],
     shoulder: 0xe7c088,
@@ -524,6 +540,8 @@ export const SCENES: readonly Scene[] = [
     fog: [130, 600],
     light: { sun: 0xffb877, sunPower: 2.1, sky: 0xffd2a6, ground: 0xb98a6a, power: 1.5 },
     road: 0x5a4d50,
+    // 补过好几回的老柏油路
+    pave: 'patched',
     line: 0xfdeedb,
     curb: [0xd0563a, 0xfbe6cf],
     shoulder: 0xe9c08e,
@@ -565,7 +583,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0.75,
     fog: [110, 520],
     light: { sun: 0x9fb4ff, sunPower: 1.5, sky: 0x6f82c4, ground: 0x3a3a5c, power: 1.6 },
-    road: 0x3a3d52,
+    road: 0x5a4a46,
+    // 海边栈桥的木板
+    pave: 'planks',
     line: 0xd9dcf0,
     curb: [0x8c5f86, 0xcfd3ea],
     shoulder: 0x6b6a86,
@@ -603,6 +623,8 @@ export const SCENES: readonly Scene[] = [
     fog: [100, 480],
     light: { sun: 0xa9a2ff, sunPower: 1.3, sky: 0x7a6fd0, ground: 0x3a2f5c, power: 1.7 },
     road: 0x2c2d40,
+    // 深色地砖上一格格发光的霓虹线
+    pave: 'neon',
     line: 0xe6e2ff,
     curb: [0xe0569a, 0x3f3f5c],
     shoulder: 0x47465f,
@@ -643,7 +665,9 @@ export const SCENES: readonly Scene[] = [
     aurora: 1,
     fog: [130, 600],
     light: { sun: 0xa8d4ff, sunPower: 1.5, sky: 0x86c6d6, ground: 0x4a6a8c, power: 1.7 },
-    road: 0x39445c,
+    road: 0x4e6380,
+    // 冻住的路，一片片冰和冰裂
+    pave: 'ice',
     line: 0xe4f1ff,
     curb: [0x55b6a6, 0xdcecf6],
     shoulder: 0xa9c4d8,
@@ -682,8 +706,11 @@ export const SCENES: readonly Scene[] = [
     stars: 0.15,
     fog: [130, 600],
     light: { sun: 0xffc8b0, sunPower: 1.9, sky: 0xd6d6f6, ground: 0x9fb0cc, power: 1.6 },
-    road: 0x4b5066,
-    line: 0xf6f2fa,
+    road: 0x6c7488,
+    // 压实的雪，车道上两道车辙
+    pave: 'snow',
+    // 雪地上白线看不见，车道线刷成蓝灰色
+    line: 0x5b6a8c,
     curb: [0xe58a8a, 0xf2eef6],
     shoulder: 0xd6dcea,
     ground: [0xeef2f8, 0xe2e8f2],
@@ -723,7 +750,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0,
     fog: [150, 650],
     light: { sun: 0xffe8c0, sunPower: 2.2, sky: 0xe6e6ff, ground: 0xb9d79a, power: 1.6 },
-    road: 0x66646f,
+    road: 0x8a8088,
+    // 圆圆的鹅卵石
+    pave: 'cobble',
     line: 0xfffaf0,
     curb: [0xe56a54, 0xfdf6ea],
     shoulder: 0xdfe4a8,
@@ -766,18 +795,20 @@ export const SCENES: readonly Scene[] = [
     // 先在窄窄的峡谷里爬高八米；一道深沟（断路），底下是河，冲刺才稳稳飞得过去，落到矮三米的一截；
     // 接着一条高跳弹簧把车弹上四米高的台阶；钻过隧道，出来没多远路又断了：飞过一道水，落到底下九米开阔的湖边。
     // 八减三加四减九正好是零，出这段场景时路回到平常的高度
-    climb: { from: 10, to: 120, height: 8 },
+    climb: { from: 10, to: 150, height: 8 },
     steps: [
-      { at: 160, drop: 3, gap: 10, deep: true },
-      { at: 240, drop: -4 },
-      { at: 380, drop: 9, gap: 8 },
+      { at: 210, drop: 3, gap: 10, deep: true },
+      { at: 310, drop: -4 },
+      { at: 470, drop: 9, gap: 8 },
     ],
     sky: [0x4d93d6, 0xa9d2ee, 0xe6f1f2],
     sun: { color: 0xfffbe6, height: 54, turn: 14, size: 0.045 },
     stars: 0,
     fog: [140, 600],
     light: { sun: 0xfff4dc, sunPower: 2.3, sky: 0xd6e8ff, ground: 0x8fa58a, power: 1.5 },
-    road: 0x5f626c,
+    road: 0x6f6a66,
+    // 大小不一的石板路
+    pave: 'flagstone',
     line: 0xfdfaf0,
     curb: [0xe0a02a, 0xfdf6ea],
     shoulder: 0xb9c79a,
@@ -795,10 +826,10 @@ export const SCENES: readonly Scene[] = [
       color: [0x9a968c, 0x837f76],
       top: 0x6fa25e,
       moss: { color: [0x6fa860, 0x5c9652], amount: 0.8 },
-      widen: { from: 0.545, foot: 54 },
+      widen: { from: 0.525, foot: 54 },
     },
     // 断层前面的那条隧道
-    cover: [[0.42, 0.51]],
+    cover: [[0.43, 0.497]],
     backdrop: 'peaks',
     backdropColor: 0x9fb4c8,
     props: [
@@ -819,7 +850,7 @@ export const SCENES: readonly Scene[] = [
       // 半山腰缠着一圈云
       { kind: 'cloud', per100: 3, near: 24, far: 70, lift: [40, 58], scale: [1.2, 2.4] },
       // 上半段崖顶上的一排松树
-      { kind: 'pine', per100: 16, near: 50, far: 66, scale: [1, 1.7], part: [0, 0.54] },
+      { kind: 'pine', per100: 16, near: 50, far: 66, scale: [1, 1.7], part: [0, 0.52] },
       // 下半段的湖：荷叶、荷花、芦苇、跳出水面的鱼、白鹭、小船，对岸崖壁上挂着瀑布
       { kind: 'reeds', per100: 14, near: 34.6, far: 39, float: true, scale: [0.9, 1.5] },
       { kind: 'lotus', per100: 12, near: 36, far: 63, float: true, scale: [0.9, 1.8] },
@@ -828,9 +859,9 @@ export const SCENES: readonly Scene[] = [
       { kind: 'heron', per100: 1.8, near: 34.6, far: 38, float: true, scale: [1, 1.3] },
       { kind: 'rowboat', per100: 1, near: 40, far: 58, float: true },
       { kind: 'foam', per100: 5, near: 38, far: 63, face: true, float: true, scale: [0.7, 1.3] },
-      { kind: 'waterfall', per100: 1, near: 66, far: 66, wall: true, face: true, part: [0.62, 1] },
-      { kind: 'gulls', per100: 1.2, near: 20, far: 50, lift: [26, 48], scale: [1, 1.5], part: [0.58, 1] },
-      { kind: 'pine', per100: 12, near: 82, far: 100, scale: [1, 1.8], part: [0.62, 1] },
+      { kind: 'waterfall', per100: 1, near: 66, far: 66, wall: true, face: true, part: [0.58, 1] },
+      { kind: 'gulls', per100: 1.2, near: 20, far: 50, lift: [26, 48], scale: [1, 1.5], part: [0.55, 1] },
+      { kind: 'pine', per100: 12, near: 82, far: 100, scale: [1, 1.8], part: [0.58, 1] },
       { kind: 'grovePine', per100: 2, near: 100, far: 150, clear: 12, scale: [0.9, 1.4] },
       { kind: 'mountainSnow', per100: 0.6, near: 240, far: 400, clear: 86, scale: [0.8, 1.3] },
       { kind: 'cloud', per100: 2, near: 40, far: 320, lift: [75, 130], scale: [1, 2.4] },
@@ -848,7 +879,9 @@ export const SCENES: readonly Scene[] = [
     stars: 0,
     fog: [130, 560],
     light: { sun: 0xfff6dc, sunPower: 2.2, sky: 0xd8f0ff, ground: 0x7fb58a, power: 1.5 },
-    road: 0x5c6068,
+    road: 0x7a7468,
+    // 碎石子路
+    pave: 'gravel',
     line: 0xfdfaf0,
     curb: [0x4fb3a4, 0xfdf6ea],
     shoulder: 0xc9d6a0,
@@ -899,6 +932,8 @@ export const SCENES: readonly Scene[] = [
     fog: [40, 300],
     light: { sun: 0x9fb4ff, sunPower: 0.8, sky: 0x9aa8f0, ground: 0x4a4070, power: 2.6 },
     road: 0x3a3c4e,
+    // 深色石面上发紫光的裂纹和碎晶
+    pave: 'crystal',
     line: 0xcfd8ff,
     curb: [0x8f6fe0, 0x2c2a44],
     shoulder: 0x3d3a56,
@@ -937,29 +972,34 @@ export const SCENES: readonly Scene[] = [
     curve: 0.35,
     // 高低全靠下面的台阶和断口，路本身不再随机起伏
     hill: 0,
-    // 用户要的「断桥」（2026-11-13，第二版）：路是一座座架在峡谷里的石桥，底下立着桥柱，高低不同而已，不要斜坡。
-    // 开头是贴着湖面的一段堤，三条高跳弹簧在短短两百来米里把车一层层弹上二十一米高的桥；
-    // 然后一座比一座低七米的断桥，一路跳下去，回到湖面；湖中间再连着三条高跳弹簧，弧线上挂满圈，连续得分。
-    // 七乘三上去、七乘三下来，出这段场景时路回到平常的高度。谷底是一层飘着的雾（mist），人在高处时才看得见
+    // 用户要的「断桥」（2026-11-13 第二版，2026-11-14 第三版）：路是一座座架在峡谷里的石桥，底下立着桥柱，不要斜坡。
+    // 第三版用户要「一个个大断桥，之间高度差挺大，下面雾茫茫的，慢慢到达底部是一个湖，路在湖上面穿行」：
+    // 三条高跳弹簧一层十二米，把车弹上三十六米高的桥，桥底下是一片云海；顺着桥骑一百来米，
+    // 然后四座断桥一座比一座低九米，一路穿过雾层跳下去，最后落到谷底的湖上，路贴着湖面穿过去，湖上再连着三条高跳弹簧连续穿圈。
+    // 十二乘三上去、九乘四下来，出这段场景时路回到平常的高度。雾有四层（world.ts 的 MIST_LAYERS），人在高处时最浓，下到湖面就散开
     bridge: true,
     mist: 1,
     steps: [
-      { at: 90, drop: -7 },
-      { at: 165, drop: -7 },
-      { at: 240, drop: -7 },
-      { at: 330, drop: 7, gap: 14, deep: true },
-      { at: 410, drop: 7, gap: 14, deep: true },
-      { at: 490, drop: 7, gap: 12, deep: true },
-      { at: 545, drop: 0, bounce: 5 },
-      { at: 608, drop: 0, bounce: 5 },
-      { at: 671, drop: 0, bounce: 5 },
+      { at: 80, drop: -12 },
+      { at: 170, drop: -12 },
+      { at: 260, drop: -12 },
+      { at: 380, drop: 9, gap: 14, deep: true },
+      { at: 470, drop: 9, gap: 14, deep: true },
+      { at: 560, drop: 9, gap: 14, deep: true },
+      { at: 650, drop: 9, gap: 12, deep: true },
+      { at: 716, drop: 0, bounce: 5 },
+      { at: 780, drop: 0, bounce: 5 },
+      { at: 844, drop: 0, bounce: 5 },
     ],
-    sky: [0x6aa8e0, 0xc4e0f4, 0xf2f6f8],
-    sun: { color: 0xfffbea, height: 40, turn: -18, size: 0.045 },
+    // 用户截图嫌过「过曝」：地平线和雾原来几乎是纯白，再叠上白雾和泛光，下半个画面白成一片。地平线压成浅灰蓝，光也收一点
+    sky: [0x5f9fd8, 0xb6d6ec, 0xdde8ee],
+    sun: { color: 0xfff8e6, height: 40, turn: -18, size: 0.045 },
     stars: 0,
-    fog: [90, 520],
-    light: { sun: 0xfff6e0, sunPower: 2.1, sky: 0xe4f0ff, ground: 0xa8b8c8, power: 1.6 },
+    fog: [110, 560],
+    light: { sun: 0xfff2dc, sunPower: 1.8, sky: 0xdceaf8, ground: 0x98a8b8, power: 1.4 },
     road: 0x6e6a66,
+    // 石桥的大石板，桥边缝里长着青苔
+    pave: 'slab',
     line: 0xfdfaf0,
     curb: [0xc9a46a, 0xfdf6ea],
     shoulder: 0xa9a29a,
@@ -981,13 +1021,13 @@ export const SCENES: readonly Scene[] = [
       { kind: 'cloud', per100: 2.5, near: 30, far: 70, lift: [42, 60], scale: [1.2, 2.4] },
       { kind: 'cloud', per100: 2, near: 40, far: 320, lift: [70, 130], scale: [1, 2.4] },
       { kind: 'gulls', per100: 1.4, near: 10, far: 60, lift: [30, 50], scale: [1, 1.5] },
-      // 峡谷底的湖：荷叶、荷花、芦苇、跃出水面的鱼、白鹭、小船
-      { kind: 'reeds', per100: 14, near: 12.6, far: 17, float: true, scale: [0.9, 1.5], part: [0.66, 1] },
-      { kind: 'lotus', per100: 12, near: 14, far: 50, float: true, scale: [0.9, 1.8], part: [0.66, 1] },
-      { kind: 'lotusBloom', per100: 9, near: 13.5, far: 46, float: true, scale: [0.9, 1.5], part: [0.66, 1] },
-      { kind: 'jumpFish', per100: 6, near: 16, far: 50, float: true, scale: [1.2, 2], part: [0.66, 1] },
-      { kind: 'heron', per100: 1.6, near: 12.6, far: 16, float: true, scale: [1, 1.3], part: [0.66, 1] },
-      { kind: 'rowboat', per100: 1, near: 20, far: 48, float: true, part: [0.66, 1] },
+      // 峡谷底的湖（最后一座断桥落下来以后，七成多往后）：荷叶、荷花、芦苇、跃出水面的鱼、白鹭、小船
+      { kind: 'reeds', per100: 14, near: 12.6, far: 17, float: true, scale: [0.9, 1.5], part: [0.73, 1] },
+      { kind: 'lotus', per100: 12, near: 14, far: 50, float: true, scale: [0.9, 1.8], part: [0.73, 1] },
+      { kind: 'lotusBloom', per100: 9, near: 13.5, far: 46, float: true, scale: [0.9, 1.5], part: [0.73, 1] },
+      { kind: 'jumpFish', per100: 6, near: 16, far: 50, float: true, scale: [1.2, 2], part: [0.73, 1] },
+      { kind: 'heron', per100: 1.6, near: 12.6, far: 16, float: true, scale: [1, 1.3], part: [0.73, 1] },
+      { kind: 'rowboat', per100: 1, near: 20, far: 48, float: true, part: [0.73, 1] },
       // 两边的崖壁上挂着瀑布，崖顶一排松树，远处雪山
       { kind: 'waterfall', per100: 1, near: 92, far: 92, wall: true, face: true },
       { kind: 'pine', per100: 10, near: 92, far: 112, scale: [1, 1.8] },

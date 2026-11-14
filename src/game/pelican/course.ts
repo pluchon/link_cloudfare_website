@@ -94,6 +94,16 @@ const LAUNCH_HOLD = 32;
 export const HIGH_RUN = 20;
 export const HIGH_CLEAR = 2.7;
 export const HIGH_SPEED = 24;
+
+// 高跳弹簧离台阶多远：台阶越高要离得越远。按「飞到最高点前两成时间正好到台阶」算，那时离最高点只差 4%，
+// 怎么都比台阶顶高。四米的台阶算出来正好是原来的 20 米；云海断桥那种十二米的台阶要 30 米，
+// 写死 20 米的话车到坎前还比坎顶矮三十公分，会被一下子拔到坎上
+export function highRun(rise: number): number {
+  const up = Math.sqrt(2 * GRAVITY * (rise + HIGH_CLEAR));
+  const t = (0.8 * up) / GRAVITY;
+  const along = LAUNCH_HOLD * t - ((LAUNCH_HOLD - HIGH_SPEED) * (1 - Math.exp(-4 * t))) / 4;
+  return Math.max(HIGH_RUN, Math.round(along));
+}
 // 冲刺的速度，和 bike.ts 的 SPRINT 是同一个数：断路上的圈按冲着过去的弧线排
 const SPRINT = 28;
 // 两个要选车道的东西（跳台、弹簧、路障）之间至少隔这么远（米），大约三秒的路
@@ -173,7 +183,7 @@ export class Course {
         if (s >= end - 30) s = Math.max(s, base + steps[0].at - 39.5);
         const step = steps[0];
         // 这些地方前后都不放要躲的东西：断层和断路提前一百来米，台阶提前五十多米
-        if (step && s > base + step.at - (step.bounce ? 40 : step.drop < 0 ? HIGH_RUN + 36 : step.deep ? 110 : 100)) {
+        if (step && s > base + step.at - (step.bounce ? 40 : step.drop < 0 ? highRun(-step.drop) + 36 : step.deep ? 110 : 100)) {
           steps.shift();
           const at = base + step.at;
           if (step.bounce) {
@@ -194,7 +204,7 @@ export class Course {
           } else if (step.drop < 0) {
             // 台阶：迎面一道石坎，前面横着一整条高跳弹簧，压上去就被弹上台阶。鱼把人领过去，弧线上一条鱼、一个圈，落地的地方一条金鱼
             const rise = -step.drop;
-            const pad = at - HIGH_RUN;
+            const pad = at - highRun(rise);
             row(scene, pad - 30, 0, 5, 5.6);
             springs.push({ s: pad, x: 0, len: SPRING.len, width: ROAD_WIDTH + 2, tilt: false, high: rise });
             const up = Math.sqrt(2 * GRAVITY * (rise + HIGH_CLEAR));

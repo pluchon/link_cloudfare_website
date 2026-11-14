@@ -1,6 +1,6 @@
 {
   "stamp": "202611121653",
-  "version": "202611132130",
+  "version": "202611140953",
   "sfx": {
     "fish0": [
       0.2,
@@ -90,11 +90,11 @@
     },
     "flower": {
       "loopStart": 0.5,
-      "loopEnd": 36.72642
+      "loopEnd": 21.36957
     },
     "sakura": {
       "loopStart": 0.5,
-      "loopEnd": 44.13636
+      "loopEnd": 48.5
     },
     "pine": {
       "loopStart": 0.5,
@@ -102,7 +102,7 @@
     },
     "autumn": {
       "loopStart": 0.5,
-      "loopEnd": 41.35106
+      "loopEnd": 52.39189
     },
     "desert": {
       "loopStart": 0.5,
@@ -110,39 +110,39 @@
     },
     "palm": {
       "loopStart": 0.5,
-      "loopEnd": 43.16667
+      "loopEnd": 42.23913
     },
     "lighthouse": {
       "loopStart": 0.5,
-      "loopEnd": 48.5
+      "loopEnd": 37.42308
     },
     "neon": {
       "loopStart": 0.5,
-      "loopEnd": 36.05556
+      "loopEnd": 34.18421
     },
     "aurora": {
       "loopStart": 0.5,
-      "loopEnd": 51.02632
+      "loopEnd": 56.97059
     },
     "dawn": {
       "loopStart": 0.5,
-      "loopEnd": 46.21429
+      "loopEnd": 48.5
     },
     "balloon": {
       "loopStart": 0.5,
-      "loopEnd": 34.78571
+      "loopEnd": 32.5
     },
     "canyon": {
       "loopStart": 0.5,
-      "loopEnd": 40.5
+      "loopEnd": 37.42308
     },
     "creek": {
       "loopStart": 0.5,
-      "loopEnd": 44.13636
+      "loopEnd": 43.16667
     },
     "cave": {
       "loopStart": 0.5,
-      "loopEnd": 49.73077
+      "loopEnd": 55.35714
     },
     "cloudbridge": {
       "loopStart": 0.5,

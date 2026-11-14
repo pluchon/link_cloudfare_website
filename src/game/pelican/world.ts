@@ -2,10 +2,11 @@
 // 整条路按场景切成十二块，只画车附近的几块；峡谷和洞穴两侧另有崖壁和洞顶；天空、雾和灯光要等车过了场景交界的那道门才换
 
 import * as THREE from 'three';
-import { HIGH_RUN, LANE_WIDTH, ROAD_WIDTH, type Course, type ItemKind, type Spring } from './course';
+import { highRun, LANE_WIDTH, ROAD_WIDTH, type Course, type ItemKind, type Spring } from './course';
 import { part, buildBolt, buildBooster, buildWarning, buildChili, buildRocket, buildMagnet, buildFish, buildGate, buildLauncher, buildObstacle, buildPad, buildProp, buildRamp, buildRing, buildBird, buildSpring, buildToken, type FlockKind, type GateTheme, type PropShape } from './props';
 import type { Backdrop, PropKind, Scene, TokenKind, Walls } from './scenes';
 import { seeded, type TrackPoint } from './track';
+import { PAVE_ACROSS, PAVE_ALONG, paveMaterial, type Pave } from './pave';
 
 // 场景交界处三样东西各有各的过渡距离（米）：
 // 两侧地面的宽窄和起伏是地形，要在门前后各这么长的路上慢慢接上
@@ -37,9 +38,15 @@ const BLOCK_FRICTION = 0.62;
 const BLOCK_LINGER = 2.2;
 // 尘土碎屑最多同时有多少团
 const MOTES = 120;
-// 谷底两层雾离水面（SEA 是 0）多高
-const MIST_LOW = 2.4;
-const MIST_HIGH = 6.5;
+// 谷底的雾（云海断桥）：每一层离水面（SEA 是 0）多高、最浓时有多不透明、贴图铺几遍。
+// 第三版断桥最高到三十六米，雾从两层加到四层、最上面一层在二十米：从最高那座桥往下看是一片云海，一座座跳下去时穿过雾层，下到湖面就散开。
+// 每层都比原来淡：原来两层纯白、最浓八成五，桥上往下看下半个画面白成一片，用户截图说「过曝」
+const MIST_LAYERS: ReadonlyArray<readonly [number, number, number]> = [
+  [2.5, 0.42, 5],
+  [7, 0.36, 7],
+  [13, 0.3, 9],
+  [20, 0.26, 11],
+];
 // 水平面的高度：远处的地面或水面
 const SEA = 0;
 // 车前后各画几个场景
@@ -223,6 +230,17 @@ function grit(a: number, b: number, c: number): number {
   return wave - Math.floor(wave);
 }
 
+// 平滑的噪声，0 到 1：整数格点上取 grit，中间平滑地插过去。崖壁上的草木按它一片一片地长
+function patches(x: number, y: number, salt: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const fx = smooth(x - xi);
+  const fy = smooth(y - yi);
+  const top = lerp(grit(xi, yi, salt), grit(xi + 1, yi, salt), fx);
+  const bottom = lerp(grit(xi, yi + 1, salt), grit(xi + 1, yi + 1, salt), fx);
+  return lerp(top, bottom, fy);
+}
+
 // 沿路慢慢起伏的山脊线，0 到 1：两层平滑的噪声叠起来，一座山头接一座山头。左右两边不一样
 function ridge(s: number, side: number): number {
   const layer = (x: number, salt: number) => {
@@ -294,19 +312,22 @@ void main() {
   color = mix(color, uSun * uSunBoost, disc) + uSun * halo * (1.0 - disc);
   // 极光：画在天空里，跟天空一样在无穷远处。两道帘子，下沿清楚、往上慢慢淡掉，竖着一根根光柱，底下绿、上头转紫，整片慢慢飘。
   // 用户嫌过早先那版「太低太假，像一个个条带子」：那是挂在七八十米高处的几片平面
-  if (uAurora > 0.001 && h > 0.03) {
+  if (uAurora > 0.001 && h > 0.0) {
     float az = atan(dir.x, -dir.z);
     vec3 glow = vec3(0.0);
-    for (int k = 0; k < 2; k++) {
+    // 用户第二次嫌「一条一条的很怪」：早先的光柱明暗差到九成、又是整齐的正弦，看着就是一根根竖条子；下沿也太平太硬。
+    // 现在三层光帘，下沿按几种长短的褶子起伏、边缘软；光柱只有一两成的明暗、而且不整齐；帘子的高矮和亮度沿着天空慢慢变
+    for (int k = 0; k < 3; k++) {
       float fk = float(k);
-      float base = 0.17 + fk * 0.13 + 0.06 * sin(az * 2.0 + fk * 2.3 + uTime * 0.05) + 0.035 * sin(az * 5.0 - uTime * 0.08 + fk);
+      float fold = sin(az * 3.0 + fk * 1.7 + uTime * 0.04) * 0.05 + sin(az * 7.3 - uTime * 0.07 + fk * 2.1) * 0.025 + sin(az * 13.0 + uTime * 0.11 + fk) * 0.012;
+      float base = 0.15 + fk * 0.085 + fold;
       float above = h - base;
-      float curtain = smoothstep(-0.012, 0.018, above) * exp(-max(above, 0.0) * (4.5 + fk * 2.5));
-      float rays = 0.55 + 0.45 * sin(az * 38.0 + sin(az * 7.0 + uTime * 0.2) * 2.0 + fk * 5.0);
-      rays *= 0.65 + 0.35 * sin(az * 91.0 - uTime * 0.35 + fk);
-      float patchy = smoothstep(-0.3, 0.8, sin(az * 1.3 + fk * 1.7 + uTime * 0.03));
-      vec3 tint = mix(vec3(0.18, 1.0, 0.55), vec3(0.6, 0.32, 1.0), smoothstep(0.03, 0.26, above));
-      glow += tint * curtain * rays * patchy * (k == 0 ? 0.6 : 0.38);
+      float reach = 0.16 + 0.08 * sin(az * 2.3 + fk * 3.0 + uTime * 0.05);
+      float curtain = smoothstep(-0.03, 0.03, above) * exp(-max(above, 0.0) / reach * 2.4);
+      float rays = 0.8 + 0.12 * sin(az * 23.0 + fold * 40.0 + fk * 4.0) + 0.08 * sin(az * 57.0 - uTime * 0.2 + fk * 2.7);
+      float patchy = 0.3 + 0.7 * smoothstep(-0.5, 0.9, sin(az * 1.1 + fk * 2.4 + uTime * 0.03) * 0.6 + sin(az * 2.7 - fk) * 0.4);
+      vec3 tint = mix(vec3(0.2, 0.95, 0.55), vec3(0.55, 0.36, 0.95), smoothstep(0.02, 0.3, above));
+      glow += tint * curtain * rays * patchy * (0.52 - fk * 0.12);
     }
     color += glow * uAurora;
   }
@@ -524,6 +545,10 @@ export class World {
 
   private readonly lit: THREE.MeshLambertMaterial;
   private readonly glow: THREE.MeshBasicMaterial;
+  // 金圈用的发光材质：比别的发光东西暗一些。圈一串串挨着、离镜头又近，和别的一样亮的话泛光会糊成一大片（用户截图说过曝）
+  private readonly ringGlow: THREE.MeshBasicMaterial;
+  // 每种路面一份材质，用到了才建
+  private readonly paves = new Map<Pave, THREE.MeshLambertMaterial>();
   private readonly litSway: THREE.MeshLambertMaterial;
   private readonly plain: THREE.MeshBasicMaterial;
   private readonly beam: THREE.MeshBasicMaterial;
@@ -570,6 +595,7 @@ export class World {
     this.still = still;
     this.lit = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     this.glow = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.ringGlow = new THREE.MeshBasicMaterial({ vertexColors: true });
     // 树和草用的材质：和普通的一样，只是顶点会按时间来回摆，越高的地方摆得越多，看着像有风
     this.litSway = this.lit.clone();
     this.litSway.onBeforeCompile = (shader) => {
@@ -598,7 +624,7 @@ export class World {
       fog: false,
       side: THREE.DoubleSide,
     });
-    this.disposables.push(this.lit, this.litSway, this.glow, this.plain, this.beam);
+    this.disposables.push(this.lit, this.litSway, this.glow, this.ringGlow, this.plain, this.beam);
 
     const moteShape = part(new THREE.IcosahedronGeometry(1, 0), 0xffffff);
     this.disposables.push(moteShape);
@@ -713,10 +739,10 @@ export class World {
 
     // 谷底的雾（云海断桥）：两层贴着水面的半透明雾，用一张画布现画的一团一团的白，慢慢飘。只有人在高处时才看得见
     this.mistTexture = mistTexture();
-    this.mist = [MIST_LOW, MIST_HIGH].map((height, k) => {
+    this.mist = MIST_LAYERS.map(([height, , repeat]) => {
       const map = this.mistTexture.clone();
       map.needsUpdate = true;
-      map.repeat.set(6 + k * 2, 6 + k * 2);
+      map.repeat.set(repeat, repeat);
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(FAR * 2, FAR * 2),
         new THREE.MeshBasicMaterial({ map, color: 0xffffff, transparent: true, depthWrite: false, opacity: 0 }),
@@ -752,7 +778,7 @@ export class World {
       const last = index === this.course.scenes.length - 1;
       // 第一段往后多铺了一截，终点仍然按场景本身的范围算，不能跟着 from 一起挪
       const to = last ? track.length : (index + 1) * track.sceneLength;
-      const road = new THREE.Mesh(this.buildRoad(from, to), this.lit);
+      const road = new THREE.Mesh(this.buildRoad(from, to), this.paveFor(this.course.scenes[index].pave));
       road.receiveShadow = true;
       chunk.add(road);
       const { cliff, roof } = this.buildCliffs(from, to);
@@ -808,6 +834,17 @@ export class World {
       if (Math.hypot(q.x - x, q.z - z) < need) return false;
     }
     return true;
+  }
+
+  // 这个场景的路面材质：每种路面一份，几个场景用同一种就共用
+  private paveFor(kind: Pave): THREE.MeshLambertMaterial {
+    let material = this.paves.get(kind);
+    if (!material) {
+      material = paveMaterial(kind);
+      this.paves.set(kind, material);
+      this.disposables.push(material);
+    }
+    return material;
   }
 
   // s 处是不是架在桥上（场景写了 bridge，离两头的门都有一段距离）。桥上的路面是一块薄薄的桥面，底下是一对对桥柱
@@ -888,9 +925,11 @@ export class World {
       moss: number;
       snow: boolean;
     }
-    const quad = (into: { position: number[]; color: number[] }, a: Point, b: Point, c: Point, d: Point, tint: Tint, light: number) => {
+    // 一块四边形拆成两个三角形，可以各上各的颜色：岩壁上的草木和石头按三角形分，边上是斜的锯齿，不是一格一格的方块
+    const quad = (into: { position: number[]; color: number[] }, a: Point, b: Point, c: Point, d: Point, tint: Tint, light: number, tint2: Tint = tint, light2: number = light) => {
       into.position.push(...a, ...b, ...c, ...a, ...c, ...d);
-      for (let i = 0; i < 6; i += 1) into.color.push(tint[0] * light, tint[1] * light, tint[2] * light);
+      for (let i = 0; i < 3; i += 1) into.color.push(tint[0] * light, tint[1] * light, tint[2] * light);
+      for (let i = 0; i < 3; i += 1) into.color.push(tint2[0] * light2, tint2[1] * light2, tint2[2] * light2);
     };
     const row = (s: number): Row | null => {
       const wall = this.wallAt(s);
@@ -955,10 +994,17 @@ export class World {
             // 崖顶往外那一半山：有草木的场景大半是绿的，山脊最高那一截在写了 snow 的场景里是雪
             const outer = j >= WALL_LEVELS;
             const share = outer ? 0.55 + 0.45 * near.moss : 0.25 + 0.75 * (j / WALL_LEVELS);
-            const green = grit(Math.floor(n / 2), j, side + 11) < near.moss * share;
+            // 草木按一大片一大片长：用平滑的噪声（二十米、两层一格），再掺一点细的，边上才不是整齐的方格。
+            // 原来是每八米一层随机一格，远看像棋盘（用户截图说「建模怪怪的」）
+            // 两个三角形各自判断：取样点错开半格，同一块里常常一半长草一半露石头
             const snowy = near.snow && outer && j <= WALL_LEVELS + 1;
-            const tint = snowy ? SNOW_TINT : green ? tints[grit(n, j + 31, side) < 0.5 ? 3 : 4] : outer ? tints[j === WALL_LEVELS ? 2 : 1] : tints[Math.abs(j + Math.floor(n / 5)) % 2];
-            quad(cliff, near.sides[side][j], near.sides[side][j + 1], next.sides[side][j + 1], next.sides[side][j], tint, 0.9 + grit(n, j + 60, side) * 0.2);
+            const pick = (half: number): Tint => {
+              const green = patches((n + half) / 5, (j + half) / 2, side + 11) * 0.75 + grit(n * 2 + half * 2, j, side + 13) * 0.25 < near.moss * share;
+              if (snowy) return SNOW_TINT;
+              if (green) return tints[patches((n + half) / 3, j + half, side + 31) < 0.5 ? 3 : 4];
+              return outer ? tints[j === WALL_LEVELS ? 2 : 1] : tints[Math.abs(j + Math.floor(n / 5)) % 2];
+            };
+            quad(cliff, near.sides[side][j], near.sides[side][j + 1], next.sides[side][j + 1], next.sides[side][j], pick(0), 0.9 + grit(n, j + 60, side) * 0.2, pick(0.5), 0.88 + grit(n, j + 70, side) * 0.2);
           }
         }
         if (near.arch && next.arch) {
@@ -995,6 +1041,9 @@ export class World {
     const track = this.course.track;
     const position: number[] = [];
     const color: number[] = [];
+    // 场景专属路面（pave.ts）：每个顶点是不是路面（1 才盖贴图），和它在贴图上的位置。桥身、断口、台阶这些也在这份几何体里，填 0
+    const paved: number[] = [];
+    const paveUv: number[] = [];
     const half = track.width / 2;
     const shade = new THREE.Color();
 
@@ -1031,13 +1080,11 @@ export class World {
       const sin = Math.sin(p.yaw);
       // 桥上：路沿以外的几条地面都收到桥面边上（面积是零，画不出来），桥面的侧边、底面和桥柱另外补
       const bridge = this.bridgeAt(s);
-      const points = offsets.map((offset) => {
-        const at = bridge && Math.abs(offset) > CURB ? Math.sign(offset) * DECK : offset;
-        return [p.x + cos * at, this.terrain(s, at, p.y, land, bumps), p.z + sin * at];
-      });
+      const across = offsets.map((offset) => (bridge && Math.abs(offset) > CURB ? Math.sign(offset) * DECK : offset));
+      const points = across.map((at) => [p.x + cos * at, this.terrain(s, at, p.y, land, bumps), p.z + sin * at]);
       // 颜色换得比地形快得多，另算一份
       const { a, b, w } = this.blend(s, PAINT_BLEND, PAINT_BLEND);
-      return { points, a, b, w, bridge, cos, sin, x: p.x, y: p.y, z: p.z };
+      return { points, across, s, a, b, w, bridge, cos, sin, x: p.x, y: p.y, z: p.z };
     };
     type Row = ReturnType<typeof row>;
     // 往下挪 depth 米
@@ -1083,7 +1130,11 @@ export class World {
       for (const [a, b, c, d, hex, light] of patches) {
         shade.setHex(hex).multiplyScalar(light);
         position.push(...a, ...b, ...c, ...a, ...c, ...d);
-        for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
+        for (let i = 0; i < 6; i += 1) {
+          color.push(shade.r, shade.g, shade.b);
+          paved.push(0);
+          paveUv.push(0, 0);
+        }
       }
     };
     let near = row(from);
@@ -1178,7 +1229,15 @@ export class World {
         const p2 = next.points[k + 1];
         const p3 = next.points[k];
         position.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
-        for (let i = 0; i < 6; i += 1) color.push(shade.r, shade.g, shade.b);
+        // 路沿以内的几条是路面，盖上场景的路面贴图；崖边刷了黄黑格的那几米不盖
+        const surface = edge >= 4 && !hazard ? 1 : 0;
+        const uv = (one: typeof near, j: number) => [one.across[j] / PAVE_ACROSS + 0.5, one.s / PAVE_ALONG];
+        const [u0, u1, u2, u3] = [uv(near, k), uv(near, k + 1), uv(next, k + 1), uv(next, k)];
+        paveUv.push(...u0, ...u1, ...u2, ...u0, ...u2, ...u3);
+        for (let i = 0; i < 6; i += 1) {
+          color.push(shade.r, shade.g, shade.b);
+          paved.push(surface);
+        }
       }
       if (near.bridge && next.bridge) {
         deckUnder(near, next);
@@ -1189,6 +1248,8 @@ export class World {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(color, 3));
+    geometry.setAttribute('pave', new THREE.Float32BufferAttribute(paved, 1));
+    geometry.setAttribute('paveUv', new THREE.Float32BufferAttribute(paveUv, 2));
     geometry.computeVertexNormals();
     this.disposables.push(geometry);
     return geometry;
@@ -1227,7 +1288,7 @@ export class World {
         // 断口里和断口两边不摆东西
         if (!rule.lift && track.faults.some((item) => s > item.s - 6 && s < item.s + item.gap + 6)) continue;
         // 台阶的石坎和它前面那条高跳弹簧附近也不摆，免得栅栏插在石坎里、石头压在弹簧上
-        if (!rule.lift && track.ledges.some((item) => s > item.s - HIGH_RUN - 5 && s < item.s + 4)) continue;
+        if (!rule.lift && track.ledges.some((item) => s > item.s - highRun(item.rise) - 5 && s < item.s + 4)) continue;
         // 只放在这段场景的某一截里的
         if (rule.part && (s / track.sceneLength - index < rule.part[0] || s / track.sceneLength - index > rule.part[1])) continue;
         // 只放露天的、只放洞顶底下的
@@ -1276,9 +1337,18 @@ export class World {
         else if (rule.float) y = SEA + 0.03;
         else if (rule.span) y = p.y;
         dummy.position.set(p.x + Math.cos(p.yaw) * offset, y, p.z + Math.sin(p.yaw) * offset);
-        dummy.rotation.set(0, rule.span ? -p.yaw : rule.face ? -side * (Math.PI / 2) - p.yaw : facing, 0);
-        dummy.scale.set(size, size * stretch, size);
+        // 瀑布顺着崖壁往后仰：崖壁每升一米往外斜 lean 米，竖直的瀑布顶上会离崖顶二十来米，像一块立在崖前的板子（用户截图说怪）。
+        // 往后仰同样的角度、按这一侧崖顶的实际高度拉长，水就贴着岩壁流下来
+        let tilt = 0;
+        if (rule.wall && wall) {
+          tilt = Math.atan(wall.lean);
+          const top = p.y + (this.course.covered(s) ? wall.height : wallHeight(wall.height, s, side));
+          stretch = (top - y) / FALL_HEIGHT / Math.cos(tilt);
+        }
+        dummy.rotation.set(-tilt, rule.span ? -p.yaw : rule.face ? -side * (Math.PI / 2) - p.yaw : facing, 0, 'YXZ');
+        dummy.scale.set(rule.wall ? size * 1.25 : size, size * stretch, size);
         dummy.updateMatrix();
+        dummy.rotation.order = 'XYZ';
         matrices.push(dummy.matrix.clone());
       }
       if (matrices.length === 0) continue;
@@ -1591,7 +1661,7 @@ export class World {
       const geometry =
         kind === 'token' ? tokenShape : kind === 'fish' ? fishShape(look.body, look.fin) : kind === 'gold' ? fishShape(0xffd84a, 0xfff2b0) : this.itemGeometry[kind];
       // 夜里和洞里的小鱼也用自己发光的材质，不然黑乎乎的看不见
-      const mesh = new THREE.InstancedMesh(geometry, kind === 'fish' && !look.glow ? this.lit : this.glow, mine.length);
+      const mesh = new THREE.InstancedMesh(geometry, kind === 'fish' && !look.glow ? this.lit : kind === 'ring' ? this.ringGlow : this.glow, mine.length);
       mesh.frustumCulled = false;
       mine.forEach(({ item, i }, id) => {
         track.at(item.s, p);
@@ -1666,6 +1736,7 @@ export class World {
   // 没开泛光就是 1，否则只会白成一片
   setGlow(boost: number): void {
     this.glow.color.setScalar(boost);
+    this.ringGlow.color.setScalar(1 + (boost - 1) * 0.3);
     this.skyUniforms.uSunBoost.value = boost;
   }
 
@@ -1875,15 +1946,22 @@ export class World {
     mix(a.sky[2], b.sky[2], w, this.waterUniforms.uWaterSky.value as THREE.Color).lerp(mix(a.sky[1], b.sky[1], w, colorA), 0.35);
     this.plane.position.set(eye.x, SEA, eye.z);
 
-    // 谷底的雾：这个场景要不要、人离水面多高（低于九米开始散，十八米以上最浓），两层各自慢慢往两个方向飘
+    // 谷底的雾：这个场景要不要、人离水面多高（低于九米开始散，十八米以上最浓），几层各自慢慢往不同的方向飘。
+    // 颜色不是纯白，是地平线的颜色往白里调一半再压暗一点，泛光不会把它晕成一片
     const mist = lerp(a.mist ?? 0, b.mist ?? 0, w) * smooth((eye.y - SEA - 9) / 9);
+    mix(a.sky[2], b.sky[2], w, colorA).lerp(colorB.setHex(0xffffff), 0.45).multiplyScalar(0.94);
     this.mist.forEach((mesh, k) => {
       mesh.visible = mist > 0.01;
       if (!mesh.visible) return;
       mesh.position.set(eye.x, mesh.position.y, eye.z);
       const material = mesh.material as THREE.MeshBasicMaterial;
-      material.opacity = mist * (k === 0 ? 0.85 : 0.55);
-      if (material.map && !this.still) material.map.offset.set(time * (k === 0 ? 0.004 : -0.003) + eye.x / (FAR * 2) * (6 + k * 2), time * 0.002 - eye.z / (FAR * 2) * (6 + k * 2));
+      const [height, thick, repeat] = MIST_LAYERS[k];
+      // 人低于这一层（或刚好平齐）就不画它：从底下看，雾层和崖壁交的那条线是一道硬邦邦的横带（用户截图里像一条灰带子）
+      material.opacity = mist * thick * smooth((eye.y - SEA - height - 2) / 6);
+      mesh.visible = material.opacity > 0.005;
+      material.color.copy(colorA);
+      const drift = (k % 2 ? -1 : 1) * (0.003 + k * 0.0008);
+      if (material.map && !this.still) material.map.offset.set(time * drift + (eye.x / (FAR * 2)) * repeat, time * 0.002 - (eye.z / (FAR * 2)) * repeat);
     });
     (this.stars.material as THREE.PointsMaterial).opacity = lerp(a.stars, b.stars, w);
     this.stars.visible = a.stars + b.stars > 0;

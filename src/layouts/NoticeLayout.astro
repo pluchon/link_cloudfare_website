@@ -92,7 +92,7 @@ const toc = current
             <!-- 标题只留给读屏软件和索引跳转，页面上不显示 -->
             <h1 class="sr-title" id="notice-title">{current.data.title}</h1>
 
-            {current.data.cover && <img class="head__cover" src={current.data.cover} alt="" />}
+            {current.data.cover && <img class="head__cover" src={current.data.cover} alt="" data-zoom />}
 
             <div class="prose notice__prose" set:html={html} />
           </article>
@@ -122,6 +122,9 @@ const toc = current
 </BaseLayout>
 
 <script>
+  // 正文里的图点开看大图（和文章页共用）；视窗封面包在链接里，点了是跳转
+  import '../scripts/lightbox';
+
   // 视窗里的标签只占一行：放不下就从最后一个往前藏，末尾补「+N」。只能按实际排版量
   function clampWindowTags() {
     document.querySelectorAll<HTMLElement>('[data-window-tags]').forEach((row) => {
@@ -395,6 +398,7 @@ const toc = current
     width: 100%;
     margin-bottom: 1.5rem;
     border: var(--hair) solid var(--line);
+    cursor: zoom-in;
   }
 
   /* 正文顶上不留空，和左边列表的上沿对齐 */

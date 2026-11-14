@@ -159,6 +159,8 @@ const JELLY_2048_ART_DIR =
   'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/20261105';
 const JELLY_2048_ALBUM_DIR =
   'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/album/20261113';
+const PELICAN_ALBUM_DIR =
+  'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/pelican-ride/album/20261113';
 
 export interface GameAlbumEntry {
   readonly id: string;
@@ -179,7 +181,7 @@ export const jelly2048Art = {
   },
 } as const;
 
-// 游戏画册条目：每款固定五格，实机截图与待补插画共用同一展陈网格
+// 游戏画册条目：五张排成「两大三小」，九张排成九宫格；实机截图与待补插画共用同一展陈网格
 export const gameAlbums: Record<string, readonly GameAlbumEntry[]> = {
   '/game/jelly-2048/': [
     {
@@ -213,31 +215,61 @@ export const gameAlbums: Record<string, readonly GameAlbumEntry[]> = {
       src: `${JELLY_2048_ALBUM_DIR}/art-05.webp`,
     },
   ],
+  // 实机截图，2026-11-13 从游戏画布直接导出（1280×800）
   '/game/pelican-ride/': [
     {
       id: '01',
-      title: '红架单车',
-      caption: '大嘴鸟热身出发',
+      title: '海滨晨光',
+      caption: '沿着海岸慢慢出发',
+      src: `${PELICAN_ALBUM_DIR}/01-beach.webp`,
     },
     {
       id: '02',
-      title: '三档跳台',
-      caption: '腾空跃过海岸线',
+      title: '樱花鸟居',
+      caption: '粉背鹈鹕钻红门',
+      src: `${PELICAN_ALBUM_DIR}/02-sakura.webp`,
     },
     {
       id: '03',
-      title: '辣椒冲刺',
-      caption: '火焰尾迹一路飙',
+      title: '沙漠弹射',
+      caption: '弹簧一蹬穿金圈',
+      src: `${PELICAN_ALBUM_DIR}/03-desert.webp`,
     },
     {
       id: '04',
-      title: '樱花风道',
-      caption: '钻过金环叼金鱼',
+      title: '灯塔夜海',
+      caption: '企鹅骑过船灯码头',
+      src: `${PELICAN_ALBUM_DIR}/04-lighthouse.webp`,
     },
     {
       id: '05',
-      title: '极光终点',
-      caption: '满筐纪念品归航',
+      title: '霓虹都市',
+      caption: '白熊冲过霓虹拱门',
+      src: `${PELICAN_ALBUM_DIR}/05-neon.webp`,
+    },
+    {
+      id: '06',
+      title: '极光雪原',
+      caption: '天上光帘慢慢飘',
+      src: `${PELICAN_ALBUM_DIR}/06-aurora.webp`,
+    },
+    {
+      id: '07',
+      title: '峡谷断层',
+      caption: '出了隧道飞向湖',
+      src: `${PELICAN_ALBUM_DIR}/07-canyon.webp`,
+    },
+    {
+      id: '08',
+      title: '云海断桥',
+      caption: '一截一截往下跳',
+      src: `${PELICAN_ALBUM_DIR}/08-bridge.webp`,
+    },
+    {
+      id: '09',
+      title: '水晶洞穴',
+      caption: '晶簇把洞里照亮',
+      src: `${PELICAN_ALBUM_DIR}/09-cave.webp`,
     },
   ],
 };
