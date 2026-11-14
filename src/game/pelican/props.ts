@@ -1003,13 +1003,21 @@ function shroomGlow(): PropShape {
 }
 
 // 石笋：地上长出来的几根尖石头
-function stalagmite(): PropShape {
+function stalagmite(colors: [number, number, number] = [0x5a5676, 0x4c4868, 0x656182]): PropShape {
   return {
     lit: join([
-      part(roughen(cone(0.7, 3.4, 6), 0.12), 0x5a5676, { p: [0, 1.7, 0] }),
-      part(roughen(cone(0.5, 2.2, 6), 0.12), 0x4c4868, { p: [0.8, 1.1, 0.3], r: [0, 0, -0.12] }),
-      part(roughen(cone(0.42, 1.6, 5), 0.12), 0x656182, { p: [-0.7, 0.8, -0.2], r: [0.1, 0, 0.16] }),
+      part(roughen(cone(0.7, 3.4, 6), 0.12), colors[0], { p: [0, 1.7, 0] }),
+      part(roughen(cone(0.5, 2.2, 6), 0.12), colors[1], { p: [0.8, 1.1, 0.3], r: [0, 0, -0.12] }),
+      part(roughen(cone(0.42, 1.6, 5), 0.12), colors[2], { p: [-0.7, 0.8, -0.2], r: [0.1, 0, 0.16] }),
     ]),
+  };
+}
+
+// 溶洞的石笋（高山峡谷的隧道里，2026-11-14 用户要「洞穴内是溶洞的感觉」）：石灰岩的米黄、灰白，底下一圈像流石一样的台子
+function flowstone(): PropShape {
+  const shape = stalagmite([0xcfc4a8, 0xb9ad90, 0xe0d6bc]);
+  return {
+    lit: join([shape.lit as THREE.BufferGeometry, part(roughen(blob(1.1, 0), 0.25), 0xa89c80, { p: [0, 0.1, 0], s: [1.4, 0.35, 1.2] })]),
   };
 }
 
@@ -1017,7 +1025,7 @@ function stalagmite(): PropShape {
 const caveRoof = (x: number) => 11 * (0.6 + 0.4 * Math.cos((x / 20) * (Math.PI / 2)));
 
 // 钟乳石：从洞顶垂下来的一排，跨在路上。最低的尖离路面也有六米多
-function stalactites(): PropShape {
+function stalactites(colors: [number, number] = [0x4c4868, 0x5a5676], tip = 0xb48cff): PropShape {
   const random = seeded(733);
   const rocks: THREE.BufferGeometry[] = [];
   const tips: THREE.BufferGeometry[] = [];
@@ -1026,9 +1034,9 @@ function stalactites(): PropShape {
     const z = (random() - 0.5) * 5;
     const length = 1.6 + random() * 2.2;
     const top = caveRoof(x) + 0.9;
-    rocks.push(part(roughen(cone(0.3 + length * 0.12, length, 5), 0.12), i % 2 ? 0x4c4868 : 0x5a5676, { p: [x, top - length / 2, z], r: [Math.PI, 0, 0] }));
-    // 有几根的尖上凝着一粒发光的水晶
-    if (i % 3 === 1) tips.push(part(new THREE.OctahedronGeometry(0.22, 0), 0xb48cff, { p: [x, top - length - 0.1, z], s: [1, 1.5, 1] }));
+    rocks.push(part(roughen(cone(0.3 + length * 0.12, length, 5), 0.12), i % 2 ? colors[0] : colors[1], { p: [x, top - length / 2, z], r: [Math.PI, 0, 0] }));
+    // 有几根的尖上凝着一粒发光的水晶（溶洞里是一滴亮亮的水）
+    if (i % 3 === 1) tips.push(part(new THREE.OctahedronGeometry(0.22, 0), tip, { p: [x, top - length - 0.1, z], s: [1, 1.5, 1] }));
   }
   return { lit: join(rocks), glow: join(tips) };
 }
@@ -1527,6 +1535,8 @@ const BUILDERS: Record<Exclude<PropKind, FlockKind>, () => PropShape> = {
   shroomGlow: () => shroomGlow(),
   stalagmite: () => stalagmite(),
   stalactites: () => stalactites(),
+  dripstone: () => stalactites([0xc9bea2, 0xb3a78a], 0x9fe6ff),
+  flowstone: () => flowstone(),
   caveLamp: () => caveLamp(),
   lotusBloom: () => lotusBloom(),
   reeds: () => reeds(),

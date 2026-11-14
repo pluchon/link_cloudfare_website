@@ -4,13 +4,16 @@
 import * as THREE from 'three';
 import { highRun, LANE_WIDTH, ROAD_WIDTH, type Course, type ItemKind, type Spring } from './course';
 import { part, buildBolt, buildBooster, buildWarning, buildChili, buildRocket, buildMagnet, buildFish, buildGate, buildLauncher, buildObstacle, buildPad, buildProp, buildRamp, buildRing, buildBird, buildSpring, buildToken, type FlockKind, type GateTheme, type PropShape } from './props';
-import type { Backdrop, PropKind, Scene, TokenKind, Walls } from './scenes';
+import type { Backdrop, PropKind, PropRule, Scene, TokenKind, Walls } from './scenes';
 import { seeded, type TrackPoint } from './track';
 import { PAVE_ACROSS, PAVE_ALONG, paveMaterial, type Pave } from './pave';
+import { Companion } from './companion';
 
 // 场景交界处三样东西各有各的过渡距离（米）：
 // 两侧地面的宽窄和起伏是地形，要在门前后各这么长的路上慢慢接上
 const SHAPE_BLEND = 60;
+// 崖壁（峡谷、断桥、洞穴两侧的山）从平地长起来要多远：在门前后各这么多米里慢慢长高
+const WALL_BLEND = 180;
 // 路面和地面的颜色在门前后各这么长的路上换完
 const PAINT_BLEND = 26;
 // 天空、雾、灯光：到了门才开始变，再骑出这么远才变完（平常速度大约八秒），看得出天色一点点换过去。
@@ -252,18 +255,48 @@ function ridge(s: number, side: number): number {
   return layer(s / 52 + side * 7.3, 5) * 0.7 + layer(s / 19 + side * 3.1, 9) * 0.3;
 }
 
-// 崖壁这一侧实际有多高：按山脊线在原来的高度上高低错落（八成到一倍三）
-function wallHeight(height: number, s: number, side: number): number {
-  return height * (0.8 + 0.5 * ridge(s, side));
+// 两侧的山一座一座的（2026-11-14 用户说峡谷「两边直接像立了一堵墙」，要「左右两侧都是连绵的山脉」）：
+// 沿路每一百多米一个山头，山头之间落成山坳。0 是山坳最低处，1 是山头。两层平滑噪声，左右两边不一样
+function massif(s: number, side: number): number {
+  const layer = (x: number, salt: number) => {
+    const i = Math.floor(x);
+    const f = x - i;
+    const u = f * f * (3 - 2 * f);
+    return lerp(grit(i, salt, side), grit(i + 1, salt, side), u);
+  };
+  const base = layer(s / 120 + side * 5.1, 21) * 0.7 + layer(s / 43 + side * 2.7, 23) * 0.3;
+  return smooth((base - 0.18) / 0.62);
 }
+
+// 崖壁这一侧实际有多高：山头是原来的一倍三，山坳只有四成五
+function wallHeight(height: number, s: number, side: number): number {
+  return height * (0.45 + 0.85 * massif(s, side)) * (0.92 + 0.16 * ridge(s, side));
+}
+
+// 崖脚离路多远：山坳那里往后退开三成，一座座山才分得开，不是一整面墙
+function wallFoot(foot: number, s: number, side: number): number {
+  return foot * (1 + 0.32 * (1 - massif(s, side)));
+}
+
+// 山坡多斜：山坳那里缓得多
+function wallLean(lean: number, s: number, side: number): number {
+  return lean * (1 + 1.1 * (1 - massif(s, side)));
+}
+
+// 山的横截面不是一条直线：脚下缓一点（碎石坡），往上越来越陡。t 是从脚到顶的几成，返回往外伸出的几成
+const FACE_CURVE = 0.82;
 
 // 崖顶往外的那一半山（用户嫌崖壁「只是一道窄墙」、从隔壁场景远远看过去「悬空」）：
 // 从崖顶内沿往外先隆起一道更高的山脊，再一路落到水平面，从外面看就是一座实心的山。
 // 返回几个转折点：离路中线多远、比路面高多少。最远不超过路中线外 OUTER_LIMIT 米，免得压到拐过来的别处的路
 const OUTER_LIMIT = 122;
-function outerSlope(edge: number, height: number, roadY: number): Array<[number, number]> {
+// crest 是后面那一排山头这里有多高（0 到 1），和前面那排错开着起伏，两排山头不会一起高一起低，看着才是连绵的群山
+function outerCrest(s: number, side: number): number {
+  return massif(s * 0.83 + 911, side);
+}
+function outerSlope(edge: number, height: number, roadY: number, crest = 0.5): Array<[number, number]> {
   const rise = Math.min(24, height * 0.5);
-  const peak = height * 1.28;
+  const peak = height * (1.02 + 0.55 * crest);
   const fall = Math.max(12, Math.min(44, OUTER_LIMIT - edge - rise));
   return [
     [edge + rise * 0.45, height * 1.18],
@@ -302,33 +335,51 @@ uniform float uSunBoost;
 uniform float uAurora;
 uniform float uTime;
 varying vec3 vDir;
+// 极光用的一维噪声：格点上取随机数，中间平滑地插过去；fbm 是三层叠起来
+float auroraHash(float n) { return fract(sin(n) * 43758.5453); }
+float auroraNoise(float x) {
+  float i = floor(x);
+  float f = fract(x);
+  return mix(auroraHash(i), auroraHash(i + 1.0), f * f * (3.0 - 2.0 * f));
+}
+float auroraFbm(float x) { return auroraNoise(x) * 0.5 + auroraNoise(x * 2.1 + 3.1) * 0.3 + auroraNoise(x * 4.3 + 7.7) * 0.2; }
 void main() {
   vec3 dir = normalize(vDir);
   float h = dir.y;
   vec3 color = h < 0.2 ? mix(uLow, uMid, smoothstep(0.0, 0.2, h)) : mix(uMid, uTop, smoothstep(0.2, 0.8, h));
   float angle = acos(clamp(dot(dir, uSunDir), -1.0, 1.0));
   float disc = 1.0 - smoothstep(uSunSize * 0.94, uSunSize, angle);
-  float halo = exp(-angle * angle / (uSunSize * uSunSize * 22.0)) * 0.42;
-  color = mix(color, uSun * uSunBoost, disc) + uSun * halo * (1.0 - disc);
+  // 用户说海滩、雪原这种太阳直射的场景「太阳光影有点大，晃眼睛」：光晕收窄、调暗，太阳本身也不再比白亮那么多（泛光会把它晕成一大团）
+  float halo = exp(-angle * angle / (uSunSize * uSunSize * 9.0)) * 0.2;
+  color = mix(color, uSun * min(uSunBoost, 1.25), disc) + uSun * halo * (1.0 - disc);
   // 极光：画在天空里，跟天空一样在无穷远处。两道帘子，下沿清楚、往上慢慢淡掉，竖着一根根光柱，底下绿、上头转紫，整片慢慢飘。
   // 用户嫌过早先那版「太低太假，像一个个条带子」：那是挂在七八十米高处的几片平面
   if (uAurora > 0.001 && h > 0.0) {
     float az = atan(dir.x, -dir.z);
     vec3 glow = vec3(0.0);
-    // 用户第二次嫌「一条一条的很怪」：早先的光柱明暗差到九成、又是整齐的正弦，看着就是一根根竖条子；下沿也太平太硬。
-    // 现在三层光帘，下沿按几种长短的褶子起伏、边缘软；光柱只有一两成的明暗、而且不整齐；帘子的高矮和亮度沿着天空慢慢变
+    // 第三版（2026-11-14 用户说条纹没了，但「感觉不是动态的，有点假」）：全用会流动的噪声，不用整齐的正弦。
+    // 帘子的褶子沿着天空慢慢游走；细细的光柱顺着帘子往一边飘、一闪一闪；一阵一阵的亮光沿着帘子推过去；整片还会轻轻地「呼吸」。
+    // 颜色照真的极光：下沿一道发白的亮绿，下沿底下偶尔一丝粉红，往上转绿、再转紫；后面再垫一层很淡的漫射光
+    float t = uTime;
     for (int k = 0; k < 3; k++) {
       float fk = float(k);
-      float fold = sin(az * 3.0 + fk * 1.7 + uTime * 0.04) * 0.05 + sin(az * 7.3 - uTime * 0.07 + fk * 2.1) * 0.025 + sin(az * 13.0 + uTime * 0.11 + fk) * 0.012;
-      float base = 0.15 + fk * 0.085 + fold;
+      float x = az * (2.2 + fk * 0.7);
+      float fold = (auroraFbm(x + t * 0.08 + fk * 13.0) - 0.5) * 0.17 + (auroraNoise(az * 9.0 - t * 0.35 + fk * 5.0) - 0.5) * 0.03;
+      float base = 0.13 + fk * 0.1 + fold;
       float above = h - base;
-      float reach = 0.16 + 0.08 * sin(az * 2.3 + fk * 3.0 + uTime * 0.05);
-      float curtain = smoothstep(-0.03, 0.03, above) * exp(-max(above, 0.0) / reach * 2.4);
-      float rays = 0.8 + 0.12 * sin(az * 23.0 + fold * 40.0 + fk * 4.0) + 0.08 * sin(az * 57.0 - uTime * 0.2 + fk * 2.7);
-      float patchy = 0.3 + 0.7 * smoothstep(-0.5, 0.9, sin(az * 1.1 + fk * 2.4 + uTime * 0.03) * 0.6 + sin(az * 2.7 - fk) * 0.4);
-      vec3 tint = mix(vec3(0.2, 0.95, 0.55), vec3(0.55, 0.36, 0.95), smoothstep(0.02, 0.3, above));
-      glow += tint * curtain * rays * patchy * (0.52 - fk * 0.12);
+      float r1 = auroraNoise(az * 60.0 + t * 0.9 + fk * 11.0);
+      float r2 = auroraNoise(az * 23.0 - t * 0.4 + fk * 3.0);
+      float rays = 0.55 + 0.3 * r1 + 0.25 * r2;
+      float reach = 0.1 + 0.18 * r2 + 0.06 * fk;
+      float curtain = smoothstep(-0.015, 0.02, above) * exp(-max(above, 0.0) / reach * 2.2);
+      float fringe = smoothstep(-0.04, 0.0, above) * (1.0 - smoothstep(0.0, 0.015, above));
+      float surge = 0.35 + 0.65 * smoothstep(0.25, 0.85, auroraFbm(az * 1.3 - t * 0.12 + fk * 7.0));
+      float pulse = 0.85 + 0.15 * sin(t * 0.6 + fk * 2.0 + az * 3.0);
+      vec3 tint = mix(vec3(0.55, 1.0, 0.72), vec3(0.15, 0.9, 0.45), smoothstep(0.0, 0.04, above));
+      tint = mix(tint, vec3(0.5, 0.25, 0.85), smoothstep(0.08, 0.32, above));
+      glow += (tint * curtain * rays + vec3(0.9, 0.3, 0.6) * fringe * 0.35) * surge * pulse * (0.55 - fk * 0.15);
     }
+    glow += vec3(0.1, 0.4, 0.25) * exp(-pow((h - 0.25) / 0.15, 2.0)) * 0.08;
     color += glow * uAurora;
   }
   gl_FragColor = vec4(color, 1.0);
@@ -587,10 +638,31 @@ export class World {
     uWaterSky: { value: new THREE.Color() },
   };
   private readonly mistTexture: THREE.CanvasTexture;
+  // 这一刻的氛围（2026-11-14 用户要的「不是简单的光影，要有氛围的感觉」），game.ts 的后期那一道按它画光束、调色、压四角：
+  // 太阳的方向和颜色、暗部偏什么色、亮部偏什么色、光束多强、四角压暗多少、饱和度。跟着天色一起，过了门慢慢换过去
+  // 跟着鹈鹕的小伙伴：正在跟的那个，加上换场景时正在飞走的
+  private readonly companions: Companion[] = [];
+  // 光团、萤火虫借用的那盏点光源，一直挂在场景里，没人用时亮度是零
+  private readonly lamp = new THREE.PointLight(0xffffff, 0, 16, 1.6);
+  private lastTime = -1;
+  private lastS = 0;
+  readonly mood = {
+    sunDir: new THREE.Vector3(0, 1, 0),
+    sun: new THREE.Color(),
+    shade: new THREE.Color(),
+    light: new THREE.Color(),
+    rays: 0,
+    vignette: 0.3,
+    saturation: 1.06,
+  };
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
 
-  constructor(course: Course, still = false) {
+  // lite 是手机、平板这些触屏设备：草和花少一半、别的景物少两成、空气里飘的东西少一些、阴影贴图小一半（2026-11-14 用户要「兼顾一点移动端」）
+  private readonly lite: boolean;
+
+  constructor(course: Course, still = false, lite = false) {
+    this.lite = lite;
     this.course = course;
     this.still = still;
     this.lit = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -698,7 +770,7 @@ export class World {
     const airRandom = seeded(97);
     const airPosition: number[] = [];
     const airSeed: number[] = [];
-    for (let i = 0; i < AIR_COUNT; i += 1) {
+    for (let i = 0; i < (this.lite ? 180 : AIR_COUNT); i += 1) {
       airPosition.push(airRandom() * AIR_BOX[0], airRandom() * AIR_BOX[1], airRandom() * AIR_BOX[2]);
       airSeed.push(airRandom());
     }
@@ -759,7 +831,7 @@ export class World {
     this.sun = new THREE.DirectionalLight();
     // 阴影：一盏平行光照出一张贴图，只罩住车周围的一块
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+    this.sun.shadow.mapSize.set(this.lite ? SHADOW_MAP / 2 : SHADOW_MAP, this.lite ? SHADOW_MAP / 2 : SHADOW_MAP);
     const frustum = this.sun.shadow.camera;
     frustum.left = -SHADOW_REACH;
     frustum.right = SHADOW_REACH;
@@ -769,7 +841,7 @@ export class World {
     frustum.far = 420;
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.35;
-    this.group.add(this.hemi, this.sun, this.sun.target);
+    this.group.add(this.hemi, this.sun, this.sun.target, this.lamp);
 
     const track = course.track;
     for (let index = 0; index < this.course.scenes.length; index += 1) {
@@ -871,29 +943,34 @@ export class World {
 
   // s 处两侧的崖壁：脚在哪、多高、多斜。前后两个场景一个有崖壁一个没有时，高度从零慢慢长起来
   private wallAt(s: number): { foot: number; height: number; lean: number; one: Walls; two: Walls; w: number } | null {
-    const { a, b, w } = this.blend(s, SHAPE_BLEND, SHAPE_BLEND);
+    // 崖壁在门前后各 WALL_BLEND 米里慢慢长起来、慢慢落下去（原来 60 米，用户说进云海断桥前「两侧看起来像两个墙壁」）；
+    // 还矮的时候离路更远、坡也缓，看着是前面的山脚一路连过来的丘陵
+    const { a, b, w } = this.blend(s, WALL_BLEND, WALL_BLEND);
     if (!a.walls && !b.walls) return null;
     const one = a.walls ?? (b.walls as Walls);
     const two = b.walls ?? (a.walls as Walls);
     const height = lerp(a.walls ? a.walls.height : 0, b.walls ? b.walls.height : 0, w);
+    const rise = a.walls && b.walls ? 1 : a.walls ? 1 - w : w;
     // 写了 widen 的崖壁：过了那一点，崖脚在四十米里往外退开
     const footOf = (walls: Walls, scene: Scene) => {
       if (!walls.widen) return walls.foot;
       const at = s / this.course.track.sceneLength - this.course.scenes.indexOf(scene);
       return lerp(walls.foot, walls.widen.foot, smooth((at - walls.widen.from) / 0.07));
     };
-    return { foot: lerp(footOf(one, a.walls ? a : b), footOf(two, b.walls ? b : a), w), height, lean: lerp(one.lean, two.lean, w), one, two, w };
+    const foot = lerp(footOf(one, a.walls ? a : b), footOf(two, b.walls ? b : a), w) * (1 + 0.7 * (1 - rise));
+    return { foot, height, lean: lerp(one.lean, two.lean, w) * (1 + 1.4 * (1 - rise)), one, two, w };
   }
 
   // s 处崖壁外面那一半山，在离路中线 reach 米处有多高（世界坐标）。不在山坡上（更远、外面是水）返回 null
   private wallSlopeAt(s: number, side: number, reach: number): number | null {
     const wall = this.wallAt(s);
     if (!wall) return null;
-    const height = this.course.covered(s) ? wall.height : wallHeight(wall.height, s, side);
+    const covered = this.course.covered(s);
+    const height = covered ? wall.height : wallHeight(wall.height, s, side);
     const roadY = this.course.track.at(s, q).y;
-    const edge = wall.foot + wall.lean * height;
+    const edge = covered ? wall.foot + wall.lean * height : wallFoot(wall.foot, s, side) + wallLean(wall.lean, s, side) * height;
     let last: [number, number] = [edge, height];
-    for (const point of outerSlope(edge, height, roadY)) {
+    for (const point of outerSlope(edge, height, roadY, outerCrest(s, side))) {
       if (reach <= point[0]) {
         const u = (reach - last[0]) / Math.max(0.01, point[0] - last[0]);
         const y = roadY + lerp(last[1], point[1], u);
@@ -924,6 +1001,8 @@ export class World {
       // 岩壁上草木长了几成；山脊上有没有雪
       moss: number;
       snow: boolean;
+      // 两侧这里是山头还是山坳（0 到 1）：只有高的山头上才积雪，一整条雪线看着像墙头
+      peaks: [number, number];
     }
     // 一块四边形拆成两个三角形，可以各上各的颜色：岩壁上的草木和石头按三角形分，边上是斜的锯齿，不是一格一格的方块
     const quad = (into: { position: number[]; color: number[] }, a: Point, b: Point, c: Point, d: Point, tint: Tint, light: number, tint2: Tint = tint, light2: number = light) => {
@@ -946,17 +1025,20 @@ export class World {
       const sides = [-1, 1].map((side) => {
         const points: Point[] = [];
         // 这一侧的崖顶按山脊线高低错落；洞顶那几排两边一样高，洞口才砌得严
-        const height = this.course.covered(s) ? wall.height : wallHeight(wall.height, s, side);
+        const covered = this.course.covered(s);
+        const height = covered ? wall.height : wallHeight(wall.height, s, side);
+        const foot = covered ? wall.foot : wallFoot(wall.foot, s, side);
+        const lean = covered ? wall.lean : wallLean(wall.lean, s, side);
         const sideTop = p.y + height;
-        const sideEdge = wall.foot + wall.lean * height;
+        const sideEdge = foot + lean * height;
         for (let j = 0; j <= WALL_LEVELS; j += 1) {
           const t = j / WALL_LEVELS;
-          const out = wall.foot + wall.lean * height * t + (j > 0 ? (grit(n, j, side) - 0.35) * 2.6 * rough : 0);
+          const out = foot + lean * height * t ** FACE_CURVE + (j > 0 ? (grit(n, j, side) - 0.35) * 2.6 * rough : 0);
           const y = lerp(SEA - 1.5, sideTop, t) + (j > 0 && j < WALL_LEVELS ? (grit(n, j + 20, side) - 0.5) * 1.6 * rough : 0);
           points.push(at(side * out, y));
         }
         // 崖顶往外是另一半山：先隆起一道山脊，再落到水平面
-        outerSlope(sideEdge, height, p.y).forEach(([out, rise], k) => {
+        outerSlope(sideEdge, height, p.y, outerCrest(s, side)).forEach(([out, rise], k) => {
           // 山坡上不再随机起伏：崖顶外面的树是按这条坡算高度摆的，坡面自己再抖一下，树就会悬在半空或者埋进去（用户截图指出过）
           points.push(at(side * out, p.y + rise));
         });
@@ -970,7 +1052,8 @@ export class World {
         for (let k = 0; k <= ROOF_SEGMENTS; k += 1) {
           const u = -1 + (2 * k) / ROOF_SEGMENTS;
           arch.push(at(u * (wall.foot + ROOF_TUCK), p.y + peak * (0.6 + 0.4 * Math.cos((u * Math.PI) / 2)) + (grit(n, k + 40, 0) - 0.5) * 0.9));
-          rim.push(at(u * (edge + 3), top + 0.3));
+          // 洞口上面不是一道平平的墙头：中间隆起，像山从两边连过来盖在隧道上（用户说峡谷「直接像立了一堵墙」）
+          rim.push(at(u * (edge + 3), top + 0.3 + (1 - u * u) * wall.height * 0.3 + (grit(n, k + 50, 0) - 0.5) * 4));
         }
       }
       const tints = [
@@ -980,7 +1063,16 @@ export class World {
         mix((wall.one.moss ?? wall.one).color[0], (wall.two.moss ?? wall.two).color[0], wall.w, colorA).toArray() as Tint,
         mix((wall.one.moss ?? wall.one).color[1], (wall.two.moss ?? wall.two).color[1], wall.w, colorA).toArray() as Tint,
       ];
-      return { n, sides, arch, rim, tints, moss: lerp(wall.one.moss?.amount ?? 0, wall.two.moss?.amount ?? 0, wall.w), snow: !!(wall.w < 0.5 ? wall.one.snow : wall.two.snow) };
+      return {
+        n,
+        sides,
+        arch,
+        rim,
+        tints,
+        moss: lerp(wall.one.moss?.amount ?? 0, wall.two.moss?.amount ?? 0, wall.w),
+        snow: !!(wall.w < 0.5 ? wall.one.snow : wall.two.snow),
+        peaks: [Math.max(massif(s, -1), outerCrest(s, -1)), Math.max(massif(s, 1), outerCrest(s, 1))],
+      };
     };
 
     let near = row(from);
@@ -997,9 +1089,10 @@ export class World {
             // 草木按一大片一大片长：用平滑的噪声（二十米、两层一格），再掺一点细的，边上才不是整齐的方格。
             // 原来是每八米一层随机一格，远看像棋盘（用户截图说「建模怪怪的」）
             // 两个三角形各自判断：取样点错开半格，同一块里常常一半长草一半露石头
-            const snowy = near.snow && outer && j <= WALL_LEVELS + 1;
+            const snowy = near.snow && outer && j <= WALL_LEVELS + 1 && near.peaks[side] > 0.55;
+            const mossAmount = near.moss;
             const pick = (half: number): Tint => {
-              const green = patches((n + half) / 5, (j + half) / 2, side + 11) * 0.75 + grit(n * 2 + half * 2, j, side + 13) * 0.25 < near.moss * share;
+              const green = patches((n + half) / 5, (j + half) / 2, side + 11) * 0.75 + grit(n * 2 + half * 2, j, side + 13) * 0.25 < mossAmount * share;
               if (snowy) return SNOW_TINT;
               if (green) return tints[patches((n + half) / 3, j + half, side + 31) < 0.5 ? 3 : 4];
               return outer ? tints[j === WALL_LEVELS ? 2 : 1] : tints[Math.abs(j + Math.floor(n / 5)) % 2];
@@ -1017,8 +1110,23 @@ export class World {
         // 洞口：这一排有顶、隔壁那一排没有，就在有顶的这一排砌一面墙，从拱一直砌到崖顶
         const mouth = near.arch && !next.arch ? near : !near.arch && next.arch ? next : null;
         if (mouth?.arch) {
+          // 洞口那面山：拱上先一圈深色的石头券，再往上分两层，岩石和草木一块块的，和两边的山是一样的长法
+          const along = (from: Point, to: Point, u: number): Point => [lerp(from[0], to[0], u), lerp(from[1], to[1], u), lerp(from[2], to[2], u)];
+          const ring: Tint = [tints[1][0] * 0.62, tints[1][1] * 0.62, tints[1][2] * 0.62];
           for (let k = 0; k < ROOF_SEGMENTS; k += 1) {
-            quad(roof, mouth.arch[k], mouth.arch[k + 1], mouth.rim[k + 1], mouth.rim[k], tints[0], 0.8 + grit(n, k + 90, 0) * 0.14);
+            const cuts = [0, 0.16, 0.55, 1];
+            for (let band = 0; band < 3; band += 1) {
+              const a = along(mouth.arch[k], mouth.rim[k], cuts[band]);
+              const b = along(mouth.arch[k + 1], mouth.rim[k + 1], cuts[band]);
+              const c = along(mouth.arch[k + 1], mouth.rim[k + 1], cuts[band + 1]);
+              const d = along(mouth.arch[k], mouth.rim[k], cuts[band + 1]);
+              const face = (half: number): Tint => {
+                if (band === 0) return ring;
+                const green = patches((k + half) / 2, band + mouth.n * 0.1, 41) < mouth.moss * (band === 2 ? 0.9 : 0.5);
+                return green ? tints[patches(k + half, band, 43) < 0.5 ? 3 : 4] : tints[(k + band) % 2];
+              };
+              quad(roof, a, b, c, d, face(0), 0.82 + grit(n, k + 90 + band, 0) * 0.16, face(0.5), 0.78 + grit(n, k + 95 + band, 0) * 0.16);
+            }
           }
         }
       }
@@ -1099,9 +1207,20 @@ export class World {
       ]);
     };
     // 桥面一头断开的地方：一道和桥面一样厚的截面
+    // 用户要「路的断面修缮一下」：原来只是一块平平的截面。现在上面一层薄薄的路面（深色），底下是石头桥身，
+    // 断开的下沿参差不齐，像真的断掉的；每一列深浅不一
     const deckCap = (one: Row) => {
-      const last = one.points.length - 1;
-      paintAll([[one.points[0], one.points[last], down(one.points[last]), down(one.points[0]), BRIDGE_STONE[1], 0.8]]);
+      const pave = 0.22;
+      const teeth = (j: number) => DECK_DEPTH * (1 + grit(one.s, j, 17) * 0.75);
+      const patches: Patch[] = [];
+      for (let k = 0; k < one.points.length - 1; k += 1) {
+        const a = one.points[k];
+        const b = one.points[k + 1];
+        if (Math.hypot(a[0] - b[0], a[2] - b[2]) < 0.01) continue;
+        patches.push([a, b, down(b, pave), down(a, pave), one.a.road, 0.55]);
+        patches.push([down(a, pave), down(b, pave), down(b, teeth(k + 1)), down(a, teeth(k)), BRIDGE_STONE[k % 2], 0.68 + grit(one.s, k, 19) * 0.22]);
+      }
+      paintAll(patches);
     };
     // 一对桥柱，顶上一道横梁，从桥面底下一直落进水里
     const pillars = (one: Row) => {
@@ -1159,7 +1278,9 @@ export class World {
         const wall = lip.a.walls?.color ?? [0x8f929c, 0x787c88];
         for (let k = 0; k < STRIPS; k += 1) {
           const patches: Patch[] = [
-            [lip.points[k], lip.points[k + 1], sink(lip.points[k + 1], split), sink(lip.points[k], split), wall[k % 2], 0.9 + grit(k, 3, 7) * 0.2],
+            // 崖边最上面一层是路面的截面（深色、薄薄一层），往下才是岩石
+            [lip.points[k], lip.points[k + 1], down(lip.points[k + 1], 0.25), down(lip.points[k], 0.25), k >= 4 && k < STRIPS - 4 ? lip.a.road : lip.a.ground[0], 0.55],
+            [down(lip.points[k], 0.25), down(lip.points[k + 1], 0.25), sink(lip.points[k + 1], split), sink(lip.points[k], split), wall[k % 2], 0.9 + grit(k, 3, 7) * 0.2],
             [sink(lip.points[k]), sink(lip.points[k + 1]), sink(far.points[k + 1]), sink(far.points[k]), lip.a.far, 1],
             [sink(far.points[k], split), sink(far.points[k + 1], split), far.points[k + 1], far.points[k], wall[(k + 1) % 2], 0.8 + grit(k, 5, 9) * 0.2],
           ];
@@ -1265,12 +1386,37 @@ export class World {
     return found;
   }
 
+  // 两侧远处的大山（2026-11-14 用户给了一张雪山的照片：「远处是连绵的群山，往左右两侧扩展很多，中间是峡谷或者洞穴」）：
+  // 有崖壁的场景，崖壁外面再立一排更大的雪山；隔壁的场景在挨着它的那三成里也立几座，山一路连过去，不是到门口一下子没了。
+  // 原来这些场景清单里写的远山在崖壁外面全被跳过了（崖壁外面的景物只认山坡，山坡以外的直接不放），所以一直看不到
+  private ranges(index: number): PropRule[] {
+    const scenes = this.course.scenes;
+    const own = scenes[index];
+    const range = (walls: Walls, per100: number, part?: [number, number]): PropRule => ({
+      kind: walls.snow || walls.height > 40 ? 'mountainSnow' : 'mountain',
+      per100,
+      near: 170,
+      far: 330,
+      clear: 86,
+      scale: [1, 1.6],
+      ...(part ? { part } : {}),
+    });
+    if (own.walls) return [range(own.walls, 2.2)];
+    const out: PropRule[] = [];
+    const before = scenes[index - 1]?.walls;
+    const after = scenes[index + 1]?.walls;
+    if (before) out.push(range(before, 2, [0, 0.3]));
+    if (after) out.push(range(after, 2, [0.7, 1]));
+    return out;
+  }
+
   private addProps(chunk: THREE.Group, index: number, from: number, to: number): void {
     const track = this.course.track;
     const scene = this.course.scenes[index];
     const random = seeded(index * 977 + 13);
-    for (const rule of scene.props) {
-      const exact = (rule.per100 * (to - from)) / 100;
+    for (const rule of [...scene.props, ...this.ranges(index)]) {
+      const thin = this.lite ? (FLAT.has(rule.kind) ? 0.5 : 0.8) : 1;
+      const exact = (rule.per100 * thin * (to - from)) / 100;
       const count = Math.floor(exact) + (random() < exact % 1 ? 1 : 0);
       if (count === 0) continue;
       const matrices: THREE.Matrix4[] = [];
@@ -1299,12 +1445,14 @@ export class World {
         let slopeY = 0;
         let stretch = 1;
         if (rule.wall) {
-          if (!wall || wall.height < 14) continue;
-          reach = wall.foot + 0.6;
+          // 瀑布只挂在山头上，山坳里矮矮的一截挂不住
+          if (!wall || wall.height < 14 || massif(s, side) < 0.45) continue;
+          reach = wallFoot(wall.foot, s, side) + 0.6;
           stretch = wall.height / FALL_HEIGHT;
-        } else if (wall && wall.height > 1.5 && !rule.span && !rule.lift && reach > wall.foot - 1.5) {
+        } else if (wall && wall.height > 1.5 && !rule.span && !rule.lift && !(rule.clear && reach > OUTER_LIMIT) && reach > (this.course.covered(s) ? wall.foot : wallFoot(wall.foot, s, side)) - 1.5) {
           // 落在崖壁外面那一半山上的，站到山坡上（按山坡在那里的高度）；落在山外面的水里就不放
-          if (rule.float || reach < wall.foot + wall.lean * wall.height + 5) continue;
+          const sideEdge = this.course.covered(s) ? wall.foot + wall.lean * wall.height : wallFoot(wall.foot, s, side) + wallLean(wall.lean, s, side) * wallHeight(wall.height, s, side);
+          if (rule.float || reach < sideEdge + 5) continue;
           const ground = this.wallSlopeAt(s, side, reach);
           if (ground === null) continue;
           slopeY = ground;
@@ -1341,7 +1489,7 @@ export class World {
         // 往后仰同样的角度、按这一侧崖顶的实际高度拉长，水就贴着岩壁流下来
         let tilt = 0;
         if (rule.wall && wall) {
-          tilt = Math.atan(wall.lean);
+          tilt = Math.atan(this.course.covered(s) ? wall.lean : wallLean(wall.lean, s, side));
           const top = p.y + (this.course.covered(s) ? wall.height : wallHeight(wall.height, s, side));
           stretch = (top - y) / FALL_HEIGHT / Math.cos(tilt);
         }
@@ -1882,12 +2030,44 @@ export class World {
     }
   }
 
+  // 小伙伴：进了新场景，原来那个往上往外飞走，这个场景的从后上方飞过来，然后一直跟着
+  private follow(s: number, focus: THREE.Vector3, time: number): void {
+    const dt = this.lastTime < 0 ? 0 : Math.max(0, Math.min(0.1, time - this.lastTime));
+    const speed = dt > 0 ? Math.max(0, (s - this.lastS) / dt) : 0;
+    this.lastTime = time;
+    this.lastS = s;
+    const track = this.course.track;
+    const kind = this.course.scenes[track.sceneAt(s)].companion;
+    const active = this.companions.find((item) => !item.gone && item.kind === kind);
+    for (const item of this.companions) if (item !== active) item.retire();
+    track.at(s, p);
+    if (!active) {
+      const start = new THREE.Vector3(focus.x - Math.sin(p.yaw) * 30, focus.y + 12, focus.z + Math.cos(p.yaw) * 30);
+      const made = new Companion(kind, this.lit, this.glow, start, this.lamp);
+      this.group.add(made.group);
+      this.companions.push(made);
+    }
+    this.lamp.intensity = 0;
+    for (let i = this.companions.length - 1; i >= 0; i -= 1) {
+      const item = this.companions[i];
+      item.update(dt, focus, p.yaw, speed, time, this.still, this.course.covered(s) ? 5 : Infinity);
+      if (item.gone) {
+        item.dispose();
+        this.companions.splice(i, 1);
+      }
+    }
+  }
+
   // 每帧调用：s 是车沿路的位置，eye 是镜头的位置，focus 是车在世界里的位置，time 是累计时间（秒）
   update(s: number, eye: THREE.Vector3, focus: THREE.Vector3, time: number): void {
     const track = this.course.track;
     const current = track.sceneAt(s);
+    // 只画看得见的几段：后面那一段只在刚过门不久时画（门前的景物还在镜头里），往前第二段只在快到下一道门时画。
+    // 场景加长到 900 米以后，一直画前后四段等于画三公里多的景物，雾外面的都白画了
+    const local = s - current * track.sceneLength;
     this.chunks.forEach((chunk, index) => {
-      chunk.visible = index >= current - BEHIND && index <= current + AHEAD;
+      chunk.visible =
+        index === current || index === current + 1 || (index === current - BEHIND && local < 160) || (index === current + AHEAD && local > track.sceneLength - 380);
     });
     // 鹈鹕的嘴大概在这里：磁铁吸过来的东西往这儿飞
     this.mouth.set(focus.x, focus.y + 1.5, focus.z);
@@ -1903,19 +2083,35 @@ export class World {
     this.tumble(time);
     this.drift(time);
 
+    this.follow(s, focus, time);
+
     // 天空、雾、灯光：过了门才开始换
     const { a, b, w } = this.blend(s, 0, ARRIVE);
     mix(a.sky[0], b.sky[0], w, this.skyUniforms.uTop.value);
     mix(a.sky[1], b.sky[1], w, this.skyUniforms.uMid.value);
     mix(a.sky[2], b.sky[2], w, this.skyUniforms.uLow.value);
     mix(a.sun.color, b.sun.color, w, this.skyUniforms.uSun.value);
-    this.skyUniforms.uSunSize.value = lerp(a.sun.size, b.sun.size, w);
+    // 太阳画得比场景里写的小三成（同一次嫌晃眼）
+    this.skyUniforms.uSunSize.value = lerp(a.sun.size, b.sun.size, w) * 0.7;
     this.skyUniforms.uAurora.value = lerp(a.aurora ?? 0, b.aurora ?? 0, w);
     this.skyUniforms.uTime.value = this.still ? 0 : time;
     const height = (lerp(a.sun.height, b.sun.height, w) * Math.PI) / 180;
     const turn = (lerp(a.sun.turn, b.sun.turn, w) * Math.PI) / 180;
     const direction = this.skyUniforms.uSunDir.value as THREE.Vector3;
     direction.set(Math.sin(turn) * Math.cos(height), Math.sin(height), -Math.cos(turn) * Math.cos(height));
+
+    // 氛围：光束的强弱不写就自己算——太阳越低越强（傍晚、清晨的光一道一道的），夜里只剩一点月光，洞里没有。
+    // 暗部往天顶的颜色偏，亮部往太阳的颜色偏，都先除掉亮度只留色相
+    const raysOf = (scene: Scene) => scene.rays ?? (scene.stars > 0.5 ? 0.2 : scene.sun.height < 30 ? 0.75 : scene.sun.height < 45 ? 0.5 : 0.35);
+    const vignetteOf = (scene: Scene) => scene.vignette ?? (scene.stars > 0.5 ? 0.5 : 0.3);
+    this.mood.sunDir.copy(direction);
+    mix(a.sun.color, b.sun.color, w, this.mood.sun);
+    this.mood.rays = lerp(raysOf(a), raysOf(b), w) * (this.course.covered(s) ? 0 : 1);
+    this.mood.vignette = lerp(vignetteOf(a), vignetteOf(b), w);
+    this.mood.saturation = lerp(a.stars > 0.5 ? 0.98 : 1.08, b.stars > 0.5 ? 0.98 : 1.08, w);
+    const hue = (color: THREE.Color) => color.multiplyScalar(1 / Math.max(0.05, color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722));
+    hue(mix(a.sky[0], b.sky[0], w, this.mood.shade).lerp(mix(a.light.ground, b.light.ground, w, colorA), 0.3));
+    hue(mix(a.light.sun, b.light.sun, w, this.mood.light));
 
     mix(a.sky[2], b.sky[2], w, this.fog.color);
     this.fog.near = lerp(a.fog[0], b.fog[0], w);
@@ -2003,6 +2199,8 @@ export class World {
   }
 
   dispose(): void {
+    this.companions.forEach((item) => item.dispose());
+    this.companions.length = 0;
     this.disposables.forEach((item) => item.dispose());
     this.sky.geometry.dispose();
     (this.sky.material as THREE.Material).dispose();

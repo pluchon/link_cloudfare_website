@@ -3,6 +3,7 @@
 
 import type { GateTheme } from './props';
 import type { Pave } from './pave';
+import type { CompanionKind } from './companion';
 import type { TrackStyle } from './track';
 
 export type PropKind =
@@ -120,6 +121,9 @@ export type PropKind =
   | 'shroomGlow'
   | 'stalagmite'
   | 'stalactites'
+  // 溶洞的钟乳石和石笋（石灰岩的颜色）
+  | 'dripstone'
+  | 'flowstone'
   | 'caveLamp'
   | 'bats'
   | 'eagles'
@@ -260,6 +264,11 @@ export interface Scene extends TrackStyle {
   bridge?: boolean;
   // 谷底飘着的雾有多浓，0 到 1。只有人在高处时看得见，下到水面就散开
   mist?: number;
+  // 氛围（game.ts 的 ATMOSPHERE）：太阳在画面里往外放的光束有多强（不写就按太阳的高低和是不是夜里算）、四角压暗多少
+  rays?: number;
+  vignette?: number;
+  // 跟着鹈鹕的小伙伴（companion.ts，2026-11-14 用户要的），每个场景一种
+  companion: CompanionKind;
   props: PropRule[];
 }
 
@@ -271,6 +280,8 @@ export const SCENE_LENGTH = 900;
 export const SCENES: readonly Scene[] = [
   {
     name: '海滨晨光',
+    // 一只海鸥贴着海岸跟着飞
+    companion: 'gull',
     token: { kind: 'shell', name: '贝壳' },
     gate: 'driftwood',
     fish: { form: 'plain', body: 0xf2933a, fin: 0xfbc46a },
@@ -313,6 +324,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '花田风车',
+    // 一只黄蝴蝶跟着乱飞
+    companion: 'butterfly',
     token: { kind: 'sunflower', name: '向日葵' },
     gate: 'flowers',
     fish: { form: 'round', body: 0xf7b84a, fin: 0xfde27a },
@@ -356,6 +369,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '樱花大道',
+    // 一只蝴蝶穿过花瓣跟着飞
+    companion: 'butterfly',
     token: { kind: 'blossom', name: '樱花' },
     gate: 'sakura',
     fish: { form: 'tall', body: 0xf58fb2, fin: 0xfde3ec },
@@ -398,6 +413,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '松林小屋',
+    // 一只小鸟在林子边上跟着
+    companion: 'songbird',
     token: { kind: 'pinecone', name: '松果' },
     gate: 'log',
     fish: { form: 'long', body: 0x7fae6a, fin: 0xc9d99a },
@@ -442,6 +459,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '秋日山谷',
+    // 一只小鸟跟着
+    companion: 'songbird',
     token: { kind: 'maple', name: '枫叶' },
     gate: 'harvest',
     fish: { form: 'plain', body: 0xe5632e, fin: 0xf2b550 },
@@ -488,6 +507,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '沙漠峡谷',
+    // 一只鹰在前头高处盘着
+    companion: 'hawk',
     token: { kind: 'turquoise', name: '绿松石' },
     gate: 'adobe',
     fish: { form: 'long', body: 0xd99a58, fin: 0xf8e6c4 },
@@ -529,6 +550,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '棕榈晚霞',
+    // 一只海鸥跟着
+    companion: 'gull',
     token: { kind: 'coconut', name: '椰子' },
     gate: 'tiki',
     fish: { form: 'tall', body: 0xff8a5c, fin: 0xffd08a },
@@ -573,6 +596,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '灯塔夜海',
+    // 一小团萤火虫跟着，照亮身边
+    companion: 'firefly',
     token: { kind: 'starfish', name: '海星' },
     gate: 'harbor',
     fish: { form: 'round', body: 0x8fd8ff, fin: 0xe6f8ff, glow: true },
@@ -612,6 +637,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '霓虹都市',
+    // 一架小无人机跟拍
+    companion: 'drone',
     token: { kind: 'note', name: '音符' },
     gate: 'neon',
     fish: { form: 'long', body: 0xff6fb5, fin: 0x8ee6ff, glow: true },
@@ -653,6 +680,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '极光雪原',
+    // 一只白色的海鸟跟着
+    companion: 'gull',
     token: { kind: 'snowflake', name: '雪花' },
     gate: 'ice',
     fish: { form: 'plain', body: 0xa8e4ff, fin: 0xf2fbff },
@@ -696,6 +725,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '雪山黎明',
+    // 一只鹰在前头高处盘着
+    companion: 'hawk',
     token: { kind: 'icegem', name: '冰晶' },
     gate: 'prayer',
     fish: { form: 'tall', body: 0xbfd4ff, fin: 0xfdf6ea },
@@ -740,6 +771,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '气球之丘',
+    // 一只蝴蝶跟着
+    companion: 'butterfly',
     token: { kind: 'balloon', name: '小气球' },
     gate: 'balloons',
     fish: { form: 'round', body: 0xff6f61, fin: 0xfdf3e0 },
@@ -786,6 +819,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '高山峡谷',
+    // 一只鹰在峡谷里领路
+    companion: 'hawk',
     token: { kind: 'feather', name: '鹰羽' },
     gate: 'stone',
     fish: { form: 'long', body: 0x6fb4a0, fin: 0xdff4e6 },
@@ -828,8 +863,9 @@ export const SCENES: readonly Scene[] = [
       moss: { color: [0x6fa860, 0x5c9652], amount: 0.8 },
       widen: { from: 0.525, foot: 54 },
     },
-    // 断层前面的那条隧道
-    cover: [[0.43, 0.497]],
+    // 断层前面的那条隧道：2026-11-14 用户要「隧道稍微长一点，洞里是溶洞的感觉」，从 60 米加长到 110 米，
+    // 从高跳弹簧的台阶落地以后才开始（再早的话弹起来那一下会撞到洞口），里面挂着钟乳石、立着石笋、有一汪发光的水
+    cover: [[0.375, 0.497]],
     backdrop: 'peaks',
     backdropColor: 0x9fb4c8,
     props: [
@@ -846,6 +882,12 @@ export const SCENES: readonly Scene[] = [
       { kind: 'tent', per100: 0.5, near: 11, far: 16, under: 'sky' },
       { kind: 'deer', per100: 1.2, near: 10, far: 17, under: 'sky' },
       { kind: 'ropeBridge', per100: 0.9, near: 0, far: 0, span: true, under: 'sky', part: [0.04, 0.19] },
+      // 隧道里的溶洞
+      { kind: 'dripstone', per100: 8, near: 0, far: 0, span: true, under: 'roof' },
+      { kind: 'flowstone', per100: 12, near: 8.8, far: 16, scale: [0.5, 1.3], under: 'roof' },
+      { kind: 'crystalPool', per100: 2, near: 11, far: 14, scale: [0.7, 1], under: 'roof' },
+      { kind: 'caveLamp', per100: 4, near: 8.2, far: 8.2, face: true, under: 'roof' },
+      { kind: 'shroomGlow', per100: 5, near: 8.6, far: 14, scale: [0.6, 1.1], under: 'roof' },
       { kind: 'eagles', per100: 1.4, near: 0, far: 6, lift: [36, 54], scale: [1, 1.5] },
       // 半山腰缠着一圈云
       { kind: 'cloud', per100: 3, near: 24, far: 70, lift: [40, 58], scale: [1.2, 2.4] },
@@ -869,6 +911,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '溪谷飞瀑',
+    // 一只蜻蜓贴着水面跟着
+    companion: 'dragonfly',
     token: { kind: 'lotus', name: '莲花' },
     gate: 'bamboo',
     fish: { form: 'tall', body: 0xfdfaf2, fin: 0xe5604a },
@@ -921,6 +965,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '水晶洞穴',
+    // 一团会发光的引路光团跟在身后，照亮岩壁
+    companion: 'wisp',
     token: { kind: 'crystal', name: '紫水晶' },
     gate: 'crystal',
     fish: { form: 'round', body: 0xb48cff, fin: 0xe6d8ff, glow: true },
@@ -941,7 +987,8 @@ export const SCENES: readonly Scene[] = [
     far: 0x1a1c30,
     land: 60,
     bumps: 1,
-    walls: { foot: 16, height: 16, lean: 0.25, color: [0x625c86, 0x4e4a6e], top: 0x2f2c44 },
+    // 高山底下的洞（2026-11-14 用户说「洞穴场景就设定为高山下的洞穴」）：崖壁从 16 米抬到 46 米、山顶积雪，从天窗和洞口看得到上面的雪山
+    walls: { foot: 16, height: 46, lean: 0.3, color: [0x64647a, 0x525266], top: 0x4a4a5c, snow: true },
     // 整段都在洞里，中间开两处天窗，能看见外面的星星
     cover: [
       [0.035, 0.3],
@@ -966,6 +1013,8 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: '云海断桥',
+    // 一只鹰在云海上空领路
+    companion: 'hawk',
     token: { kind: 'cloud', name: '云朵' },
     gate: 'pailou',
     fish: { form: 'long', body: 0x7fc8f0, fin: 0xeaf6ff },

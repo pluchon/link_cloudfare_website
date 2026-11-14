@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { Bike, BIKE_SPEED, EFFECT_SECONDS, type BikeEvent, type Controls } from './bike';
 import { Course, REFILL, SCORE, shuffledOrder } from './course';
@@ -86,6 +87,68 @@ const QUALITY = [
 ];
 // 泛光：多强、晕开多大、比这个亮度还亮的地方才晕；开着泛光时发光的东西画得比白亮多少倍
 const BLOOM = { strength: 0.28, radius: 0.5, threshold: 1.08 };
+// 出发前下载资源最多等多少秒，到了就放行
+const LOAD_LIMIT = 40;
+// 氛围（2026-11-14 用户要的「不是简单的光影，而是有那种氛围的感觉」）：泛光之后、色调映射之前再过一道。
+// 一、太阳的光束：从画面上太阳的位置往外放射，沿着到太阳的那条线采样画面上亮的地方，树、山、鹈鹕挡住的地方自然就是一道道暗缝；
+// 二、调色：暗部往天顶的色相偏，亮部往阳光的色相偏，饱和度微微提一点；三、四角压暗一点，夜里压得多。
+// 只在开泛光的两档画质里做，后两档省掉
+const ATMOSPHERE = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.8) },
+    uRays: { value: 0 },
+    uRayColor: { value: new THREE.Color(1, 1, 1) },
+    uShade: { value: new THREE.Color(1, 1, 1) },
+    uLight: { value: new THREE.Color(1, 1, 1) },
+    uVignette: { value: 0.3 },
+    uSaturation: { value: 1.06 },
+    uAspect: { value: 16 / 9 },
+  },
+  vertexShader: `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`,
+  fragmentShader: `
+uniform sampler2D tDiffuse;
+uniform vec2 uSun;
+uniform float uRays;
+uniform vec3 uRayColor;
+uniform vec3 uShade;
+uniform vec3 uLight;
+uniform float uVignette;
+uniform float uSaturation;
+uniform float uAspect;
+varying vec2 vUv;
+float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+void main() {
+  vec3 color = texture2D(tDiffuse, vUv).rgb;
+  if (uRays > 0.001) {
+    vec2 step = (vUv - uSun) / 28.0;
+    vec2 at = vUv;
+    float fade = 1.0;
+    vec3 shafts = vec3(0.0);
+    for (int i = 0; i < 28; i++) {
+      at -= step;
+      vec3 seen = texture2D(tDiffuse, clamp(at, 0.001, 0.999)).rgb;
+      shafts += seen * max(luma(seen) - 0.95, 0.0) * fade;
+      fade *= 0.945;
+    }
+    float reach = length((vUv - uSun) * vec2(uAspect, 1.0));
+    // 用户嫌过「过曝」：只认比白还亮的地方（太阳、亮边），强度和范围都收着，傍晚满屏橙光会把鹈鹕吞掉
+    color += shafts / 28.0 * uRayColor * uRays * 1.6 * (1.0 - smoothstep(0.05, 0.95, reach));
+  }
+  float l = luma(color);
+  color = mix(color, color * uShade, (1.0 - smoothstep(0.02, 0.5, l)) * 0.22);
+  color = mix(color, color * uLight, smoothstep(0.35, 1.2, l) * 0.18);
+  color = mix(vec3(luma(color)), color, uSaturation);
+  vec2 q = (vUv - 0.5) * vec2(uAspect, 1.0);
+  color *= 1.0 - uVignette * smoothstep(0.42, 1.15, length(q));
+  gl_FragColor = vec4(color, 1.0);
+}`,
+};
 const GLOW_BOOST = 1.7;
 // 连续这么多帧的平均帧时间超过这个值（秒）就降一档
 const SLOW_FRAMES = 90;
@@ -170,12 +233,15 @@ export function mountPelican(root: HTMLElement): () => void {
   const flameBox = pick<HTMLElement>(root, '[data-flames]');
   const flames = Array.from(flameBox.children) as HTMLElement[];
   const recordNode = pick<HTMLElement>(root, '[data-record]');
-  const toasts = new ToastStack(pick<HTMLElement>(root, '[data-toasts]'));
+  const toastsNode = pick<HTMLElement>(root, '[data-toasts]');
+  const toasts = new ToastStack(toastsNode);
   const pauseButton = pick<HTMLButtonElement>(root, '[data-pause]');
   const muteButton = pick<HTMLButtonElement>(root, '[data-mute]');
   const overlay = pick<HTMLElement>(root, '[data-overlay]');
   const overlayTitle = pick<HTMLElement>(root, '[data-overlay-title]');
   const statsNode = pick<HTMLElement>(root, '[data-overlay-stats]');
+  const loadingNode = pick<HTMLElement>(root, '[data-loading]');
+  const loadingBar = pick<HTMLElement>(root, '[data-loading-bar]');
   const statScore = pick<HTMLElement>(root, '[data-stat-score]');
   const statTime = pick<HTMLElement>(root, '[data-stat-time]');
   const speedNode = pick<HTMLElement>(root, '[data-speed]');
@@ -186,12 +252,25 @@ export function mountPelican(root: HTMLElement): () => void {
   const stick = pick<HTMLElement>(root, '[data-stick]');
   const knob = pick<HTMLElement>(root, '[data-knob]');
   const gameTitle = root.dataset.title ?? '鹈鹕骑车';
+  const readyHint = matchMedia('(pointer: coarse)').matches ? '左右滑动换角色，点击屏幕开始游戏' : '使用键盘 ← → 切换角色，点击任意区域开始游戏';
 
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const touchDevice = matchMedia('(pointer: coarse)').matches;
   const sound = createSound();
-  // 一进页面就开始下载音效和音乐，等玩家点「开始」时多半已经下完了
-  sound.preload();
+  // 一进页面就把音效和全部配乐下下来，下完才能开始（2026-11-14 用户要「等资源都下载好再开始，有个进度条」）。
+  // 下过的存在浏览器的缓存里，刷新以后直接读。网太慢也不能一直卡着：最多等 LOAD_LIMIT 秒，到了就放行，没下完的那几首照旧边玩边下
+  let loaded = false;
+  const finishLoading = () => {
+    if (loaded) return;
+    loaded = true;
+    loadingNode.hidden = true;
+    if (state === 'ready') showOverlay(gameTitle, '', readyHint);
+  };
+  loadingBar.style.setProperty('--load', '0');
+  void sound
+    .preloadAll((part) => loadingBar.style.setProperty('--load', part.toFixed(3)))
+    .then(finishLoading);
+  window.setTimeout(finishLoading, LOAD_LIMIT * 1000);
   // 这颗按钮的 aria-pressed 表示「声音开着」
   muteButton.setAttribute('aria-pressed', String(!sound.muted));
   const abort = new AbortController();
@@ -209,7 +288,29 @@ export function mountPelican(root: HTMLElement): () => void {
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold));
+  const atmosphere = new ShaderPass(ATMOSPHERE);
+  composer.addPass(atmosphere);
   composer.addPass(new OutputPass());
+  const sunOnScreen = new THREE.Vector3();
+  const viewDir = new THREE.Vector3();
+  // 每帧把太阳投到画面上：在镜头背后、或者离画面太远时光束淡掉
+  const paintAtmosphere = () => {
+    if (!world) return;
+    const mood = world.mood;
+    const u = atmosphere.uniforms;
+    camera.getWorldDirection(viewDir);
+    const facing = viewDir.dot(mood.sunDir);
+    sunOnScreen.copy(camera.position).addScaledVector(mood.sunDir, 1000).project(camera);
+    (u.uSun.value as THREE.Vector2).set(sunOnScreen.x * 0.5 + 0.5, sunOnScreen.y * 0.5 + 0.5);
+    const off = Math.max(Math.abs(sunOnScreen.x), Math.abs(sunOnScreen.y));
+    u.uRays.value = facing > 0 ? mood.rays * (1 - Math.min(1, Math.max(0, (off - 1) / 1.2))) : 0;
+    (u.uRayColor.value as THREE.Color).copy(mood.sun);
+    (u.uShade.value as THREE.Color).copy(mood.shade);
+    (u.uLight.value as THREE.Color).copy(mood.light);
+    u.uVignette.value = mood.vignette;
+    u.uSaturation.value = mood.saturation;
+    u.uAspect.value = camera.aspect;
+  };
 
   // 骑车的角色（2026-11-13 用户要的开局选角色）：三种鹈鹕、企鹅、白熊。选过的记在本机，下次打开还是它
   const pickBox = pick<HTMLElement>(root, '[data-picks]');
@@ -309,7 +410,7 @@ export function mountPelican(root: HTMLElement): () => void {
     const forced = import.meta.env.DEV ? new URLSearchParams(location.search).get('scenes') : null;
     course = new Course(forced ? forced.split(',').map(Number) : shuffledOrder(), Math.floor(Math.random() * 1e9));
     track = course.track;
-    world = new World(course, still);
+    world = new World(course, still, touchDevice);
     world.setShadows(QUALITY[quality].shadows);
     world.setGlow(QUALITY[quality].bloom ? GLOW_BOOST : 1);
     world.setViewport(canvas.height);
@@ -391,8 +492,8 @@ export function mountPelican(root: HTMLElement): () => void {
       flash = 1;
       sound.play('super');
     }
-    // 猛冲没有单独的声音，再响一次冲刺那一声
-    else sound.play(event === 'turbo' ? 'dash' : event);
+    // 冲刺、猛冲都不出声（2026-11-14 用户先要删猛冲那一声，又说「加速时有沙沙声」，冲刺那一声铃鼓也删了）
+    else if (event !== 'turbo' && event !== 'dash') sound.play(event);
   };
   const bike: Bike = new Bike(onBikeEvent);
   bike.reset(course);
@@ -473,7 +574,7 @@ export function mountPelican(root: HTMLElement): () => void {
     if (next === 'paused') sound.pause();
     // 出发前没有面板，只有标题和一行提示，点画面任何地方开始
     // 出发前的提示分手机和电脑两种说法（用户定的）
-    if (next === 'ready') showOverlay(gameTitle, '', touchDevice ? '左右滑动换角色，点击屏幕开始游戏' : '使用键盘 ← → 切换角色，点击任意区域开始游戏');
+    if (next === 'ready') showOverlay(gameTitle, '', loaded ? readyHint : '');
     if (next === 'paused') showOverlay('暂停中', '', '点击游戏画面空白处继续');
     if (next === 'finished') finish();
   };
@@ -532,6 +633,8 @@ export function mountPelican(root: HTMLElement): () => void {
       if ((event.target as HTMLElement).closest('button')) return;
       if (state === 'paused') setState('playing');
       else if (state === 'ready') {
+        // 还在下载，先不让开始
+        if (!loaded) return;
         // 刚才那一下是滑动换角色或者长按，不算点击开始
         if (swallowClick) {
           swallowClick = false;
@@ -612,6 +715,7 @@ export function mountPelican(root: HTMLElement): () => void {
         }
         // 出发前按空格也能开始。这一下按着不松不算猛冲，松开再按才算
         if (down && !event.repeat && state === 'ready') {
+          if (!loaded) break;
           sound.start();
           restart();
           spaceStarted = true;
@@ -748,6 +852,8 @@ export function mountPelican(root: HTMLElement): () => void {
   // 帧时间一直偏长就降一档画质
   let slowFrames = 0;
   let slowTotal = 0;
+  // 本地截画册时把画质钉在某一档，不让它因为预览窗口隐藏、帧慢而自己降档（只在开发时用得到，见 __pelican.setQuality）
+  let qualityPinned = false;
   const watchSpeed = (dt: number) => {
     // 切标签页回来那种特别长的一帧不算数，这一轮统计作废
     if (dt >= 0.1) {
@@ -757,7 +863,7 @@ export function mountPelican(root: HTMLElement): () => void {
     }
     slowFrames += 1;
     slowTotal += dt;
-    if (slowFrames < SLOW_FRAMES) return;
+    if (slowFrames < SLOW_FRAMES || qualityPinned) return;
     if (slowTotal / slowFrames > SLOW_SECONDS && quality < QUALITY.length - 1) {
       quality += 1;
       world?.setShadows(QUALITY[quality].shadows);
@@ -816,7 +922,6 @@ export function mountPelican(root: HTMLElement): () => void {
         bike.ignite();
         showToast('捡到“辣椒”', ICONS.chili);
         sound.play('bolt');
-        sound.play('dash', 0.8);
       } else if (item.kind === 'token') {
         // 纪念品：每个场景自己的小东西，头一回捡到报一下名字
         const token = course.scenes[item.scene].token;
@@ -1063,6 +1168,11 @@ export function mountPelican(root: HTMLElement): () => void {
     }
     comboPunch = Math.max(0, comboPunch - dt * 3.2);
     const visible = combo >= 2 && state === 'playing';
+    // 「连续得分」在的时候提示排在它下面；它一走，下面的提示马上往上靠（用户要的，那一块不是它专属的）
+    if (visible !== (toastsNode.dataset.underCombo === '1')) {
+      if (visible) toastsNode.dataset.underCombo = '1';
+      else delete toastsNode.dataset.underCombo;
+    }
     comboFade += ((visible ? 1 : 0) - comboFade) * Math.min(1, dt * (visible ? 16 : 3.5));
     if (visible) {
       const text = `${comboScore}|${combo}`;
@@ -1215,8 +1325,10 @@ export function mountPelican(root: HTMLElement): () => void {
     place(dt);
     paint(dt);
     paintRush(dt);
-    if (QUALITY[quality].bloom) composer.render();
-    else renderer.render(scene, camera);
+    if (QUALITY[quality].bloom) {
+      paintAtmosphere();
+      composer.render();
+    } else renderer.render(scene, camera);
   };
 
   // 只在本地开发时挂出来，方便在控制台里看车的状态；构建产物里没有
@@ -1232,6 +1344,17 @@ export function mountPelican(root: HTMLElement): () => void {
         },
         get renderer() {
           return renderer;
+        },
+        get world() {
+          return world;
+        },
+        // 把画质钉在某一档（0 最好），截画册用
+        setQuality(level: number) {
+          quality = level;
+          qualityPinned = true;
+          world?.setShadows(QUALITY[quality].shadows);
+          world?.setGlow(QUALITY[quality].bloom ? GLOW_BOOST : 1);
+          resize();
         },
         // 窗口被隐藏时浏览器不给动画帧，手动往前推这么多秒，照样能看画面
         advance(seconds: number) {

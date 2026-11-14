@@ -1,12 +1,13 @@
 // 角色的花样动作（2026-11-13 用户要的）：出发前换角色时的出场，冲过终点后的庆祝。
 // 这里只算「这一刻摆成什么样」，game.ts 把它叠到车本来的位置和朝向上。不依赖 three
 
-// 出场：从后面骑过来；从天上掉下来、落地弹一下；原地蹦起来转一圈；翘着前轮骑过来再落下；从旁边横着漂移过来
-export type EntranceKind = 'ride' | 'drop' | 'spin' | 'wheelie' | 'skid';
+// 出场：从后面骑过来；从天上掉下来、落地弹一下；原地蹦起来转一圈；翘着前轮骑过来再落下。
+// 早先还有一种「从路边横着漂移过来」，2026-11-14 用户要删掉，别加回去
+export type EntranceKind = 'ride' | 'drop' | 'spin' | 'wheelie';
 // 庆祝：翘起前轮；一蹦一蹦；隔一会儿蹦起来转一圈；左右大幅度地摇
 export type CelebrateKind = 'wheelie' | 'hops' | 'twirl' | 'sway';
 
-export const ENTRANCES: readonly EntranceKind[] = ['ride', 'drop', 'spin', 'wheelie', 'skid'];
+export const ENTRANCES: readonly EntranceKind[] = ['ride', 'drop', 'spin', 'wheelie'];
 export const CELEBRATIONS: readonly CelebrateKind[] = ['wheelie', 'hops', 'twirl', 'sway'];
 
 // 出场动作多长（秒）；冲过终点后等车慢下来再开始庆祝（秒）
@@ -59,13 +60,6 @@ export function entrancePose(kind: EntranceKind, u: number): Pose {
     const up = u < 0.8 ? 0.42 + Math.sin(u * 18) * 0.04 : 0.42 * (1 - smooth((u - 0.8) / 0.12));
     pose.pitch = up + (u > 0.92 ? Math.sin(((u - 0.92) / 0.08) * Math.PI) * 0.06 : 0);
     pose.lift = Math.sin(pose.pitch) * 0.62;
-  } else if (kind === 'skid') {
-    // 从旁边横着漂移过来：车身斜着、往里倾，越来越慢，最后车头摆正
-    const left = (1 - u) ** 2;
-    pose.side = -14 * left;
-    pose.back = 6 * left;
-    pose.yaw = -0.9 * left;
-    pose.roll = -0.35 * left + Math.sin(u * 20) * 0.04 * (1 - u);
   } else {
     // 蹦起来一米多，在空中整整转一圈
     pose.lift = 1.7 * Math.sin(Math.PI * u);

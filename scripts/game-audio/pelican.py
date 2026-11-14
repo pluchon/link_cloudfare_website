@@ -237,91 +237,118 @@ def shape(samples: array.array, target: float, longest: float) -> array.array:
     return out
 
 
-# 音效混完都过一道低通，再看要不要混响（用户嫌过尖）
-SOFT = ",lowpass=f=5600"
+# 音效混完都过一道低通，再看要不要混响（用户两次嫌尖，2026-11-14 从 5600 压到 3800 Hz）
+SOFT = ",lowpass=f=3800"
 REVERB = ",aecho=0.8:0.85:70|130:0.22|0.14"
 
 
+# 捡鱼还可以用的几样乐器（竖琴是默认的那一组 fish0 到 fish5）。都是拨的、敲的，一下就过去：
+# 2026-11-14 用户说「有的场景捡鱼有哔的一声，不好听」，单簧管的短音和手钟的纯音听起来就是「哔」，去掉了
+FISH_VOICES = ["kalimba", "marimba", "piano"]
+
+
 def effects() -> dict[str, tuple[list[Part], bool, float, float]]:
-    """每个音效：几轨音符、要不要混响、峰值（dB）、最长多少秒。速度都按 120 拍算，一拍半秒。"""
+    """每个音效：几轨音符、要不要混响、峰值（dB）、最长多少秒。速度都按 120 拍算，一拍半秒。
+    2026-11-14 用户说音效是「重灾区，音调特别高，还抢了背景音乐」：整体往下挪了一个八度上下，不再用钟琴（最尖的那个），
+    叮叮当当的高音换成竖琴、卡林巴的中低音区，混完的低通也压到 3800 Hz"""
     table: dict[str, tuple[list[Part], bool, float, float]] = {}
-    # 吃鱼：连着吃的时候一条比一条高，六个音是一组五声音阶
-    for i, name in enumerate(["E4", "G4", "A4", "B4", "D5", "E5"]):
-        table[f"fish{i}"] = ([("kalimba", [(0, 0.6, key(name), 104)], 0.0), ("glock", [(0, 0.4, key(name) + 12, 48)], -16.0)], False, -6.0, 0.7)
-    table["gold"] = ([("glock", [(0, 0.5, key("E5"), 90), (0.16, 0.5, key("G5"), 94), (0.32, 1.2, key("C6"), 100)], -3.0), ("chimes", [(0, 1.4, key("C5"), 80)], -5.0)], True, -5.0, 1.6)
+    # 吃鱼：连着吃的时候一条比一条高，六个音是一组五声音阶，放在中音区（原来从 E4 到 E5，上面还叠一层钟琴）
+    for i, name in enumerate(["C4", "D4", "E4", "G4", "A4", "C5"]):
+        table[f"fish{i}"] = ([("harp", [(0, 0.6, key(name), 92)], 0.0), ("kalimba", [(0, 0.5, key(name), 70)], -10.0)], False, -8.0, 0.6)
+    # 每个场景捡鱼的声音不一样（2026-11-14 用户要的「每个场景拾取的音效有些许不同」）：同一组五声音阶换几样乐器，
+    # 网页里再按这个场景配乐的调移一移（sound.ts 的 PICKUP_VOICE 和 audio.json 的 keys）
+    for voice in FISH_VOICES:
+        for i, name in enumerate(["C4", "D4", "E4", "G4", "A4", "C5"]):
+            table[f"fish_{voice}{i}"] = ([(voice, [(0, 0.6, key(name), 86)], 0.0)], False, -8.0, 0.6)
+    table["gold"] = ([("harp", [(0, 0.5, key("E4"), 90), (0.16, 0.5, key("G4"), 92), (0.32, 1.2, key("C5"), 96)], -2.0), ("kalimba", [(0, 0.8, key("C4"), 70)], -8.0)], True, -7.0, 1.5)
     table["bolt"] = (
         [
-            ("chimes", [(0, 1.6, key("C5"), 96), (0, 1.6, key("G5"), 90)], 0.0),
-            ("glock", [(0.2, 0.4, key("C5"), 90), (0.4, 0.4, key("G5"), 94), (0.6, 1.2, key("C6"), 100)], -6.0),
-            ("kit", [(0, 2, 62, 84)], -6.0),
+            ("chimes", [(0, 1.6, key("C4"), 84), (0, 1.6, key("G4"), 78)], 0.0),
+            ("harp", [(0.2, 0.4, key("C4"), 86), (0.4, 0.4, key("G4"), 88), (0.6, 1.2, key("C5"), 92)], -3.0),
         ],
         True,
-        -5.0,
+        -7.0,
         2.0,
     )
     table["pad"] = (
         [
-            ("marimba", [(0, 0.2, key("C4"), 96), (0.1, 0.2, key("E4"), 98), (0.2, 0.2, key("G4"), 102), (0.3, 0.6, key("C5"), 108)], 0.0),
-            ("kit", [(0, 2, 62, 96)], -4.0),
+            ("marimba", [(0, 0.2, key("C3"), 90), (0.1, 0.2, key("E3"), 92), (0.2, 0.2, key("G3"), 94), (0.3, 0.6, key("C4"), 98)], 0.0),
         ],
         True,
-        -5.0,
-        1.6,
+        -7.0,
+        1.4,
     )
-    table["jump"] = ([("marimba", [(0, 0.15, key("G3"), 92), (0.14, 0.4, key("D4"), 100)], 0.0), ("kit", [(0, 0.3, 65, 70)], -8.0)], False, -8.0, 0.6)
-    table["land"] = ([("kit", [(0, 0.5, 36, 84), (0, 0.3, 46, 60)], 0.0)], False, -9.0, 0.5)
-    table["dash"] = ([("kit", [(0, 1.2, 60, 100), (0, 0.8, 56, 80)], 0.0)], True, -7.0, 1.3)
-    # 穿过奖励圈：两声往上的钟琴，底下垫一下竖琴
-    table["ring"] = ([("glock", [(0, 0.3, key("G5"), 90), (0.12, 0.9, key("D6"), 96)], -3.0), ("harp", [(0, 0.9, key("G4"), 90), (0.06, 0.9, key("D5"), 92)], -3.0)], True, -6.0, 1.1)
-    # 弹簧垫：马林巴从低到高很快地滑上去，像「嘣」的一下
+    table["jump"] = ([("marimba", [(0, 0.15, key("G2"), 90), (0.14, 0.4, key("D3"), 96)], 0.0), ("kit", [(0, 0.3, 65, 60)], -10.0)], False, -10.0, 0.6)
+    table["land"] = ([("kit", [(0, 0.5, 36, 80), (0, 0.3, 46, 50)], 0.0)], False, -11.0, 0.5)
+    # 冲刺不再出声：原来是一下铃鼓摇，加速带、能量罐、火箭底下也垫着一串风铃，2026-11-14 用户说「加速时有沙沙声」，都拿掉了
+    # 穿过奖励圈：竖琴两个音往上，底下垫一个低八度（原来是钟琴 G5、D6）
+    table["ring"] = ([("harp", [(0, 0.5, key("G3"), 86), (0.12, 0.9, key("D4"), 90), (0.12, 0.9, key("G4"), 80)], 0.0)], True, -9.0, 1.0)
+    # 弹簧垫：马林巴从低到高很快地滑上去，像「嘣」的一下（整体低了一个八度）
     table["spring"] = (
         [
-            ("marimba", [(i * 0.045, 0.25, key(name), 96 + i * 3) for i, name in enumerate(["C3", "G3", "C4", "E4", "G4", "C5", "G5"])], 0.0),
-            ("kit", [(0, 0.3, 65, 90), (0.28, 0.8, 60, 70)], -6.0),
+            ("marimba", [(i * 0.045, 0.25, key(name), 90 + i * 2) for i, name in enumerate(["C2", "G2", "C3", "E3", "G3", "C4"])], 0.0),
+            ("kit", [(0, 0.3, 65, 76)], -8.0),
         ],
         False,
-        -6.0,
-        1.0,
+        -8.0,
+        0.9,
     )
     # 撞上路障：木箱鼓闷的一下，加一声铃鼓，像撞翻了什么
-    table["bump"] = ([("kit", [(0, 0.5, 36, 110), (0.02, 0.4, 38, 96), (0.04, 0.5, 54, 92), (0.03, 0.3, 65, 84)], 0.0), ("marimba", [(0, 0.3, key("C3"), 100)], -4.0)], False, -6.0, 0.7)
+    table["bump"] = ([("kit", [(0, 0.5, 36, 104), (0.02, 0.4, 38, 84), (0.04, 0.5, 54, 70), (0.03, 0.3, 65, 70)], 0.0), ("marimba", [(0, 0.3, key("C2"), 96)], -4.0)], False, -8.0, 0.7)
     # 掉下悬崖：马林巴从高往低一路滑下去，最后箱鼓闷的一下
     table["fall"] = (
         [
-            ("marimba", [(i * 0.07, 0.3, key(name), 100 - i * 4) for i, name in enumerate(["C5", "A4", "F4", "D4", "C4", "A3", "F3"])], 0.0),
-            ("kit", [(0.55, 0.5, 36, 100), (0.56, 0.4, 54, 70)], -4.0),
+            ("marimba", [(i * 0.07, 0.3, key(name), 96 - i * 4) for i, name in enumerate(["C4", "A3", "F3", "D3", "C3", "A2", "F2"])], 0.0),
+            ("kit", [(0.55, 0.5, 36, 100)], -4.0),
         ],
         False,
-        -7.0,
+        -9.0,
         1.1,
     )
-    # 超级加速：竖琴一口气刮上去，接一串风铃，像一下子被风推走
+    # 超级加速：竖琴一口气刮上去，接一声低一点的手铃，像一下子被风推走
     table["super"] = (
         [
-            ("harp", [(i * 0.035, 0.6, key(name), 80 + i * 2) for i, name in enumerate(["C4", "E4", "G4", "A4", "C5", "D5", "E5", "G5", "A5", "C6"])], 0.0),
-            ("chimes", [(0.36, 1.6, key("C5"), 84), (0.36, 1.6, key("G5"), 78)], -5.0),
-            ("kit", [(0, 2, 62, 90), (0.36, 1.2, 60, 76)], -5.0),
+            ("harp", [(i * 0.035, 0.6, key(name), 78 + i * 2) for i, name in enumerate(["C3", "E3", "G3", "A3", "C4", "D4", "E4", "G4", "A4", "C5"])], 0.0),
+            ("chimes", [(0.36, 1.6, key("C4"), 74), (0.36, 1.6, key("G4"), 68)], -7.0),
+        ],
+        True,
+        -8.0,
+        1.8,
+    )
+    table["gate"] = ([("chimes", [(0, 1.4, key("E4"), 66), (0.5, 1.4, key("G4"), 70), (1.0, 2.4, key("C4"), 74)], 0.0)], True, -11.0, 2.4)
+    # 进新场景的声音也每个场景挑一种（sound.ts 的 GATE_VOICE）：竖琴刮上去、钢琴分解和弦、马林巴轻轻滚一串、铃树、长笛三个音
+    table["gate_harp"] = ([("harp", [(i * 0.04, 0.8, key(name), 70 + i * 2) for i, name in enumerate(["C3", "D3", "E3", "G3", "A3", "C4", "D4", "E4", "G4"])] + [(0.45, 2, key(n), 80) for n in ("C4", "E4", "G4")], 0.0)], True, -11.0, 2.4)
+    table["gate_piano"] = ([("piano", [(i * 0.16, 2.2 - i * 0.16, key(n), 70) for i, n in enumerate(["C4", "E4", "G4", "C5"])], 0.0)], True, -11.0, 2.4)
+    table["gate_marimba"] = ([("marimba", [(i * 0.06, 0.2, key("G3" if i % 2 else "C4"), 50 + i * 2) for i in range(14)] + [(0.9, 1.2, key("C4"), 84)], 0.0)], True, -11.0, 2.2)
+    table["gate_bell"] = ([("kit", [(0, 2, 60, 70)], 0.0), ("chimes", [(0.3, 1.8, key("C4"), 64), (0.3, 1.8, key("G4"), 58)], -4.0)], True, -11.0, 2.4)
+    table["gate_flute"] = ([("flute", [(0, 0.45, key("G4"), 64), (0.45, 0.45, key("A4"), 66), (0.9, 1.4, key("C5"), 70)], 0.0)], True, -12.0, 2.4)
+    table["bell"] = ([("kit", [(0, 0.5, 81, 80), (0.36, 1.2, 81, 88)], 0.0)], True, -10.0, 1.4)
+    run_up = [(i * 0.25, 0.3, key(name), 90 + i * 4) for i, name in enumerate(["C4", "E4", "G4", "C5"])]
+    chord = [(1.25, 2.4, key(name), 100) for name in ["C4", "E4", "G4", "C5"]]
+    table["finish"] = (
+        [
+            ("harp", run_up + chord, 0.0),
+            ("chimes", [(1.25, 3, key("C4"), 80), (1.25, 3, key("G4"), 74)], -6.0),
+            ("kit", [(1.25, 3, 64, 70)], -8.0),
         ],
         True,
         -6.0,
-        2.0,
-    )
-    table["gate"] = ([("chimes", [(0, 1.4, key("E4"), 76), (0.5, 1.4, key("G4"), 80), (1.0, 2.4, key("C5"), 86)], 0.0)], True, -9.0, 2.6)
-    table["bell"] = ([("kit", [(0, 0.5, 81, 100), (0.36, 1.2, 81, 108)], 0.0)], True, -7.0, 1.6)
-    run_up = [(i * 0.25, 0.3, key(name), 96 + i * 4) for i, name in enumerate(["C5", "E5", "G5", "C6"])]
-    chord = [(1.25, 2.4, key(name), 110) for name in ["C5", "E5", "G5", "C6"]]
-    table["finish"] = (
-        [
-            ("marimba", run_up + chord, 0.0),
-            ("glock", [(start, dur, note, 72) for start, dur, note, _ in run_up + chord], -12.0),
-            ("chimes", [(1.25, 3, key("C4"), 90), (1.25, 3, key("G4"), 84)], -5.0),
-            ("kit", [(1.25, 3, 64, 90)], -5.0),
-        ],
-        True,
-        -4.0,
-        4.2,
+        4.0,
     )
     return table
+
+
+# 自然音（2026-11-14 用户要的「适当加一点自然音，比如动物声、树叶沙沙声，声音很小，不影响主音效」）：
+# 海浪是海洋鼓（一面里面装着钢珠的鼓，慢慢倾斜就是浪声）的三段录音，鸟叫是鸟哨的一长一短。名字 -> 录音、ffmpeg 滤镜、峰值（dB）、最长多少秒
+OCEAN = VCSL / "Membranophones" / "Other Membranophones" / "Ocean Drum"
+WHISTLE = VCSL / "Aerophones" / "Edge-blown Aerophones" / "Ball Whistle"
+NATURE = {
+    "wave0": (OCEAN / "OceanDrum_Sus_1_Mid.wav", "lowpass=f=2600,afade=t=in:d=0.6", -12.0, 7.0),
+    "wave1": (OCEAN / "OceanDrum_Sus_2_Mid.wav", "lowpass=f=2600,afade=t=in:d=0.6", -12.0, 7.0),
+    "wave2": (OCEAN / "OceanDrum_Sus_3_Mid.wav", "lowpass=f=2600,afade=t=in:d=0.6", -12.0, 7.0),
+    "bird0": (WHISTLE / "Main_BallWhistle_Short-001.wav", "highpass=f=700,lowpass=f=5200", -12.0, 1.6),
+    "bird1": (WHISTLE / "Main_BallWhistle_Long-001.wav", "highpass=f=700,lowpass=f=5200", -12.0, 3.0),
+}
 
 
 def build_effects() -> dict[str, list[float]]:
@@ -335,9 +362,20 @@ def build_effects() -> dict[str, list[float]]:
         logger.info("音效 %-7s 长 %.2f 秒，平均响度 %.1f dB", name, marks[name][1], rms_db(clip))
         sprite.extend(clip)
         sprite.extend(gap)
+    # 自然音里用真录音的那几样（海浪、鸟叫），也拼进这一条。风声、树叶沙沙、流水、滴水、虫鸣是网页里拿噪声现做的（sound.ts 的 ambience）
+    for name, (source, chain, target, longest) in NATURE.items():
+        if not source.exists():
+            raise SystemExit(f"采样不存在：{source}")
+        wav_in = WORK / f"nature_{name}.wav"
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-af", chain, "-ar", str(RATE), "-ac", "2", "-c:a", "pcm_s16le", str(wav_in)])
+        clip = shape(load(wav_in), target, longest)
+        marks[name] = [round(len(sprite) / 2 / RATE, 4), round(len(clip) / 2 / RATE, 4)]
+        logger.info("自然音 %-6s 长 %.2f 秒，平均响度 %.1f dB", name, marks[name][1], rms_db(clip))
+        sprite.extend(clip)
+        sprite.extend(gap)
     wav = WORK / "sfx.wav"
     save(wav, sprite)
-    run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-c:a", "libmp3lame", "-b:a", "128k", str(WORK / "sfx.mp3")])
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-c:a", "libmp3lame", "-b:a", "96k", str(WORK / "sfx.mp3")])
     return marks
 
 
@@ -433,8 +471,8 @@ GAINS = {"lead": 0.0, "pad": -10.0, "comp": -9.0, "bass": -6.0, "drums": -13.0, 
 COMP_VOICE = {"harp8": "harp", "koto": "harp", "rock": "harp", "flow": "harp", "strum": "harp", "pizzoff": "pizz",
               "waltz": "piano", "bossa": "piano", "stabs": "piano", "chorale": "piano", "march": "piano", "sparse": "piano"}
 # 混完接的滤镜：大厅一样长一点的混响、轻轻削一点最高的频率、统一响度。洞穴和夜海的回声更长更远
-MUSIC_CHAIN = ",aecho=0.8:0.88:110|210|330:0.24|0.18|0.12,lowpass=f=7000,loudnorm=I=-21:TP=-3:LRA=9,alimiter=limit=0.85"
-CHAINS = {"cave": ",aecho=0.8:0.9:170|340|520:0.32|0.24|0.16,lowpass=f=6500,loudnorm=I=-21:TP=-3:LRA=9,alimiter=limit=0.85"}
+MUSIC_CHAIN = ",aecho=0.8:0.88:110|210|330:0.24|0.18|0.12,lowpass=f=5200,loudnorm=I=-21:TP=-3:LRA=9,alimiter=limit=0.85"
+CHAINS = {"cave": ",aecho=0.8:0.9:170|340|520:0.32|0.24|0.16,lowpass=f=4800,loudnorm=I=-21:TP=-3:LRA=9,alimiter=limit=0.85"}
 
 
 def chord_notes(tonic: int, degree: str) -> list[int]:
@@ -454,7 +492,8 @@ def seventh(tonic: int, degree: str) -> int:
 def write_melody(tonic: int, scale_steps: list[int], chords: list[str], meter: int, pool: list[int], random) -> list[Note]:
     """生成十六小节的旋律：八句、两小节一句，按 A A' B C A A' B' 尾 排。强拍落在和弦音上，其余按音阶一步一步走。"""
     scale = sorted({tonic + octave * 12 + step for octave in (-1, 0, 1) for step in scale_steps})
-    scale = [note for note in scale if tonic - 3 <= note <= tonic + 16]
+    # 旋律最高只到主音往上一个八度（原来到十六个半音，用户嫌音调高）
+    scale = [note for note in scale if tonic - 5 <= note <= tonic + 12]
     rhythms = RHYTHMS if meter == 4 else RHYTHMS3
 
     def phrase(start_bar: int, rhythm: list[tuple[float, float]], last: int) -> list[tuple[float, float, int]]:
@@ -663,7 +702,7 @@ def extra_bar(style: str, start: float, meter: int, bar: int, low: int, mid: int
     elif style in ("sparkle", "drips"):
         count = 1 if style == "drips" else (1 if random() < 0.6 else 2)
         for _ in range(count):
-            note = random.choice([low + 24, mid + 24, top + 24, low + 36])
+            note = random.choice([low + 12, mid + 12, top + 12, low + 24])
             out.append((start + int(random() * meter * 2) * 0.5, 1.5, note, 34 if style == "drips" else 40))
     elif style == "sweep" and bar % 4 == 3:
         # 竖琴从下往上刮一道，最后一拍刮完，落到下一小节
@@ -680,7 +719,7 @@ def one_loop(offset: float, song: dict, chords: list[str], melody: list[Note], r
     """一圈 16 小节里每一轨弹什么，offset 是这一圈从第几拍开始。
     领奏、弦乐铺底、低音、伴奏、一点点打击乐，再加上每首自己的特色。都是轻的力度，没有敲得很脆的东西"""
     meter = song.get("meter", 4)
-    tonic = song["tonic"]
+    tonic = song["tonic"] + TRANSPOSE
     steps = song.get("scale") or PENTA[song["mode"]]
     scale = sorted({tonic - 24 + octave * 12 + step for octave in range(5) for step in steps})
     tracks: dict[str, list[Note]] = {"lead": [], "pad": [], "comp": [], "bass": [], "drums": []}
@@ -705,9 +744,13 @@ def one_loop(offset: float, song: dict, chords: list[str], melody: list[Note], r
     return tracks
 
 
+# 整体往下移几个半音：2026-11-14 用户说「音调还是有一点点高」
+TRANSPOSE = -2
+
+
 def build_song(song: dict) -> dict[str, float]:
     slug = song["slug"]
-    tonic = song["tonic"]
+    tonic = song["tonic"] + TRANSPOSE
     bpm = song["bpm"]
     meter = song.get("meter", 4)
     random = Seeded(song["seed"])
@@ -715,8 +758,8 @@ def build_song(song: dict) -> dict[str, float]:
     slow = bpm < 92
     pool = song.get("pool") or ([3, 4] if slow else [0, 1, 2, 4])
     melody = write_melody(tonic, song.get("scale") or PENTA[song["mode"]], chords, meter, pool, random)
-    # 长笛在低音区发虚，旋律整体抬一个八度
-    if song["lead"] == "flute" and tonic < 64:
+    # 长笛最低只到 C4，再低就发虚，这种时候旋律整体抬一个八度（原来门槛是 64，几乎每首长笛都被抬高，听着尖）
+    if song["lead"] == "flute" and tonic < 58:
         melody = [(beat, dur, note + 12, vel) for beat, dur, note, vel in melody]
     # 管乐和钢琴领奏都压轻一点
     melody = [(beat, dur, note, vel - 8) for beat, dur, note, vel in melody]
@@ -777,7 +820,9 @@ def main() -> None:
     songs, scenes = build_music(only, previous.get("songs"))
     now = time.strftime("%Y%m%d%H%M")
     stamp = previous.get("stamp", now)
-    target.write_text(json.dumps({"stamp": stamp, "version": now, "sfx": marks, "songs": songs, "scenes": scenes}, ensure_ascii=False, indent=2) + "\n", encoding="utf8")
+    # 每个场景配乐的主音（键号）：网页里把捡东西、进场景的声音移到这个调上，和音乐不打架
+    keys = {song["name"]: song["tonic"] + TRANSPOSE for song in SONGS}
+    target.write_text(json.dumps({"stamp": stamp, "version": now, "sfx": marks, "songs": songs, "scenes": scenes, "keys": keys}, ensure_ascii=False, indent=2) + "\n", encoding="utf8")
     for path in sorted(WORK.glob("*.mp3")):
         logger.info("%s  %d KB", path.name, path.stat().st_size // 1024)
 
