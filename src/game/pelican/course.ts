@@ -113,13 +113,14 @@ const LEAD = 24;
 const OBSTACLE_WIDTH = LANE_WIDTH - 0.8;
 // 贴地骑就能吃到的东西离路面多高
 const LOW = 0.95;
-// 每段场景放几个纪念品，有几成的场景会掉一根辣椒
+// 每段场景放几个纪念品，有几成的场景会掉一根辣椒。
+// 2026-11-14 用户要「地面上道具稍微多一点点，不要多很多」：辣椒、火箭、磁铁各多了一成多
 const TOKENS_PER_SCENE = 3;
-const CHILI_CHANCE = 0.6;
+const CHILI_CHANCE = 0.7;
 // 火箭（超级加速）：有几成的场景会掉一个
-const ROCKET_CHANCE = 0.5;
+const ROCKET_CHANCE = 0.65;
 // 磁铁：有几成的场景会掉一个
-const MAGNET_CHANCE = 0.55;
+const MAGNET_CHANCE = 0.7;
 
 // 这一局按什么顺序经过各个场景：全部打乱。2026-11-13 起每一局所有场景都走一遍（用户要求），以前只取前十二个
 export function shuffledOrder(random: () => number = Math.random): number[] {

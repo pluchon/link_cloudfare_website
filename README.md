@@ -21,10 +21,10 @@ AI Coding 与日常学习的分享站，地址是 [www.nuonuoya.cn](https://www.
 
 ## 鹈鹕骑车
 
-鹈鹕骑着小自行车兜风：一条长路连着穿过十二处风景，沿路用大嘴兜小鱼，不会输。每一局的场景顺序和路形都是随机的。
+鹈鹕骑着小自行车兜风：一条长路连着穿过十六处风景，沿路用大嘴兜小鱼、穿金圈、飞过断桥。每一局的场景顺序和路形都是随机的；生命是四颗心，很宽松。
 
 - 画面全部程序生成（three.js 加简单几何体），没有贴图和模型文件
-- 音效和背景音乐用真实乐器采样渲染（`scripts/game-audio/pelican.py`），再用 `scripts/game-audio/upload.py` 传到 OSS 的 `personal_website_other/`（仓库里不存 mp3）；打开游戏页面就开始下载
+- 音效和背景音乐用真实乐器采样渲染（`scripts/game-audio/pelican.py`），再用 `scripts/game-audio/upload.py` 传到 OSS 的 `personal_website_other/`（仓库里不存 mp3）；开局前一次下完，存进浏览器的 Cache Storage，刷新后不用重下
 - 成绩只存在本机浏览器
 
 ## 果冻 2048

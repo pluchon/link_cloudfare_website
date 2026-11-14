@@ -8,9 +8,9 @@
 
 ***
 
-> tags: [Astro, Cloudflare Pages, 静态网站, 着色器, 前端, AI Coding]
+> tags: [Astro, Cloudflare Pages, 静态网站, 着色器, 前端, 游戏开发, AI Coding]
 
-> date: 2026-11-10
+> date: 2026-11-14
 
 > github: https://github.com/pluchon/link_cloudfare_website
 
@@ -178,20 +178,22 @@ flowchart LR
 
 每个会话第一次打开首页时会先到门户；从文章链接直接进站的，不会被打扰。
 
-## 游戏大厅与果冻 2048
+## 游戏大厅：果冻 2048 与鹈鹕骑车
 
 ![果冻 2048 封面](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/20261105/cover-day.webp)
 
-顶栏手柄图标通向 `/game/` 游戏大厅。每款游戏的标题、日夜双封面、标签、`play:` 入口、小萌提示与玩法规则都写在 `src/content/game/` 的零 frontmatter Markdown 里，最新上线的可玩游戏自动挂上 `HOT · 正热乎` 角标，点击「玩法说明」弹出规则面板。
+顶栏手柄图标通向 `/game/` 游戏大厅。每款游戏的标题、日夜双封面、标签、`play:` 入口、小萌提示与玩法规则都写在 `src/content/game/` 的零 frontmatter Markdown 里，最新上线的可玩游戏自动挂上 `HOT · 正热乎` 角标，点击「游戏规则」弹出规则面板，点击「游戏画册」看实机截图。
 
 ```mermaid
 flowchart LR
     MD["src/content/game/*.md<br/>封面 · 标签 · play 入口 · 规则"] --> Lobby["游戏大厅 /game/<br/>日夜封面 · HOT 角标 · 瞄准光标"]
-    Lobby -->|点击玩法说明| Modal["规则弹窗 dialog<br/>小萌提示 + 操作列表"]
-    Lobby -->|点击开始游戏| Play["果冻 2048 /game/jelly-2048/"]
+    Lobby -->|游戏规则| Modal["规则弹窗 dialog<br/>小萌提示 + 操作列表"]
+    Lobby -->|游戏画册| Album["实机截图<br/>两大三小或九宫格"]
+    Lobby -->|开始游戏| Play["果冻 2048 /game/jelly-2048/"]
+    Lobby -->|开始游戏| Ride["鹈鹕骑车 /game/pelican-ride/"]
 ```
 
-目前上线的是软体物理合成游戏**果冻 2048**（`/game/jelly-2048/`）：数字是会挤压、变形、Q 弹晃动的软体果冻。按住顶部托盘里的果冻往外拉，瞄准虚线抛物线松手弹入井中，相同数字贴合即合成升级（`2 → 8192`），在托盘里也能起跳预合成到 `64`。
+第一款是软体物理合成游戏**果冻 2048**（`/game/jelly-2048/`）：数字是会挤压、变形、Q 弹晃动的软体果冻。按住顶部托盘里的果冻往外拉，瞄准虚线抛物线松手弹入井中，相同数字贴合即合成升级（`2 → 8192`），在托盘里也能起跳预合成到 `64`。
 
 ```mermaid
 flowchart TD
@@ -209,6 +211,24 @@ flowchart TD
 - **纯手写软体物理**：基于位置动力学（PBD，`src/game/jelly/physics.ts`），叠加边长抗压、面积守恒、双谐波形状匹配、表面张力、内部硬核（`CORE`）、竖向堆叠压重（`STACK`）与相对侧法向推离，不引入任何第三方物理引擎
 - **现场合成音效与慢放**：音效由 Web Audio 实时合成（`src/game/jelly/sound.ts`），触发多级连锁合成时画面与声音同步进入慢放
 - **断点续玩与离开保护**：局面与最高记录保存在浏览器 `localStorage`，误刷新或切走后 15 分钟内回来可无缝续玩；当局已有得分时点站内链接离开，会先弹出结算确认框
+
+![鹈鹕骑车：海滨晨光](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/pelican-ride/album/20261113/01-beach.webp?v=20261114)
+
+第二款是 3D 兜风游戏**鹈鹕骑车**（`/game/pelican-ride/`）：从车后方看，鹈鹕骑着小单车沿一条长路穿过十六处风景（每处 900 米，顺序和路形每局随机），三条车道上吃小鱼、穿金圈、飞跳台和弹簧、绕开路障，峡谷和云海断桥里还有要冲刺才飞得过去的断口。开局可以从三种鹈鹕和企鹅、白熊里挑骑手，生命是四颗心，很宽松。
+
+```mermaid
+flowchart LR
+    Load["场景搭建中<br/>预下载配乐与音效"] --> Pick[选骑手]
+    Pick --> Ride["十六处风景<br/>随机顺序与路形"]
+    Ride --> Items["小鱼 · 金圈连击<br/>辣椒 · 火箭 · 磁铁 · 纪念品"]
+    Ride --> Gaps["跳台 · 弹簧 · 断口<br/>撞路障掉半颗心"]
+    Items & Gaps --> Finish([到终点绕镜结算])
+```
+
+- **算与画分开**：路线和物理（`track` / `course` / `bike`）不依赖 three.js，可以直接用 Node 跑模拟，断口宽度、弹簧弧线和金圈位置都按同一套物理反推
+- **全部程序生成**：景物、门、路面、群山和极光都由几何体和着色器生成，没有贴图和模型文件；后期是泛光加一道氛围（太阳光束、冷暖色调、暗角），画质按帧时间自动降档
+- **真实乐器配乐**：每个场景一首配乐，音效和配乐都用 CC0 乐器采样离线渲染成 mp3 放在 OSS；开局前一次下完并存进 Cache Storage，刷新后不用重下
+- 两个游戏大概是怎么做的，单独写了一篇：[做小游戏：果冻 2048 和鹈鹕骑车是怎么做出来的](/tool/做小游戏：果冻2048和鹈鹕骑车是怎么做出来的/)
 
 ## 本地运行
 

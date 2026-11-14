@@ -92,7 +92,8 @@ const toc = current
             <!-- 标题只留给读屏软件和索引跳转，页面上不显示 -->
             <h1 class="sr-title" id="notice-title">{current.data.title}</h1>
 
-            {current.data.cover && <img class="head__cover" src={current.data.cover} alt="" data-zoom />}
+            {/* 头图不放大（2026-11-14 用户要的），只有正文里的图点了看大图 */}
+            {current.data.cover && <img class="head__cover" src={current.data.cover} alt="" />}
 
             <div class="prose notice__prose" set:html={html} />
           </article>
@@ -398,7 +399,6 @@ const toc = current
     width: 100%;
     margin-bottom: 1.5rem;
     border: var(--hair) solid var(--line);
-    cursor: zoom-in;
   }
 
   /* 正文顶上不留空，和左边列表的上沿对齐 */
