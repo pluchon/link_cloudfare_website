@@ -17,10 +17,14 @@ import * as THREE from 'three';
 //    再按多普勒因子调亮度和冷暖，前方变亮变蓝。
 export const warpBeta = { value: 0 };
 export const warpImage = { value: 0 };
+export const warpCenter = { value: new THREE.Vector3() };
+export const warpScale = { value: 1 };
 
 export const warpGlsl = /* glsl */ `
   uniform float uWarpBeta;
   uniform float uWarpImage;
+  uniform vec3 uWarpCenter;
+  uniform float uWarpScale;
   varying vec3 vWarpTint;
   varying float vWarpCull;
   varying vec3 vWarpRel;
@@ -38,6 +42,9 @@ export const warpGlsl = /* glsl */ `
     vWarpTint = vec3(1.0);
     vTe2 = 0.0;
     warpCull = 0.0;
+    float sc = max(uWarpScale, 1e-4);
+    vec3 camHole = (cameraPosition - uWarpCenter) / sc;
+    vec3 worldHole = (world - uWarpCenter) / sc;
     vec3 rel = world - cameraPosition;
     vOrigRel = rel;
     float ds = length(rel);
@@ -47,9 +54,9 @@ export const warpGlsl = /* glsl */ `
     }
     vec3 dir = rel / ds;
 
-    float dl = length(cameraPosition);
-    vec3 h = -cameraPosition / dl;
-    float z = dot(world, h);
+    float dl = length(camHole);
+    vec3 h = -camHole / max(dl, 1e-4);
+    float z = dot(worldHole, h);
     if (z > 0.0) {
       float cb = clamp(dot(dir, h), -1.0, 1.0);
       float b = acos(cb);
@@ -76,7 +83,7 @@ export const warpGlsl = /* glsl */ `
       float root = sqrt(b * b + 4.0 * te2);
       if (uWarpImage > 0.5) {
         if (b * b > 6.25 * te2 || b * b < 0.08 * te2) warpCull = 1.0;
-        float edge = 1.02 * asin(min(2.6 * sqrt(max(1.0 - 1.0 / dl, 0.0)) / dl, 1.0));
+        float edge = 1.02 * asin(min(2.6 * sqrt(max(1.0 - 1.0 / max(dl, 1.01), 0.0)) / max(dl, 1.01), 1.0));
         float t = max(0.5 * (root - b), edge);
         if (sl > 1e-5) dir = h * cos(t) - side / sl * sin(t);
       } else {
@@ -110,6 +117,8 @@ export const warpGlsl = /* glsl */ `
 function injectWarp(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.uniforms.uWarpBeta = warpBeta;
   shader.uniforms.uWarpImage = warpImage;
+  shader.uniforms.uWarpCenter = warpCenter;
+  shader.uniforms.uWarpScale = warpScale;
   shader.vertexShader = warpGlsl + shader.vertexShader.replace(
     '#include <project_vertex>',
     /* glsl */ `#include <project_vertex>
@@ -122,13 +131,13 @@ function injectWarp(shader: THREE.WebGLProgramParametersWithUniforms) {
     gl_Position = warpClip(projectionMatrix * mvPosition);`,
   );
   shader.fragmentShader =
-    'uniform float uWarpImage;\nvarying vec3 vWarpTint;\nvarying float vWarpCull;\nvarying vec3 vWarpRel;\nvarying vec3 vOrigRel;\nvarying float vTe2;\n' +
+    'uniform float uWarpImage;\nuniform vec3 uWarpCenter;\nvarying vec3 vWarpTint;\nvarying float vWarpCull;\nvarying vec3 vWarpRel;\nvarying vec3 vOrigRel;\nvarying float vTe2;\n' +
     shader.fragmentShader.replace(
       '#include <tonemapping_fragment>',
       /* glsl */ `if (vWarpCull > 0.001) discard;
       if (vTe2 > 0.0) {
         vec3 fDir = normalize(vWarpRel);
-        vec3 h = -normalize(cameraPosition);
+        vec3 h = normalize(uWarpCenter - cameraPosition);
         float fTheta = acos(clamp(dot(fDir, h), -1.0, 1.0));
         vec3 uDir = normalize(vOrigRel);
         float ub = acos(clamp(dot(uDir, h), -1.0, 1.0));

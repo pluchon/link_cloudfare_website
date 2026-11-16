@@ -5,7 +5,9 @@ import { buildStation } from './station';
 import { buildProbe, orbitFrame, orbitPath, orbitPosition, type Orbit } from './orbits';
 import { travel, type LoaderUI } from './loader';
 import { buildRocks } from './rocks';
-import { lensPoint, warpBeta, warpImage, warpMaterial, warpObject } from './warp';
+import { buildRealmProps } from './realms';
+import { lensPoint, warpBeta, warpCenter, warpImage, warpMaterial, warpObject, warpScale } from './warp';
+import { AZIMUTH_LABELS, STAR_NODES, buildStarMap, renderMiniMap, type StarNodeSpec } from './starmap';
 
 // 屏幕上的一组标注：引线、端点圈、文字
 interface Tag {
@@ -24,6 +26,20 @@ export interface ProbeSpec {
   terminal: HTMLElement;
 }
 
+export interface StarMapUI {
+  miniBtn: HTMLButtonElement;
+  miniCanvas: HTMLCanvasElement;
+  layer: HTMLElement;
+  nodeTags: { id: string; tag: Tag }[];
+  azimuthLabels: HTMLElement[];
+  scaleRoot: HTMLElement;
+  scaleTrack: HTMLElement;
+  scaleThumb: HTMLElement;
+  barCode: HTMLElement;
+  barTitle: HTMLElement;
+  barMeta: HTMLElement;
+}
+
 interface DoorOptions {
   canvas: HTMLCanvasElement;
   // 穿过黑洞之后去哪
@@ -38,6 +54,8 @@ interface DoorOptions {
   base: Tag;
   // 五个分类各一个探测器，顺序和 PROBE_ORBITS 对应
   probes: ProbeSpec[];
+  // 深空星图交互 UI（左上角入口、全屏星图标注、尺度尺、档案栏）
+  starmap?: StarMapUI;
   // 穿过视界之后的加载画面
   loader: LoaderUI;
   // 着色器编译完、第一帧画出来时调用（开场加载画面据此收起）
@@ -53,7 +71,21 @@ interface DoorOptions {
   };
 }
 
-type Mode = 'deck' | 'leaving' | 'free' | 'returning' | 'docking' | 'docked' | 'undocking' | 'warping' | 'diving';
+type Mode =
+  | 'deck'
+  | 'leaving'
+  | 'free'
+  | 'returning'
+  | 'docking'
+  | 'docked'
+  | 'undocking'
+  | 'warping'
+  | 'diving'
+  | 'enteringMap'
+  | 'starmap'
+  | 'leavingMap'
+  | 'flyingGalaxy'
+  | 'galaxy';
 
 // 五条探测器轨道都在盘面里（共面），半长轴 13 到 37 Rs，都在吸积盘（外径 10）外面；
 // 偏心率和近心点方向各不相同，俯视时是五个错开的椭圆
@@ -76,9 +108,9 @@ const STATION_ORBIT: Orbit = { a: 45, e: 0, inc: -3, node: 0, peri: 0, m0: -Math
 // 黑洞在 45 Rs 外，阴影加下方光弧约占 5°，再近扶栏就太大、再远就挡住光弧
 const EYE_LOCAL = new THREE.Vector3(0, 0.32, 0.95);
 
-// 自由视角：绕黑洞转，默认从高处斜着看下去，五条轨道和空间站都在画面里
-const FREE_DISTANCE = 82;
-const FREE_PHI = 0.62;
+// 自由视角：绕人马座 A* 黑洞巡航，略压低仰角让空间站、五颗探测器、中继浮标阵与吸积盘更有史诗纵深
+const FREE_DISTANCE = 68;
+const FREE_PHI = 0.76;
 
 const DISK_N = new THREE.Vector3(0, 1, 0);
 const DISK_U = new THREE.Vector3(1, 0, 0);
@@ -88,15 +120,42 @@ const LEAVE_MS = 3800;
 const RETURN_MS = 5200;
 const DOCK_MS = 3200;
 const UNDOCK_MS = 2600;
+const MAP_ENTER_MS = 2400;
+const MAP_LEAVE_MS = 2000;
+const GALAXY_FLY_MS = 3800;
 // 点屏幕后，屏幕收起要这么久，收完才开始俯冲
 const FOLD_MS = 650;
 const DIVE_MS = 4600;
 // 要画次像的物体和灯光额外放在这一层
 const IMAGE_LAYER = 1;
 
+// 斯隆长城高空俯瞰默认机位与共用对数尺度参数（顶部 6 Rs -> 分界 35% -> 底部 1.4 GLY）
+const BASE_MIN_DIST = 6;
+const BASE_MAX_DIST = 240;
+const SCALE_SPLIT = 0.35;
+const MAP_OVERVIEW_POS = new THREE.Vector3(24, 108, 198);
+const MAP_MIN_DIST = 42;
+const MAP_MAX_DIST = 460;
+
 const ORIGIN = new THREE.Vector3();
 const smooth = (t: number) => t * t * (3 - 2 * t);
+// 五次平滑阶跃：起步与刹停零加速度冲击，转场平移顺滑不晕
+const smoother = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+// 慢加速巡航曲线（Beta(3,4) 精确积分）：极缓磁吸起步 -> 中段加速跃迁 -> 悠长失重悬停刹停
+const asymmetricCruise = (t: number) => t * t * t * (20 - 45 * t + 36 * t * t - 10 * t * t * t);
 const clamp01 = (t: number) => Math.min(Math.max(t, 0), 1);
+
+const baseDistToU = (d: number) =>
+  SCALE_SPLIT *
+  clamp01((Math.log(Math.max(d, BASE_MIN_DIST)) - Math.log(BASE_MIN_DIST)) / (Math.log(BASE_MAX_DIST) - Math.log(BASE_MIN_DIST)));
+const uToBaseDist = (u: number) =>
+  Math.exp(THREE.MathUtils.lerp(Math.log(BASE_MIN_DIST), Math.log(BASE_MAX_DIST), clamp01(u / SCALE_SPLIT)));
+const mapDistToU = (d: number) =>
+  SCALE_SPLIT +
+  (1 - SCALE_SPLIT) *
+    clamp01((Math.log(Math.max(d, MAP_MIN_DIST)) - Math.log(MAP_MIN_DIST)) / (Math.log(MAP_MAX_DIST) - Math.log(MAP_MIN_DIST)));
+const uToMapDist = (u: number) =>
+  Math.exp(THREE.MathUtils.lerp(Math.log(MAP_MIN_DIST), Math.log(MAP_MAX_DIST), clamp01((u - SCALE_SPLIT) / (1 - SCALE_SPLIT))));
 
 // 三次贝塞尔：飞行路线用，起点终点每帧可以重新算（空间站、探测器都在动）
 function bezier(p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3, p3: THREE.Vector3, t: number, out: THREE.Vector3) {
@@ -137,6 +196,18 @@ export function mountDoor(options: DoorOptions): () => void {
   scene.add(camera);
 
   // ---- 黑洞与深空：全屏四边形，先画，后面的东西都盖在它上面 ----
+  const diskN = DISK_N.clone();
+  const diskU = DISK_U.clone();
+  const diskV = DISK_V.clone();
+  const holeCenter = new THREE.Vector3();
+  let holeScale = 1;
+  let holeAlpha = 1;
+  let holeTheme = 0;
+  let dustAlpha = 1;
+  let mapOpacity = 0;
+  let cosmosMix = 0;
+  let nucleusGlow = 0;
+
   const holeUniforms = {
     uCamPos: { value: new THREE.Vector3() },
     uInvProj: { value: new THREE.Matrix4() },
@@ -145,13 +216,19 @@ export function mountDoor(options: DoorOptions): () => void {
     uHover: { value: 0 },
     uDive: { value: 0 },
     uBeta: { value: 0 },
-    uDiskN: { value: DISK_N },
-    uDiskU: { value: DISK_U },
-    uDiskV: { value: DISK_V },
+    uDiskN: { value: diskN },
+    uDiskU: { value: diskU },
+    uDiskV: { value: diskV },
     uHoleNdc: { value: new THREE.Vector2() },
     uStreak: { value: 0 },
     uAspect: { value: 1 },
     uProjZ: { value: new THREE.Vector2() },
+    uHoleCenter: { value: holeCenter },
+    uHoleScale: { value: 1 },
+    uHoleAlpha: { value: 1 },
+    uHoleTheme: { value: 0 },
+    uCosmosMix: { value: 0 },
+    uNucleusGlow: { value: 0 },
   };
   const defines: Record<string, number | string> = { STEPS: lite ? 100 : 170 };
   if (lite) defines.LITE = '';
@@ -250,10 +327,14 @@ export function mountDoor(options: DoorOptions): () => void {
     uDive: { value: 0 },
     uSize: { value: 22 },
     uPixelRatio: { value: ratio },
-    uDiskN: { value: DISK_N },
-    uDiskU: { value: DISK_U },
-    uDiskV: { value: DISK_V },
+    uDiskN: { value: diskN },
+    uDiskU: { value: diskU },
+    uDiskV: { value: diskV },
     uWarpBeta: warpBeta,
+    uWarpCenter: warpCenter,
+    uWarpScale: warpScale,
+    uDustAlpha: { value: 1 },
+    uHoleTheme: { value: 0 },
   };
   const dust = new THREE.Points(
     dustGeometry,
@@ -268,6 +349,9 @@ export function mountDoor(options: DoorOptions): () => void {
   );
   dust.frustumCulled = false;
   scene.add(dust);
+
+  // ---- 深空星图与斯隆长城（开场渲染就绪后再挂入场景后台预编译，避免阻塞首屏加载） ----
+  const starMap = buildStarMap(lite);
 
   // ---- 速度线：挂在相机上，只在俯冲和跃迁时出现，从前方迎面掠过 ----
   const streakCount = lite ? 140 : 360;
@@ -346,6 +430,16 @@ export function mountDoor(options: DoorOptions): () => void {
   // ---- 外围的小行星带和两颗岩质行星：按开场时空间站的方向摆，从甲板一眼就能看见 ----
   const rocks = buildRocks(lite, stationPos.clone().normalize());
   scene.add(rocks.group);
+  // ---- 画廊/游戏星系与基地外围轻量化三维景物（首屏就绪后再后台预热，零首屏卡顿） ----
+  const realmProps = buildRealmProps(lite);
+  let extrasReadyAt = 0;
+  const attachExtras = () => {
+    if (!starMap.group.parent) scene.add(starMap.group);
+    if (!realmProps.group.parent) {
+      scene.add(realmProps.group);
+      extrasReadyAt = performance.now();
+    }
+  };
   for (const root of [station, rocks.group, ...probes.map((p) => p.group)]) {
     root.traverse((object) => object.layers.enable(IMAGE_LAYER));
   }
@@ -365,18 +459,67 @@ export function mountDoor(options: DoorOptions): () => void {
   let modeAt = performance.now();
   let leavePhi = Math.PI / 2;
   let docked: Probe | null = null;
-  const from = { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 38 };
+  let activeGalaxy: StarNodeSpec | null = null;
+  let selectedStar: StarNodeSpec | null = null;
+  let mapFocus: { fromTarget: THREE.Vector3; toTarget: THREE.Vector3; fromPos: THREE.Vector3; toPos: THREE.Vector3; startAt: number } | null = null;
+  const from = { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 41, holeAlpha: 1, holeScale: 1, mapOpacity: 0, scaleU: baseDistToU(STATION_ORBIT.a) };
+  let scaleU = baseDistToU(STATION_ORBIT.a);
   const offset = new THREE.Vector3();
   const spherical = new THREE.Spherical();
+  const sm = options.starmap;
+  const baseHoleHtml = options.hole.label.innerHTML;
+  const starNodeMap = new Map(STAR_NODES.map((n) => [n.id, n]));
+  const starPosVec = new Map(STAR_NODES.map((n) => [n.id, new THREE.Vector3(...n.position)]));
+  const diskTiltQuat = new THREE.Quaternion();
+  const diskTiltEuler = new THREE.Euler();
+
+  function setDiskTilt(rx = 0, rz = 0) {
+    diskTiltQuat.setFromEuler(diskTiltEuler.set(rx, 0, rz));
+    diskN.copy(DISK_N).applyQuaternion(diskTiltQuat).normalize();
+    diskU.copy(DISK_U).applyQuaternion(diskTiltQuat).normalize();
+    diskV.copy(DISK_V).applyQuaternion(diskTiltQuat).normalize();
+  }
+
+  const galQuat = new THREE.Quaternion();
+  const galEuler = new THREE.Euler();
+  const galVec = new THREE.Vector3();
+
+  function galaxyViewPos(node: StarNodeSpec, out = new THREE.Vector3()) {
+    const sc = node.holeScale ?? 1.85;
+    const [rx, rz] = node.diskTilt ?? [0, 0];
+    galQuat.setFromEuler(galEuler.set(rx, 0, rz));
+    // 卡冈图雅贴盘超近巨物构图：仅贴近外吸积盘上方 0.38 Rs，黑洞巨影与光弧扑面压满天幕
+    const dist = (camera.aspect < 1 ? 6.8 : 4.55) * sc;
+    galVec.set(0.42 * sc, 0.38 * sc, dist).applyQuaternion(galQuat);
+    return out.set(...node.position).add(galVec);
+  }
+
+  function galaxyViewTarget(node: StarNodeSpec, out = new THREE.Vector3()) {
+    const sc = node.holeScale ?? 1.85;
+    const [rx, rz] = node.diskTilt ?? [0, 0];
+    galQuat.setFromEuler(galEuler.set(rx, 0, rz));
+    // 视线略右偏上仰，让庞大黑洞占满左侧主视野并向右上铺开吸积盘纵深
+    const offsetX = (camera.aspect < 1 ? 0.52 : 1.28) * sc;
+    galVec.set(offsetX, 0.24 * sc, 0).applyQuaternion(galQuat);
+    return out.set(...node.position).add(galVec);
+  }
 
   function baseFov() {
-    // 竖屏视野放宽，黑洞和甲板都要进得来
-    return camera.aspect < 1 ? 62 : 38;
+    // 竖屏放宽视野；基地取 41° 增强甲板与轨道透视宏阔感，斯隆长城俯瞰取 42°，星系黑洞近景取 58° 放大巨物压迫感
+    if (camera.aspect < 1) return mode === 'galaxy' || mode === 'flyingGalaxy' ? 66 : 62;
+    if (mode === 'galaxy' || mode === 'flyingGalaxy') return 58;
+    if (mode === 'starmap' || mode === 'enteringMap') return 42;
+    return 41;
   }
 
   // 标注文字的宽度：只在启动和窗口变化时量。每帧读 offsetWidth 会逼浏览器每帧重排，开场那点卡顿有一部分就是它
   const labelWidth = new Map<HTMLElement, number>();
-  const allTags = [options.hole, options.base, ...probes.map((p) => p.tag)];
+  const allTags = [
+    options.hole,
+    options.base,
+    ...probes.map((p) => p.tag),
+    ...(sm ? sm.nodeTags.map((n) => n.tag) : []),
+  ];
   function measureLabels() {
     for (const tag of allTags) labelWidth.set(tag.label, tag.label.offsetWidth);
   }
@@ -414,7 +557,27 @@ export function mountDoor(options: DoorOptions): () => void {
     docked: '已对接',
     warping: '跃迁',
     diving: '穿越视界',
+    enteringMap: '',
+    starmap: '',
+    leavingMap: '',
+    flyingGalaxy: '星际跃迁',
+    galaxy: '星系奇点',
   };
+
+  function selectStarNode(node: StarNodeSpec | null) {
+    selectedStar = node;
+    if (!sm) return;
+    if (mode === 'galaxy' && activeGalaxy) {
+      sm.barCode.textContent = activeGalaxy.code;
+      sm.barTitle.textContent = activeGalaxy.targetLabel ?? activeGalaxy.name;
+      sm.barMeta.textContent = activeGalaxy.scaleLabel;
+      return;
+    }
+    // 斯隆长城界面仅保留唯一主标题与非重复尺度副注，避免「斯隆长城」四字重复出现
+    sm.barCode.textContent = 'DEEP SPACE · 1.37 GLY';
+    sm.barTitle.textContent = '斯隆长城';
+    sm.barMeta.textContent = 'Z = 0.073 · 大尺度纤维网';
+  }
 
   function setMode(next: Mode) {
     mode = next;
@@ -422,9 +585,23 @@ export function mountDoor(options: DoorOptions): () => void {
     from.pos.copy(camera.position);
     from.target.copy(controls.target);
     from.fov = camera.fov;
+    from.holeAlpha = holeAlpha;
+    from.holeScale = holeScale;
+    from.mapOpacity = mapOpacity;
+    from.scaleU = scaleU;
     leavePhi = spherical.setFromVector3(offset.copy(camera.position).sub(controls.target)).phi;
     hud.view.textContent = viewNames[next];
     hud.guide.dataset.mode = next;
+    if (sm) {
+      sm.miniBtn.dataset.mode = next;
+      sm.layer.dataset.mode = next;
+      sm.scaleRoot.dataset.mode = next;
+      if (next === 'starmap') {
+        selectStarNode(selectedStar);
+      } else if (next === 'galaxy' && activeGalaxy) {
+        selectStarNode(activeGalaxy);
+      }
+    }
   }
 
   // 甲板上一拖动，就开始慢慢退出空间站。只认拖动期间和松手后 0.4 秒：
@@ -435,6 +612,10 @@ export function mountDoor(options: DoorOptions): () => void {
   let disarm = 0;
   controls.addEventListener('start', () => {
     armed = true;
+    mapFocus = null;
+    scaleDampingActive = false;
+    targetScaleU = null;
+    dragScaleU = null;
     clearTimeout(disarm);
     camera.getWorldDirection(startDir);
   });
@@ -447,18 +628,20 @@ export function mountDoor(options: DoorOptions): () => void {
     if (changeDirTmp.angleTo(startDir) > 0.06) setMode('leaving');
   });
 
-  // 视线到黑洞中心的最近距离（直线近似）小于阴影半径，就算点中了黑洞
+  // 视线到当前激活黑洞中心的最近距离（直线近似）小于阴影半径，就算点中了黑洞
   const ray = new THREE.Raycaster();
   function overHole(x: number, y: number): boolean {
+    if (holeAlpha < 0.5) return false;
     ray.setFromCamera(ndcTmp.set(x, y), camera);
-    const o = ray.ray.origin;
+    const o = offsetTmp.copy(ray.ray.origin).sub(holeCenter);
     const d = ray.ray.direction;
     if (o.dot(d) > 0) return false;
-    return crossTmp.crossVectors(o, d).length() < 3.4;
+    return crossTmp.crossVectors(o, d).length() < 3.4 * holeScale;
   }
 
   // 屏幕上离指针最近、20px 以内的探测器
   function probeAt(clientX: number, clientY: number): Probe | null {
+    if (mode !== 'deck' && mode !== 'free' && mode !== 'leaving') return null;
     const rect = canvas.getBoundingClientRect();
     let best: Probe | null = null;
     let bestD = 20;
@@ -477,6 +660,27 @@ export function mountDoor(options: DoorOptions): () => void {
     return best;
   }
 
+  // 深空星图模式：屏幕上离指针最近、28px 以内的星系/地标节点
+  function starNodeAt(clientX: number, clientY: number): StarNodeSpec | null {
+    if (mode !== 'starmap') return null;
+    const rect = canvas.getBoundingClientRect();
+    let best: StarNodeSpec | null = null;
+    let bestD = 28;
+    for (const node of STAR_NODES) {
+      const pos = starPosVec.get(node.id)!;
+      const v = offsetTmp.copy(pos).project(camera);
+      if (v.z > 1) continue;
+      const sx = rect.left + (v.x * 0.5 + 0.5) * rect.width;
+      const sy = rect.top + (-v.y * 0.5 + 0.5) * rect.height;
+      const d = Math.hypot(sx - clientX, sy - clientY);
+      if (d < bestD) {
+        bestD = d;
+        best = node;
+      }
+    }
+    return best;
+  }
+
   function toNdc(e: PointerEvent | MouseEvent) {
     const rect = canvas.getBoundingClientRect();
     return {
@@ -487,10 +691,10 @@ export function mountDoor(options: DoorOptions): () => void {
 
   // 镜头被脚本接管、用户不能拖的模式
   function scripted() {
-    return mode !== 'deck' && mode !== 'free' && mode !== 'leaving';
+    return mode !== 'deck' && mode !== 'free' && mode !== 'leaving' && mode !== 'starmap' && mode !== 'galaxy';
   }
 
-  // 俯冲进黑洞：去思维导图首页是它，点探测器屏幕的跃迁最后也是它，只是终点换成那个分类
+  // 俯冲进黑洞：基地黑洞去首页，探测器去对应分类，画廊/游戏星系中心黑洞去画廊或游戏大厅
   const diveTo = { href: target, title: '正在穿越视界 · 前往基地' };
   function startDive(href: string, title: string) {
     diveTo.href = href;
@@ -508,7 +712,158 @@ export function mountDoor(options: DoorOptions): () => void {
   function dive() {
     if (mode === 'diving' || mode === 'warping') return;
     closeTerminal();
+    if (mode === 'galaxy' && activeGalaxy?.href) {
+      startDive(activeGalaxy.href, `正在穿越视界 · 前往「${activeGalaxy.targetLabel ?? activeGalaxy.name}」`);
+      return;
+    }
+    if (mode === 'starmap' || mode === 'enteringMap' || mode === 'leavingMap' || mode === 'flyingGalaxy') return;
     startDive(target, '正在穿越视界 · 前往基地');
+  }
+
+  // ---- 斯隆长城与星系黑洞切换 ----
+  const enterMapGoal = MAP_OVERVIEW_POS.clone();
+  const leaveMapTo = new THREE.Vector3();
+  const galaxyGoalPos = new THREE.Vector3();
+  const galaxyGoalTarget = new THREE.Vector3();
+
+  function openStarMap(goalPos = MAP_OVERVIEW_POS) {
+    if (!sm || mode === 'starmap' || mode === 'enteringMap' || mode === 'diving' || mode === 'warping') return;
+    attachExtras();
+    closeTerminal();
+    docked = null;
+    activeGalaxy = null;
+    mapFocus = null;
+    enterMapGoal.copy(goalPos);
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = '';
+    if (still) {
+      setMode('starmap');
+      camera.position.copy(enterMapGoal);
+      controls.target.copy(ORIGIN);
+      camera.fov = baseFov();
+      camera.updateProjectionMatrix();
+      holeAlpha = 0;
+      dustAlpha = 0;
+      mapOpacity = 1;
+      cosmosMix = 1;
+      controls.enableZoom = true;
+      controls.enablePan = true;
+      controls.minDistance = MAP_MIN_DIST;
+      controls.maxDistance = MAP_MAX_DIST;
+      controls.enabled = true;
+      controls.update();
+      return;
+    }
+    setMode('enteringMap');
+  }
+
+  function closeStarMap(targetDist = FREE_DISTANCE) {
+    if (mode !== 'starmap' && mode !== 'enteringMap') return;
+    activeGalaxy = null;
+    mapFocus = null;
+    holeCenter.copy(ORIGIN);
+    holeScale = 1;
+    holeTheme = 0;
+    setDiskTilt(0, 0);
+    options.hole.label.innerHTML = baseHoleHtml;
+    labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
+    const theta = Math.atan2(camera.position.x, camera.position.z);
+    spherical.set(THREE.MathUtils.clamp(targetDist, BASE_MIN_DIST, BASE_MAX_DIST), FREE_PHI, theta);
+    leaveMapTo.setFromSpherical(spherical);
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = '';
+    if (still) {
+      camera.position.copy(leaveMapTo);
+      controls.target.copy(ORIGIN);
+      camera.fov = baseFov();
+      camera.updateProjectionMatrix();
+      holeAlpha = 1;
+      dustAlpha = 1;
+      mapOpacity = 0;
+      cosmosMix = 0;
+      controls.enableZoom = true;
+      controls.enablePan = true;
+      controls.minDistance = BASE_MIN_DIST;
+      controls.maxDistance = BASE_MAX_DIST;
+      controls.enabled = true;
+      controls.update();
+      setMode('free');
+      return;
+    }
+    setMode('leavingMap');
+  }
+
+  function focusStarLandmark(node: StarNodeSpec) {
+    selectStarNode(node);
+    const targetPos = new THREE.Vector3(...node.position);
+    const dir = offsetTmp.copy(camera.position).sub(controls.target);
+    const dist = THREE.MathUtils.clamp(dir.length(), 85, 195);
+    if (dir.lengthSq() < 1e-4) dir.set(0.2, 0.4, 1);
+    dir.normalize();
+    mapFocus = {
+      fromTarget: controls.target.clone(),
+      toTarget: targetPos,
+      fromPos: camera.position.clone(),
+      toPos: targetPos.clone().addScaledVector(dir, dist),
+      startAt: performance.now(),
+    };
+  }
+
+  function flyToGalaxy(node: StarNodeSpec) {
+    if (!node.href) return;
+    attachExtras();
+    activeGalaxy = node;
+    selectedStar = node;
+    mapFocus = null;
+    holeCenter.set(...node.position);
+    holeScale = node.holeScale ?? 1.85;
+    holeTheme = node.holeTheme ?? 0;
+    const [rx, rz] = node.diskTilt ?? [0, 0];
+    setDiskTilt(rx, rz);
+    options.hole.label.innerHTML = `进入${node.targetLabel ?? node.name}<small>EVENT HORIZON</small>`;
+    labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = '';
+    if (still) {
+      galaxyViewPos(node, camera.position);
+      galaxyViewTarget(node, controls.target);
+      holeAlpha = 1;
+      dustAlpha = 1;
+      mapOpacity = 0;
+      setMode('galaxy');
+      camera.fov = baseFov();
+      camera.updateProjectionMatrix();
+      controls.enableZoom = true;
+      controls.enablePan = false;
+      controls.minDistance = 2.9 * holeScale;
+      controls.maxDistance = 36 * holeScale;
+      controls.enabled = true;
+      controls.update();
+      return;
+    }
+    setMode('flyingGalaxy');
+  }
+
+  function returnToStarMap() {
+    if (mode !== 'galaxy' && mode !== 'flyingGalaxy') return;
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = '';
+    setMode('enteringMap');
+  }
+
+  function handleStarNodeClick(node: StarNodeSpec) {
+    if (mode !== 'starmap') return;
+    if (node.id === 'base') {
+      closeStarMap();
+    } else if (node.kind === 'hub') {
+      flyToGalaxy(node);
+    } else {
+      focusStarLandmark(node);
+    }
   }
 
   // ---- 探测器对接：飞到探测器侧后方停住，终端屏幕从旁边展开 ----
@@ -576,6 +931,14 @@ export function mountDoor(options: DoorOptions): () => void {
   }
 
   function goBack() {
+    if (mode === 'galaxy' || mode === 'flyingGalaxy') {
+      returnToStarMap();
+      return;
+    }
+    if (mode === 'starmap' || mode === 'enteringMap') {
+      closeStarMap();
+      return;
+    }
     if (mode === 'free' || mode === 'leaving' || mode === 'docked' || mode === 'docking' || mode === 'undocking') {
       closeTerminal();
       settleControls();
@@ -598,6 +961,12 @@ export function mountDoor(options: DoorOptions): () => void {
       hovering = false;
       return;
     }
+    if (mode === 'starmap') {
+      hovering = false;
+      const onStar = !!starNodeAt(e.clientX, e.clientY);
+      canvas.style.cursor = onStar ? 'pointer' : down ? 'grabbing' : 'grab';
+      return;
+    }
     const n = toNdc(e);
     hovering = overHole(n.x, n.y);
     const onProbe = !!probeAt(e.clientX, e.clientY);
@@ -608,6 +977,11 @@ export function mountDoor(options: DoorOptions): () => void {
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     down = null;
     if (moved >= 6 || scripted()) return;
+    if (mode === 'starmap') {
+      const node = starNodeAt(e.clientX, e.clientY);
+      if (node) handleStarNodeClick(node);
+      return;
+    }
     const p = probeAt(e.clientX, e.clientY);
     if (p) {
       dock(p);
@@ -633,6 +1007,194 @@ export function mountDoor(options: DoorOptions): () => void {
     p.terminal.addEventListener('click', onScreen);
     return { onLabel, onScreen };
   });
+
+  // 统一对数尺度滑尺：顶部 6 Rs (基地黑洞) <-> 分界 35% <-> 底部 1.4 GLY (斯隆长城)
+  // 长按拖动拥有 1.48x 轻微放大杠杆 + 流体阻尼惯性；普通滚轮缩放保持标准阻尼
+  const DRAG_LEVER = 1.48;
+  let draggingScale = false;
+  let dragScaleU: number | null = null;
+  let targetScaleU: number | null = null;
+  let scaleDampingActive = false;
+  let scaleAnchorU = 0;
+  let scaleDownY = 0;
+  let scaleMoved = false;
+  let scaleDownAtStarMap = false;
+
+  const pointerYToU = (clientY: number) => {
+    const rect = sm!.scaleTrack.getBoundingClientRect();
+    return clamp01((clientY - rect.top) / Math.max(rect.height, 1));
+  };
+
+  const applyLiveScale = (u: number) => {
+    if (!sm) return;
+    attachExtras();
+    dragScaleU = u;
+    scaleU = u;
+    mapFocus = null;
+
+    const holeFade = 1 - smooth(clamp01((u - 0.27) / 0.14));
+    const mapFade = smooth(clamp01((u - 0.30) / 0.12));
+    const cosFade = smooth(clamp01((u - 0.28) / 0.13));
+
+    if (mode === 'deck' || mode === 'returning' || mode === 'leaving') {
+      offset.copy(eye).normalize();
+      controls.target.copy(ORIGIN);
+    } else {
+      offset.copy(camera.position).sub(controls.target);
+      if (offset.lengthSq() < 1e-4) offset.copy(MAP_OVERVIEW_POS);
+      offset.normalize();
+    }
+
+    if (u < SCALE_SPLIT) {
+      const d = uToBaseDist(u);
+      activeGalaxy = null;
+      holeCenter.copy(ORIGIN);
+      holeScale = 1;
+      holeTheme = 0;
+      setDiskTilt(0, 0);
+      if (mode !== 'free') {
+        controls.target.copy(ORIGIN);
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.minDistance = BASE_MIN_DIST;
+        controls.maxDistance = BASE_MAX_DIST;
+        controls.enabled = true;
+        setMode('free');
+      }
+      holeAlpha = holeFade;
+      dustAlpha = holeAlpha;
+      mapOpacity = mapFade;
+      cosmosMix = cosFade;
+      nucleusGlow = 0;
+      camera.position.copy(controls.target).addScaledVector(offset, d);
+      camera.fov = THREE.MathUtils.lerp(camera.aspect < 1 ? 62 : 41, camera.aspect < 1 ? 62 : 42, cosFade);
+      camera.updateProjectionMatrix();
+    } else {
+      const d = uToMapDist(u);
+      if (u < 0.46 && controls.target.lengthSq() > 0.05) {
+        controls.target.lerp(ORIGIN, smooth(clamp01((0.46 - u) / 0.11)));
+      }
+      if (mode !== 'starmap') {
+        if (offset.y < 0.26) {
+          offset.y = 0.26;
+          offset.normalize();
+        }
+        controls.target.copy(ORIGIN);
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.minDistance = MAP_MIN_DIST;
+        controls.maxDistance = MAP_MAX_DIST;
+        controls.enabled = true;
+        setMode('starmap');
+      }
+      holeAlpha = holeFade;
+      dustAlpha = holeAlpha;
+      mapOpacity = mapFade;
+      cosmosMix = cosFade;
+      nucleusGlow = 0;
+      camera.position.copy(controls.target).addScaledVector(offset, d);
+      camera.fov = camera.aspect < 1 ? 62 : 42;
+      camera.updateProjectionMatrix();
+    }
+  };
+
+  const scalable = () => mode === 'leaving' || mode === 'free' || mode === 'starmap';
+
+  const onScaleDown = (e: PointerEvent) => {
+    if (!sm || !scalable()) return;
+    e.preventDefault();
+    draggingScale = true;
+    scaleDownY = e.clientY;
+    scaleMoved = false;
+    scaleDownAtStarMap = mode === 'starmap';
+    sm.scaleRoot.setPointerCapture(e.pointerId);
+    const clickU = pointerYToU(e.clientY);
+    const sameRealm = (!scaleDownAtStarMap && clickU < SCALE_SPLIT) || (scaleDownAtStarMap && clickU >= SCALE_SPLIT);
+    if (sameRealm) {
+      targetScaleU = clickU;
+      scaleAnchorU = clickU;
+      scaleDampingActive = true;
+    } else {
+      targetScaleU = null;
+      scaleDampingActive = false;
+    }
+  };
+
+  const onScaleMove = (e: PointerEvent) => {
+    if (!draggingScale || !scalable() || !sm) return;
+    if (!scaleMoved && Math.abs(e.clientY - scaleDownY) > 5) {
+      scaleMoved = true;
+      if (targetScaleU === null) {
+        scaleAnchorU = scaleU;
+        scaleDownY = e.clientY;
+        scaleDampingActive = true;
+      }
+    }
+    if (scaleMoved) {
+      const trackH = Math.max(sm.scaleTrack.getBoundingClientRect().height, 1);
+      const deltaU = ((e.clientY - scaleDownY) / trackH) * DRAG_LEVER;
+      targetScaleU = clamp01(scaleAnchorU + deltaU);
+      scaleDampingActive = true;
+    }
+  };
+
+  const onScaleUp = (e: PointerEvent) => {
+    if (!draggingScale) return;
+    const wasTapAcross = !scaleMoved && targetScaleU === null;
+    draggingScale = false;
+    try {
+      sm?.scaleRoot.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (wasTapAcross && sm) {
+      dragScaleU = null;
+      scaleDampingActive = false;
+      const u = pointerYToU(e.clientY);
+      if (!scaleDownAtStarMap && u >= SCALE_SPLIT) {
+        const goal = MAP_OVERVIEW_POS.clone().setLength(uToMapDist(u));
+        openStarMap(goal);
+      } else if (scaleDownAtStarMap && u < SCALE_SPLIT) {
+        closeStarMap(uToBaseDist(u));
+      }
+    }
+  };
+
+  // 滚轮触及尺度边界时平滑双向跨越（基地最远 240 Rs 往外拉出斯隆长城；斯隆长城原点拉近至 42 Mpc 回归基地）
+  const onWheel = (e: WheelEvent) => {
+    if (draggingScale || scripted()) return;
+    if (mode === 'free' && e.deltaY > 0 && camera.position.distanceTo(controls.target) >= BASE_MAX_DIST - 8) {
+      openStarMap();
+    } else if (
+      mode === 'starmap' &&
+      e.deltaY < 0 &&
+      controls.target.length() < 16 &&
+      camera.position.distanceTo(controls.target) <= MAP_MIN_DIST + 4
+    ) {
+      closeStarMap();
+    }
+  };
+  const onMiniClick = () => {
+    if (mode === 'galaxy' || mode === 'flyingGalaxy') returnToStarMap();
+    else openStarMap();
+  };
+  const starTagHandlers = (sm?.nodeTags ?? []).map((item) => {
+    const fn = (e: MouseEvent) => {
+      e.preventDefault();
+      const node = starNodeMap.get(item.id);
+      if (node) handleStarNodeClick(node);
+    };
+    item.tag.label.addEventListener('click', fn);
+    return { el: item.tag.label, fn };
+  });
+  if (sm) {
+    sm.miniBtn.addEventListener('click', onMiniClick);
+    sm.scaleRoot.addEventListener('pointerdown', onScaleDown);
+    sm.scaleRoot.addEventListener('pointermove', onScaleMove);
+    sm.scaleRoot.addEventListener('pointerup', onScaleUp);
+    sm.scaleRoot.addEventListener('pointercancel', onScaleUp);
+  }
+
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') goBack();
     else if (e.key === 'Enter' && document.activeElement === canvas) dive();
@@ -640,6 +1202,7 @@ export function mountDoor(options: DoorOptions): () => void {
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('wheel', onWheel, { passive: true });
   canvas.addEventListener('dblclick', goBack);
   options.hole.label.addEventListener('click', onHoleLabel);
   window.addEventListener('keydown', onKey);
@@ -659,10 +1222,8 @@ export function mountDoor(options: DoorOptions): () => void {
     tag.label.style.pointerEvents = on ? '' : 'none';
   }
 
-  // 把一个世界坐标点投到屏幕上；在镜头后面或出了画面就返回 null
-  function toScreen(point: THREE.Vector3) {
-    // 标注要贴着画面上的像，不是物体的真实位置
-    const p = lensPoint(point, camera.position, lensedTmp);
+  // 直接将世界坐标投影到屏幕（不经过引力透镜偏移，给星图和黑洞中心用）
+  function projectWorld(p: THREE.Vector3) {
     projected.copy(p).project(camera);
     camera.getWorldDirection(forward);
     if (forward.dot(offset.copy(p).sub(camera.position)) <= 0) return null;
@@ -671,6 +1232,13 @@ export function mountDoor(options: DoorOptions): () => void {
       x: (projected.x * 0.5 + 0.5) * canvas.clientWidth,
       y: (-projected.y * 0.5 + 0.5) * canvas.clientHeight,
     };
+  }
+
+  // 把一个世界坐标点投到屏幕上；在镜头后面或出了画面就返回 null
+  function toScreen(point: THREE.Vector3) {
+    // 标注要贴着画面上的像，不是物体的真实位置
+    const p = lensPoint(point, camera.position, lensedTmp);
+    return projectWorld(p);
   }
 
   // 引线：从端点斜着出去一段，再水平拉到文字下面。右边放不下翻到左边；
@@ -706,7 +1274,11 @@ export function mountDoor(options: DoorOptions): () => void {
 
   // 黑洞的引线从阴影右上方的边缘引出，返回黑洞是否在画面里
   function placeHoleTag(on: boolean): boolean {
-    const s = toScreen(ORIGIN);
+    if (holeAlpha < 0.45) {
+      show(options.hole, false);
+      return false;
+    }
+    const s = projectWorld(holeCenter);
     holeUniforms.uHoleNdc.value.set(projected.x, projected.y);
     if (!s) {
       show(options.hole, false);
@@ -714,7 +1286,7 @@ export function mountDoor(options: DoorOptions): () => void {
     }
     if (on) {
       right.setFromMatrixColumn(camera.matrixWorld, 0);
-      rim.copy(right).multiplyScalar(2.9).project(camera);
+      rim.copy(holeCenter).addScaledVector(right, 2.9 * holeScale).project(camera);
       const radiusPx = Math.abs((rim.x * 0.5 + 0.5) * canvas.clientWidth - s.x);
       drawTag(options.hole, s.x + radiusPx * 0.72, s.y - radiusPx * 0.72, 46);
     }
@@ -765,8 +1337,9 @@ export function mountDoor(options: DoorOptions): () => void {
   // 强度来自引力梯度（1/r³，越近涨得越猛）和速度，平方之后小的时候几乎不抖、快到视界才真正剧烈。
   // 用几个正弦叠出来的连续噪声，每帧纯随机看着是电视雪花式的高频闪动，不像被甩动
   function shakeCamera(beta: number, dt: number) {
-    // 尺度取 12 是看画面定的：r 不到 5 时黑场已经盖上来了，峰值要赶在那之前
-    const tide = Math.min((12 / camera.position.length()) ** 3, 1);
+    // 尺度取 12 * holeScale 是看画面定的：r 不到 5 时黑场已经盖上来了，峰值要赶在那之前
+    const distRs = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4), 1.01);
+    const tide = Math.min((12 / distRs) ** 3, 1);
     const trauma = Math.min(0.45 * (beta / 0.82) + 0.9 * tide, 1);
     shakePhase += dt * Math.PI * 2 * (3 + 6 * trauma);
     const noise = (t: number) => (Math.sin(t) + 0.6 * Math.sin(2.17 * t + 1.3) + 0.35 * Math.sin(4.31 * t + 2.7)) / 1.95;
@@ -785,11 +1358,12 @@ export function mountDoor(options: DoorOptions): () => void {
   let lastHeadText = '';
   let lastVeilOpacity = '';
   let lastCopyOpacity = '';
+  let miniAt = 0;
   function isBehind(p: THREE.Vector3) {
     return p.dot(offset.copy(camera.position)) < 0;
   }
-  function renderSecondaryImages() {
-    if (lite) return;
+  function renderSecondaryImages(skip: boolean) {
+    if (lite || skip) return;
     const stationShown = station.visible;
     station.visible = stationShown && isBehind(stationPos);
     for (let i = 0; i < probes.length; i++) {
@@ -831,20 +1405,10 @@ export function mountDoor(options: DoorOptions): () => void {
     const blink = 0.25 + 0.75 * Math.max(0, Math.sin(simTime * 2.2)) ** 8;
     stationBeacon.color.setRGB(blink, blink * 0.14, blink * 0.1);
 
-    // 空间站和探测器按各自轨道连续运转；黑洞视界与吸积盘已写入真实硬件深度，后方经过时由深度缓冲自然遮挡，不再生硬开关 visible
-    placeStation();
-    station.visible = mode !== 'diving' || !behindHole(stationPos, 2.0);
-    stationQuat.copy(station.quaternion);
-    for (const p of probes) {
-      orbitPosition(p.orbit, p.frame, simTime, p.group.position);
-      // 天线（局部 -z）始终对准空间站，像真的探测器对着地球通讯
-      p.group.lookAt(offsetTmp.copy(p.group.position).multiplyScalar(2).sub(stationPos));
-      p.group.visible = true;
-      p.beacon.color.copy(p.tint).multiplyScalar(0.4 + 0.6 * Math.max(0, Math.sin(simTime * 3 + p.phase)));
-    }
-    rocks.update(simTime, behindHole);
-
     let beta = 0;
+
+    placeStation();
+    stationQuat.copy(station.quaternion);
 
     if (mode === 'deck') {
       // 站在跟着空间站一起转的参考系里：视线方向跟着空间站的朝向转，人跟着甲板走
@@ -852,6 +1416,17 @@ export function mountDoor(options: DoorOptions): () => void {
       offset.applyQuaternion(lastQuat.invert()).applyQuaternion(stationQuat);
       camera.position.copy(eye);
       controls.target.copy(eye).add(offset);
+      holeAlpha += (1 - holeAlpha) * Math.min(dt * 6, 1);
+      dustAlpha = holeAlpha;
+      mapOpacity += (0 - mapOpacity) * Math.min(dt * 6, 1);
+      cosmosMix = mapOpacity;
+    } else if (mode === 'free') {
+      if (dragScaleU === null && !scaleDampingActive) {
+        holeAlpha += (1 - holeAlpha) * Math.min(dt * 6, 1);
+        dustAlpha = holeAlpha;
+        mapOpacity += (0 - mapOpacity) * Math.min(dt * 6, 1);
+        cosmosMix = mapOpacity;
+      }
     } else if (mode === 'leaving') {
       // 减少动态效果时一步到位
       const k = still ? 1 : smooth(clamp01(t / LEAVE_MS));
@@ -936,15 +1511,151 @@ export function mountDoor(options: DoorOptions): () => void {
         controls.target.copy(dockLook);
         if (mode === 'warping' && t >= FOLD_MS) startDive(docked.href, `正在穿越视界 · 前往「${docked.label}」`);
       }
+    } else if (mode === 'enteringMap') {
+      // 从基地或星系黑洞顺滑退回星际尺度：先退入核球星云，再掠出宿主星系、展开斯隆长城全景
+      const k = clamp01(t / MAP_ENTER_MS);
+      const e = smoother(k);
+      camera.position.lerpVectors(from.pos, enterMapGoal, e);
+      controls.target.lerpVectors(from.target, ORIGIN, smoother(clamp01(k / 0.88)));
+      camera.fov = THREE.MathUtils.lerp(from.fov, camera.aspect < 1 ? 62 : 42, e);
+      camera.updateProjectionMatrix();
+      holeAlpha = from.holeAlpha * (1 - smooth(clamp01(k / 0.38)));
+      holeScale = THREE.MathUtils.lerp(from.holeScale, from.holeScale * 0.28, clamp01(k / 0.42));
+      dustAlpha = holeAlpha;
+      const fromGalaxy = activeGalaxy !== null;
+      nucleusGlow = fromGalaxy ? Math.pow(Math.sin(clamp01((k - 0.14) / 0.36) * Math.PI), 1.4) * 0.44 : 0;
+      mapOpacity = THREE.MathUtils.lerp(from.mapOpacity, 1, smoother(clamp01((k - 0.24) / 0.76)));
+      cosmosMix = THREE.MathUtils.lerp(from.mapOpacity, 1, smoother(clamp01((k - 0.12) / 0.72)));
+      if (k >= 1) {
+        activeGalaxy = null;
+        holeCenter.copy(ORIGIN);
+        holeScale = 1;
+        holeAlpha = 0;
+        dustAlpha = 0;
+        nucleusGlow = 0;
+        holeTheme = 0;
+        setDiskTilt(0, 0);
+        options.hole.label.innerHTML = baseHoleHtml;
+        labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
+        mapOpacity = 1;
+        cosmosMix = 1;
+        camera.position.copy(enterMapGoal);
+        controls.target.copy(ORIGIN);
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.minDistance = MAP_MIN_DIST;
+        controls.maxDistance = MAP_MAX_DIST;
+        controls.enabled = true;
+        controls.update();
+        setMode('starmap');
+      }
+    } else if (mode === 'starmap') {
+      if (dragScaleU === null && !scaleDampingActive) {
+        holeAlpha += (0 - holeAlpha) * Math.min(dt * 6, 1);
+        dustAlpha = holeAlpha;
+        nucleusGlow = 0;
+        mapOpacity += (1 - mapOpacity) * Math.min(dt * 6, 1);
+        cosmosMix = mapOpacity;
+      }
+      if (mapFocus) {
+        const fk = clamp01((now - mapFocus.startAt) / 850);
+        const fe = smoother(fk);
+        controls.target.lerpVectors(mapFocus.fromTarget, mapFocus.toTarget, fe);
+        camera.position.lerpVectors(mapFocus.fromPos, mapFocus.toPos, fe);
+        if (fk >= 1) mapFocus = null;
+      }
+    } else if (mode === 'leavingMap') {
+      // 从斯隆长城顺滑推进回人马座 A* 自由视角
+      const k = clamp01(t / MAP_LEAVE_MS);
+      const e = smoother(k);
+      camera.position.lerpVectors(from.pos, leaveMapTo, e);
+      controls.target.lerpVectors(from.target, ORIGIN, e);
+      camera.fov = THREE.MathUtils.lerp(from.fov, camera.aspect < 1 ? 62 : 41, e);
+      camera.updateProjectionMatrix();
+      mapOpacity = 1 - smoother(clamp01(k / 0.68));
+      cosmosMix = mapOpacity;
+      nucleusGlow = 0;
+      holeAlpha = smooth(clamp01((k - 0.32) / 0.68));
+      dustAlpha = holeAlpha;
+      holeScale = 1;
+      if (k >= 1) {
+        mapOpacity = 0;
+        cosmosMix = 0;
+        nucleusGlow = 0;
+        holeAlpha = 1;
+        dustAlpha = 1;
+        camera.position.copy(leaveMapTo);
+        controls.target.copy(ORIGIN);
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.minDistance = BASE_MIN_DIST;
+        controls.maxDistance = BASE_MAX_DIST;
+        controls.enabled = true;
+        controls.update();
+        setMode('free');
+      }
+    } else if (mode === 'flyingGalaxy' && activeGalaxy) {
+      // 符合天体物理尺度的四阶段跨尺度航行：
+      // 1) 星系际锁星慢加速接近宿主星系（此时看不见黑洞）
+      // 2) 穿入星系旋臂，星云核球辉光迎面点亮
+      // 3) 核球光晕退散，中心超大质量黑洞与吸积盘解析显现
+      // 4) 引力势阱内平滑制动，悬停于贴盘面近景
+      const k = clamp01(t / GALAXY_FLY_MS);
+      const posEase = asymmetricCruise(k);
+      const aimEase = smoother(clamp01(k / 0.45));
+      const targetScale = activeGalaxy.holeScale ?? 1.85;
+      const targetFov = camera.aspect < 1 ? 66 : 58;
+      const warpPulse = Math.pow(Math.sin(Math.PI * k), 1.6) * 2.4;
+      galaxyViewPos(activeGalaxy, galaxyGoalPos);
+      galaxyViewTarget(activeGalaxy, galaxyGoalTarget);
+      camera.position.lerpVectors(from.pos, galaxyGoalPos, posEase);
+      controls.target.lerpVectors(from.target, galaxyGoalTarget, aimEase);
+      camera.fov = THREE.MathUtils.lerp(from.fov, targetFov, smoother(k)) + warpPulse;
+      camera.updateProjectionMatrix();
+
+      mapOpacity = from.mapOpacity * (1 - smoother(clamp01((k - 0.16) / 0.42)));
+      cosmosMix = 1 - smooth(clamp01((k - 0.22) / 0.42));
+      nucleusGlow = Math.pow(Math.sin(clamp01((k - 0.24) / 0.44) * Math.PI), 1.4) * 0.56;
+      holeAlpha = smooth(clamp01((k - 0.56) / 0.30));
+      holeScale = THREE.MathUtils.lerp(targetScale * 0.34, targetScale, smoother(clamp01((k - 0.54) / 0.40)));
+      dustAlpha = smooth(clamp01((k - 0.40) / 0.44));
+      beta = 0.10 * Math.pow(Math.sin(clamp01((k - 0.22) / 0.50) * Math.PI), 1.5);
+
+      if (k >= 1) {
+        holeScale = targetScale;
+        nucleusGlow = 0;
+        cosmosMix = 0;
+        beta = 0;
+        camera.fov = targetFov;
+        camera.updateProjectionMatrix();
+        camera.position.copy(galaxyGoalPos);
+        controls.target.copy(galaxyGoalTarget);
+        mapOpacity = 0;
+        holeAlpha = 1;
+        dustAlpha = 1;
+        controls.enableZoom = true;
+        controls.enablePan = false;
+        controls.minDistance = 2.9 * holeScale;
+        controls.maxDistance = 36 * holeScale;
+        controls.enabled = true;
+        controls.update();
+        setMode('galaxy');
+      }
+    } else if (mode === 'galaxy') {
+      holeAlpha = 1;
+      dustAlpha = 1;
+      mapOpacity = 0;
+      cosmosMix = 0;
+      nucleusGlow = 0;
     } else if (mode === 'diving') {
-      // 先转过去对准黑洞，再一路加速冲进视界；后半段速度接近光速，星空往前方收拢成隧道
+      // 先转过去对准当前黑洞中心，再一路加速冲进视界；后半段速度接近光速，星空往前方收拢成隧道
       const k = clamp01(t / DIVE_MS);
       const turn = smooth(clamp01(k / 0.2));
       const rush = clamp01((k - 0.15) / 0.8);
       const e = Math.pow(rush, 2.2);
-      goalPos.copy(from.pos).setLength(1.05);
+      goalPos.copy(from.pos).sub(holeCenter).setLength(1.05 * holeScale).add(holeCenter);
       camera.position.lerpVectors(from.pos, goalPos, e);
-      lookNow.lerpVectors(from.target, ORIGIN, turn);
+      lookNow.lerpVectors(from.target, holeCenter, turn);
       controls.target.copy(lookNow);
       camera.fov = THREE.MathUtils.lerp(from.fov, 88, smooth(rush));
       camera.updateProjectionMatrix();
@@ -953,10 +1664,11 @@ export function mountDoor(options: DoorOptions): () => void {
       beta = 0.82 * Math.pow(Math.sin(Math.PI * clamp01((rush - 0.08) / 0.86)), 1.3);
       holeUniforms.uDive.value = rush;
       dustUniforms.uDive.value = rush;
+      mapOpacity = from.mapOpacity * (1 - smooth(clamp01(k / 0.35)));
       // 最后越过视界：一黑，接着是加载画面
       veil.style.background = '#000';
       veil.style.opacity = String(smooth(clamp01((k - 0.88) / 0.12)));
-      const r = Math.max(camera.position.length(), 1.0001);
+      const r = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4), 1.0001);
       hud.distance.textContent = `距视界 ${(r - 1).toFixed(2)} Rs · 时间流速 ×${Math.sqrt(1 - 1 / r).toFixed(2)}`;
       if (k >= 1) {
         // 场景不用再画了，把显卡和主线程都让给加载
@@ -966,11 +1678,67 @@ export function mountDoor(options: DoorOptions): () => void {
       }
     }
 
+    // 滑尺长按拖动的流体阻尼惯性（持续平滑逼近 targetScaleU，松手后保留一小段丝滑尾迹）
+    if (scaleDampingActive && targetScaleU !== null) {
+      scaleU += (targetScaleU - scaleU) * Math.min(dt * 9.5, 1);
+      applyLiveScale(scaleU);
+      if (!draggingScale && Math.abs(targetScaleU - scaleU) < 0.0008) {
+        scaleU = targetScaleU;
+        applyLiveScale(scaleU);
+        scaleDampingActive = false;
+        targetScaleU = null;
+        dragScaleU = null;
+        if (mode === 'free' || mode === 'starmap') controls.update();
+      }
+    }
+
+    // 基地局域物体：仅在基地近景或返回途中更新和显示；深空星图和星系核心时隐藏
+    const inCosmos =
+      mode === 'starmap' ||
+      mode === 'galaxy' ||
+      mode === 'flyingGalaxy' ||
+      mapOpacity > 0.55 ||
+      (mode === 'diving' && activeGalaxy !== null);
+
+    if (!inCosmos) {
+      station.visible = mode !== 'diving' || !behindHole(stationPos, 2.0);
+      for (const p of probes) {
+        orbitPosition(p.orbit, p.frame, simTime, p.group.position);
+        // 天线（局部 -z）始终对准空间站，像真的探测器对着地球通讯
+        p.group.lookAt(offsetTmp.copy(p.group.position).multiplyScalar(2).sub(stationPos));
+        p.group.visible = true;
+        p.beacon.color.copy(p.tint).multiplyScalar(0.4 + 0.6 * Math.max(0, Math.sin(simTime * 3 + p.phase)));
+      }
+      rocks.group.visible = true;
+      rocks.update(simTime, behindHole);
+    } else {
+      station.visible = false;
+      for (const p of probes) p.group.visible = false;
+      rocks.group.visible = false;
+    }
+
     holeUniforms.uBeta.value = beta;
     warpBeta.value = beta;
+    warpCenter.value.copy(holeCenter);
+    warpScale.value = holeScale;
+    holeUniforms.uHoleScale.value = holeScale;
+    holeUniforms.uHoleAlpha.value = holeAlpha;
+    holeUniforms.uHoleTheme.value = holeTheme;
+    holeUniforms.uCosmosMix.value =
+      mode === 'flyingGalaxy' || mode === 'enteringMap' || dragScaleU !== null || mapOpacity > 0.005 ? cosmosMix : mapOpacity;
+    holeUniforms.uNucleusGlow.value =
+      mode === 'flyingGalaxy' || mode === 'enteringMap' ? nucleusGlow : 0;
+    dustUniforms.uDustAlpha.value = dustAlpha;
+    dustUniforms.uHoleTheme.value = holeTheme;
+    dustUniforms.uSize.value = holeScale > 1.25 ? 14 : 18;
+    dust.visible = dustAlpha > 0.005;
+    starMap.setOpacity(mapOpacity, simTime, ratio);
+    const realmFade = extrasReadyAt > 0 ? smooth(clamp01((now - extrasReadyAt) / 900)) : 0;
+    const propsAlpha = holeAlpha * (1 - mapOpacity) * realmFade;
+    realmProps.update(holeTheme, propsAlpha, simTime, holeCenter, holeScale);
     updateStreaks(beta, dt);
 
-    if (scripted()) camera.lookAt(controls.target);
+    if (scripted() || scaleDampingActive) camera.lookAt(controls.target);
     else controls.update();
     if (mode === 'diving') shakeCamera(beta, dt);
     camera.updateMatrixWorld();
@@ -1000,12 +1768,12 @@ export function mountDoor(options: DoorOptions): () => void {
       copy.style.opacity = co;
     }
 
-    // 轨迹线：甲板上很淡，离开甲板就清楚一些；对接特写时压低避免横穿吸积盘光环；空间站的虚线只在自由视角
+    // 轨迹线：甲板上很淡，离开甲板就清楚一些；对接或星图模式下收起
     const away = mode === 'free' || mode === 'leaving' ? 1 : 0;
     const nearProbe = mode === 'docked' || mode === 'docking' || mode === 'warping';
-    const trackGoal = mode === 'diving' ? 0 : away ? 0.18 : nearProbe ? 0.02 : 0.06;
+    const trackGoal = inCosmos || mode === 'diving' ? 0 : away ? 0.18 : nearProbe ? 0.02 : 0.06;
     trackMaterial.opacity += (trackGoal - trackMaterial.opacity) * Math.min(dt * 3, 1);
-    stationTrackMaterial.opacity += (away * 0.2 - stationTrackMaterial.opacity) * Math.min(dt * 3, 1);
+    stationTrackMaterial.opacity += ((inCosmos ? 0 : away * 0.2) - stationTrackMaterial.opacity) * Math.min(dt * 3, 1);
 
     hover += ((hovering && !scripted() ? 1 : 0) - hover) * Math.min(dt * 6, 1);
     holeUniforms.uHover.value = hover;
@@ -1014,21 +1782,85 @@ export function mountDoor(options: DoorOptions): () => void {
     holeUniforms.uProjZ.value.set(camera.projectionMatrix.elements[10], camera.projectionMatrix.elements[14]);
     holeUniforms.uCamWorld.value.copy(camera.matrixWorld);
 
-    // 标注：对接、跃迁、俯冲时都收起来，画面留给屏幕和特效
-    const tagsOn = mode === 'deck' || mode === 'free' || mode === 'leaving';
-    const holeOn = placeHoleTag(tagsOn);
+    // 标注：基地（甲板/自由）、星系核心巨型黑洞、深空星图各管各的标注
+    const baseTagsOn = mode === 'deck' || mode === 'free' || mode === 'leaving';
+    const galaxyTagsOn = mode === 'galaxy';
+    const holeOn = placeHoleTag(baseTagsOn || galaxyTagsOn);
     // 横向光晕只属于侧视：越接近俯视越淡，正上方往下看时它就是一道莫名其妙的横线
-    const edgeOn = 1 - Math.abs(offset.copy(camera.position).normalize().dot(DISK_N));
+    const edgeOn = 1 - Math.abs(offset.copy(camera.position).sub(holeCenter).normalize().dot(diskN));
     holeUniforms.uStreak.value = holeOn ? edgeOn * edgeOn : 0;
-    for (const p of probes) placeTag(p.tag, p.group.position, tagsOn, 1.8);
+    for (const p of probes) placeTag(p.tag, p.group.position, baseTagsOn, 1.8);
     placeTag(options.base, stationPos, away === 1, 0);
 
-    // 读数：离视界多远、朝哪个方向、俯仰多少（仅在文本实际变化时写 DOM，避免每帧触发文本重排）
+    // 深空星图节点标注 + 极坐标方位刻度 + 右侧缩放尺游标
+    if (sm) {
+      const mapTagsOn = mode === 'starmap';
+      for (const item of sm.nodeTags) {
+        const pos = starPosVec.get(item.id)!;
+        const s = mapTagsOn ? projectWorld(pos) : null;
+        if (!s) {
+          show(item.tag, false);
+        } else {
+          drawTag(item.tag, s.x, s.y, item.id === 'base' || item.id === 'gallery' || item.id === 'game' ? 22 : 14);
+          show(item.tag, true);
+        }
+      }
+      for (let i = 0; i < sm.azimuthLabels.length; i++) {
+        const el = sm.azimuthLabels[i];
+        const s = mapTagsOn ? projectWorld(AZIMUTH_LABELS[i].position) : null;
+        if (!s) {
+          el.style.opacity = '0';
+        } else {
+          el.style.opacity = '0.58';
+          el.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -50%)`;
+        }
+      }
+      if (dragScaleU !== null) {
+        scaleU = dragScaleU;
+      } else if (mode === 'starmap') {
+        scaleU = mapDistToU(camera.position.distanceTo(controls.target));
+      } else if (mode === 'enteringMap') {
+        scaleU = THREE.MathUtils.lerp(from.scaleU, mapDistToU(enterMapGoal.length()), smoother(clamp01(t / MAP_ENTER_MS)));
+      } else if (mode === 'leavingMap') {
+        scaleU = THREE.MathUtils.lerp(from.scaleU, baseDistToU(leaveMapTo.length()), smoother(clamp01(t / MAP_LEAVE_MS)));
+      } else if (mode === 'deck' || mode === 'leaving' || mode === 'free' || mode === 'returning') {
+        const d = mode === 'deck' ? camera.position.distanceTo(ORIGIN) : camera.position.distanceTo(controls.target);
+        scaleU = baseDistToU(d);
+      }
+      sm.scaleThumb.style.top = `${(clamp01(scaleU) * 100).toFixed(2)}%`;
+    }
+
+    // 读数：离视界多远（或深空尺度）、朝哪个方向、俯仰多少
     camera.getWorldDirection(forward);
     const heading = (THREE.MathUtils.radToDeg(Math.atan2(forward.x, -forward.z)) + 360) % 360;
     const pitch = THREE.MathUtils.radToDeg(Math.asin(forward.y));
     if (mode !== 'diving') {
-      const distText = `距视界 ${(camera.position.length() - 1).toFixed(1)} Rs`;
+      let distText: string;
+      if (mode === 'starmap' || mode === 'enteringMap' || mode === 'leavingMap') {
+        const mpc = camera.position.distanceTo(controls.target);
+        distText = `观测半径 ${mpc.toFixed(0)} Mpc`;
+      } else if (mode === 'flyingGalaxy') {
+        const k = clamp01(t / GALAXY_FLY_MS);
+        const label = activeGalaxy?.targetLabel ?? '星系';
+        if (k < 0.3) {
+          const mpc = THREE.MathUtils.lerp(62, 3.2, clamp01(k / 0.3));
+          distText = `飞向「${label}」 · ${mpc.toFixed(1)} Mpc`;
+        } else if (k < 0.58) {
+          const kly = THREE.MathUtils.lerp(95, 2.4, clamp01((k - 0.3) / 0.28));
+          distText = `穿入星系旋臂 · ${kly.toFixed(1)} kly`;
+        } else if (k < 0.82) {
+          const pc = THREE.MathUtils.lerp(80, 0.8, clamp01((k - 0.58) / 0.24));
+          distText = `逼近星系核球 · ${pc.toFixed(1)} pc`;
+        } else {
+          const rs = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4) - 1, 0.1);
+          distText = `引力制动 · 视界 ${rs.toFixed(1)} Rs`;
+        }
+      } else if (mode === 'galaxy') {
+        const rs = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4) - 1, 0.1);
+        distText = `距「${activeGalaxy?.targetLabel ?? '星系'}」视界 ${rs.toFixed(1)} Rs`;
+      } else {
+        distText = `距视界 ${(camera.position.length() - 1).toFixed(1)} Rs`;
+      }
       if (distText !== lastDistText) {
         lastDistText = distText;
         hud.distance.textContent = distText;
@@ -1042,8 +1874,24 @@ export function mountDoor(options: DoorOptions): () => void {
       hud.pitchTape.style.backgroundPositionY = `${Math.round(pitch * 4)}px`;
     }
 
+    // 右上角微缩斯隆长城全景图（桌面 50ms / 移动端 80ms 节流，基地和各星系核内均显示）
+    if (
+      sm &&
+      (mode === 'deck' ||
+        mode === 'leaving' ||
+        mode === 'free' ||
+        mode === 'returning' ||
+        mode === 'galaxy' ||
+        mode === 'flyingGalaxy') &&
+      now - miniAt >= (lite ? 80 : 50)
+    ) {
+      miniAt = now;
+      const pinId = mode === 'galaxy' || mode === 'flyingGalaxy' ? activeGalaxy?.id ?? null : null;
+      renderMiniMap(sm.miniCanvas, starMap.miniPoints, simTime, pinId);
+    }
+
     renderer.render(scene, camera);
-    renderSecondaryImages();
+    renderSecondaryImages(inCosmos);
 
     // 自适应分辨率。几个坑：
     // - 60Hz 屏幕上帧间隔最快就是 16.7ms，升档门槛不能低于它，否则永远升不上去，只降不升，越待越糊
@@ -1089,6 +1937,7 @@ export function mountDoor(options: DoorOptions): () => void {
   veil.style.opacity = '1';
   setMode('deck');
   let disposed = false;
+  let warmupTimer = 0;
   const begin = () => {
     if (disposed) return;
     startAt = performance.now();
@@ -1096,25 +1945,42 @@ export function mountDoor(options: DoorOptions): () => void {
     modeAt = startAt;
     frame();
     options.onReady?.();
+    warmupTimer = window.setTimeout(() => {
+      if (disposed) return;
+      attachExtras();
+      renderer.compileAsync(scene, camera);
+    }, 450);
   };
   renderer.compileAsync(scene, camera).then(begin, begin);
 
   return () => {
     disposed = true;
+    clearTimeout(warmupTimer);
     cancelAnimationFrame(raf);
     observer.disconnect();
     controls.dispose();
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerup', onUp);
+    canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('dblclick', goBack);
     options.hole.label.removeEventListener('click', onHoleLabel);
     probes.forEach((p, i) => {
       p.tag.label.removeEventListener('click', handlers[i].onLabel);
       p.terminal.removeEventListener('click', handlers[i].onScreen);
     });
+    if (sm) {
+      sm.miniBtn.removeEventListener('click', onMiniClick);
+      sm.scaleRoot.removeEventListener('pointerdown', onScaleDown);
+      sm.scaleRoot.removeEventListener('pointermove', onScaleMove);
+      sm.scaleRoot.removeEventListener('pointerup', onScaleUp);
+      sm.scaleRoot.removeEventListener('pointercancel', onScaleUp);
+      starTagHandlers.forEach((h) => h.el.removeEventListener('click', h.fn));
+    }
     window.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVisible);
+    starMap.dispose();
+    realmProps.dispose();
     rocks.dispose();
     renderer.dispose();
   };
