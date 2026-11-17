@@ -407,44 +407,107 @@ export function buildGameBeaconGeo(): THREE.BufferGeometry {
   return mergeBuffers(parts);
 }
 
-/** 符合宇宙学开普勒剪切规律的三维弯曲尘埃-潮汐气流弧（两端光滑尖收，保留 uv.x 沿流向渐变） */
-export function buildTidalFilamentGeo(): THREE.BufferGeometry {
-  const geo = new THREE.TorusGeometry(1.0, 0.068, 6, 14, Math.PI * 0.34);
-  geo.rotateX(Math.PI * 0.5);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const uv = geo.attributes.uv as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const u = uv.getX(i);
-    const taper = Math.sin(u * Math.PI);
-    const len = Math.hypot(x, z) || 1;
-    const radOff = len - 1.0;
-    const scaleSec = 0.15 + 0.85 * Math.pow(taper, 0.85);
-    const nr = 1.0 + radOff * scaleSec * 1.6;
-    pos.setXYZ(i, (x / len) * nr, y * scaleSec * 0.55, (z / len) * nr);
+/** 活动星系核外围尘埃环面与旋涡进气云扇区网格（严格平铺 XZ 赤道面，留完整 uv 供片元噪声羽化为星云） */
+export function buildTorusSectorGeo(): THREE.BufferGeometry {
+  const segU = 14;
+  const segV = 4;
+  const arc = 1.15;
+  const rMin = 0.82;
+  const rMax = 1.18;
+  const verts: number[] = [];
+  const norms: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let iv = 0; iv <= segV; iv++) {
+    const v = iv / segV;
+    const r = rMin + (rMax - rMin) * v;
+    for (let iu = 0; iu <= segU; iu++) {
+      const u = iu / segU;
+      const ang = (u - 0.5) * arc;
+      verts.push(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+      norms.push(0, 1, 0);
+      uvs.push(u, v);
+    }
   }
-  geo.computeVertexNormals();
+  const stride = segU + 1;
+  for (let iv = 0; iv < segV; iv++) {
+    for (let iu = 0; iu < segU; iu++) {
+      const a = iv * stride + iu;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(norms, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
   return geo;
 }
 
-/** 洛希极限及尘埃升华半径之外的冷暗硅酸盐微行星碎岩（用于极外圈薄盘轨道） */
-export function buildPlanetesimalGeo(): THREE.BufferGeometry {
-  const core = new THREE.IcosahedronGeometry(0.55, 1);
-  const pos = core.attributes.position as THREE.BufferAttribute;
-  const v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const n = Math.sin(v.x * 6.1 + v.y * 9.2 + v.z * 5.3) * 0.2 + 0.86;
-    v.multiplyScalar(n);
-    v.x *= 1.38;
-    v.y *= 0.64;
-    v.z *= 0.88;
-    pos.setXYZ(i, v.x, v.y, v.z);
+/** 活动星系核相对论双极准直喷流几何体（±Y 磁极轴，开端渐张圆锥，留柱面 UV 绘磁螺旋与激波节） */
+export function buildPolarJetGeo(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  // 北极 & 南极外层同步辐射茧锥 + 内层高能准直喷流芯
+  for (const sgn of [1, -1]) {
+    const outer = new THREE.CylinderGeometry(sgn > 0 ? 3.5 : 0.42, sgn > 0 ? 0.42 : 3.5, 34.0, 24, 1, true);
+    outer.translate(0, sgn * 18.6, 0);
+    if (sgn < 0) {
+      // 令 uv.y 一律从黑洞近极 (0) 指向远端宇宙 (1)
+      const uv = outer.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+    }
+    const core = new THREE.CylinderGeometry(sgn > 0 ? 1.45 : 0.16, sgn > 0 ? 0.16 : 1.45, 36.0, 18, 1, true);
+    core.translate(0, sgn * 19.6, 0);
+    if (sgn < 0) {
+      const uv = core.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+    }
+    parts.push(outer, core);
   }
-  core.computeVertexNormals();
-  return core;
+  const expanded = parts.map((p) => {
+    const g = p.index ? p.toNonIndexed() : p.clone();
+    p.dispose();
+    return g;
+  });
+  let count = 0;
+  for (const g of expanded) count += g.attributes.position.count;
+  const pos = new Float32Array(count * 3);
+  const norm = new Float32Array(count * 3);
+  const uvArr = new Float32Array(count * 2);
+  let off = 0;
+  for (const g of expanded) {
+    const c = g.attributes.position.count;
+    pos.set(g.attributes.position.array as Float32Array, off * 3);
+    norm.set(g.attributes.normal.array as Float32Array, off * 3);
+    uvArr.set(g.attributes.uv.array as Float32Array, off * 2);
+    off += c;
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2));
+  return out;
+}
+
+/** 深空脉冲星航标塔（磁层偶极笼环 + 中子星双极锥形光束，用于星系际深空桥梁奇观） */
+export function buildPulsarBeaconPair(): { hull: THREE.BufferGeometry; beams: THREE.BufferGeometry } {
+  const hullParts: THREE.BufferGeometry[] = [
+    new THREE.OctahedronGeometry(1.15, 1),
+    tf(new THREE.TorusGeometry(4.2, 0.11, 6, 32), Math.PI * 0.5, 0, 0),
+    tf(new THREE.TorusGeometry(3.4, 0.08, 6, 28), 0.35, 0, 0.45),
+    tf(new THREE.TorusGeometry(2.6, 0.07, 6, 24), -0.35, 0, -0.45),
+    tf(new THREE.TorusGeometry(5.6, 0.07, 6, 36), Math.PI * 0.5, 0.4, 0),
+  ];
+  const beamParts: THREE.BufferGeometry[] = [
+    tf(new THREE.ConeGeometry(2.4, 18.0, 16, 1, true), 0, 0, Math.PI * 0.5, -10.2, 0, 0),
+    tf(new THREE.ConeGeometry(2.4, 18.0, 16, 1, true), 0, 0, -Math.PI * 0.5, 10.2, 0, 0),
+  ];
+  return { hull: mergeBuffers(hullParts), beams: mergeBuffers(beamParts) };
 }
 
 // 图鉴面板每行最右侧的 28×28 CAD 轴测微缩建模图标

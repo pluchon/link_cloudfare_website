@@ -6,7 +6,15 @@ import PageBackdrop from '../../components/PageBackdrop.astro';
 import PixelBackdrop from '../../components/PixelBackdrop.astro';
 import KindIcon from '../../components/KindIcon.astro';
 import TargetCursor from '../../components/TargetCursor.astro';
-import { gameAlbums, games as fallbackGames, jelly2048Art, pageBackdrops, site } from '../../config/site';
+import {
+  cosmicRoamArt,
+  gameAlbums,
+  games as fallbackGames,
+  jelly2048Art,
+  pageBackdrops,
+  pelicanRideArt,
+  site,
+} from '../../config/site';
 import { getGames } from '../../lib/content';
 import { resolveEmbeds } from '../../lib/embeds';
 
@@ -17,20 +25,27 @@ const GAME_TAG_OVERRIDES: Record<string, string> = {
   '/game/cosmic-roam/': '探索 / 3D',
 };
 
+const GAME_COVERS: Record<string, { light: string; dark: string }> = {
+  [jelly2048Art.play]: jelly2048Art.cover,
+  [pelicanRideArt.play]: pelicanRideArt.cover,
+  [cosmicRoamArt.play]: cosmicRoamArt.cover,
+};
+
 const items =
   collectionGames.length > 0
     ? await Promise.all(
         collectionGames.map(async (entry, idx) => {
           const href = entry.data.play ?? '';
           const album = gameAlbums[href] ?? [];
+          const themedCover = GAME_COVERS[href];
           return {
             id: String(idx + 1).padStart(2, '0'),
             slug: entry.data.slug,
             title: entry.data.title,
             summary: entry.data.summary,
             tag: GAME_TAG_OVERRIDES[href] ?? (entry.data.tags.slice(0, 2).join(' / ') || '小游戏'),
-            cover: href === jelly2048Art.play ? jelly2048Art.cover.light : entry.data.cover ?? '',
-            coverDark: href === jelly2048Art.play ? jelly2048Art.cover.dark : '',
+            cover: themedCover?.light ?? entry.data.cover ?? '',
+            coverDark: themedCover?.dark ?? '',
             href,
             rulesHtml: entry.body?.trim()
               ? await resolveEmbeds(entry.rendered?.html ?? '')

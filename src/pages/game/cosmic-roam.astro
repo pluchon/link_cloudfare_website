@@ -30,10 +30,7 @@ const summary = entry?.data.summary ?? '';
         <canvas class="roam__canvas" data-canvas aria-label="星海漫游三维星空画布"></canvas>
         <canvas class="roam__rush" data-rush aria-hidden="true"></canvas>
 
-        <!-- 顶边 2px 航程进度细线 -->
-        <div class="roam__progress" aria-hidden="true"><i data-progress></i></div>
-
-        <!-- 四角清爽排版：左上仅一条「星域 + 图鉴」，右上仅「声音 + 暂停」两颗方键 -->
+        <!-- 四角清爽排版：左「星域 + 图鉴」、中「一线到底尖端渐变航程线 + 五星系节点」、右「声音 + 暂停」 -->
         <div class="roam__hud">
           <div class="roam__left">
             <span class="roam__sector roam__panel" data-sector>斯隆长城</span>
@@ -41,6 +38,13 @@ const summary = entry?.data.summary ?? '';
               <span>图鉴</span>
               <b data-relics>0/25</b>
             </button>
+          </div>
+
+          <div class="roam__route" data-route aria-hidden="true">
+            <div class="roam__route-bar">
+              <i class="roam__route-fill" data-progress></i>
+            </div>
+            <div class="roam__route-stops" data-route-stops></div>
           </div>
 
           <div class="roam__tools">
@@ -63,6 +67,7 @@ const summary = entry?.data.summary ?? '';
         </div>
 
         <div class="roam__toasts" data-toasts aria-live="polite"></div>
+        <div class="roam__stow" data-stow aria-hidden="true"></div>
 
         <!-- 左下：航天遥测仪表（分段曲速刻度 + 双栏航速/导航坐标） -->
         <aside class="roam__tele roam__panel" data-tele-box data-mode="cruise" aria-hidden="true">
@@ -348,7 +353,8 @@ const summary = entry?.data.summary ?? '';
   }
 
   .roam[data-state='ready'] .roam__stage,
-  .roam[data-state='paused'] .roam__stage {
+  .roam[data-state='paused'] .roam__stage,
+  .roam[data-state='finished'] .roam__stage {
     cursor: pointer;
   }
 
@@ -365,29 +371,105 @@ const summary = entry?.data.summary ?? '';
     pointer-events: none;
   }
 
-  .roam__progress {
+  /* 中央一线到底极简航程线：无外框底栏与多余文字，居中于左右控件之间、两端渐变收尖 + 五星系节点 */
+  .roam__route {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 9rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    overflow: visible;
+    pointer-events: none;
+    transition: opacity var(--dur-2) var(--ease-out);
+  }
+
+  .roam__route-bar {
+    position: relative;
+    width: 100%;
+    height: 4px;
+    background: rgba(226, 238, 255, 0.18);
+    overflow: hidden;
+    clip-path: polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%);
+  }
+
+  .roam__route-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--hud-accent);
+    transform-origin: left;
+    transform: scaleX(0.01);
+    transition:
+      transform var(--dur-2) var(--ease-out),
+      background-color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__route-stops {
     position: absolute;
-    inset: 0 0 auto;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.12);
-    z-index: 4;
+    inset: 0;
+  }
+
+  .roam__route-stop {
+    position: absolute;
+    top: 50%;
+    transform: translateX(-50%);
     pointer-events: none;
   }
 
-  .roam__progress i {
-    display: block;
-    height: 100%;
-    width: 100%;
-    background: var(--hud-accent);
-    transform-origin: left;
-    transform: scaleX(0.015);
-    transition: transform var(--dur-2) var(--ease-out);
+  .roam__route-stop i {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 6px;
+    height: 6px;
+    background: #060a14;
+    border: var(--hair) solid var(--node-col, var(--hud-accent));
+    transform: translate(-50%, -50%) rotate(45deg);
+    opacity: 0.68;
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out),
+      background-color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__route-stop span {
+    position: absolute;
+    left: 50%;
+    top: 0.45rem;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    letter-spacing: 0.06em;
+    color: rgba(226, 238, 255, 0.54);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+    line-height: 1;
+    transition: color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__route-stop[data-reached='1'] i {
+    background: var(--node-col, var(--hud-accent));
+    opacity: 1;
+  }
+
+  .roam__route-stop[data-reached='1'] span {
+    color: var(--node-col, var(--hud-accent));
+  }
+
+  .roam__route-stop[data-lit='1'] i {
+    transform: translate(-50%, -50%) rotate(45deg) scale(1.28);
   }
 
   .roam[data-state='ready'] .roam__hud,
   .roam[data-state='ready'] .roam__tele,
   .roam[data-state='ready'] .roam__radar,
-  .roam[data-state='ready'] .roam__progress {
+  .roam[data-state='outro'] .roam__hud,
+  .roam[data-state='outro'] .roam__tele,
+  .roam[data-state='outro'] .roam__radar,
+  .roam[data-state='finished'] .roam__hud,
+  .roam[data-state='finished'] .roam__tele,
+  .roam[data-state='finished'] .roam__radar {
     opacity: 0;
     pointer-events: none;
   }
@@ -398,15 +480,15 @@ const summary = entry?.data.summary ?? '';
     opacity: 0.45;
   }
 
-  /* 顶部左右对齐：左一条等高状态 + 右两颗方键 */
+  /* 顶部左右对齐：航程条直接嵌入红框空区之中 */
   .roam__hud {
     position: relative;
     z-index: 4;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.6rem;
-    padding: 0.8rem 0.9rem;
+    gap: 1.25rem;
+    padding: 0.85rem 0.9rem;
     pointer-events: none;
     transition: opacity var(--dur-2) var(--ease-out);
   }
@@ -441,6 +523,11 @@ const summary = entry?.data.summary ?? '';
     font-weight: 600;
     color: var(--hud-accent);
     font-variant-numeric: tabular-nums;
+  }
+
+  .roam__atlas-btn[data-bump='1'] {
+    border-color: var(--hud-accent);
+    background: color-mix(in srgb, var(--hud-accent) 20%, rgba(7, 11, 20, 0.88));
   }
 
   .roam-btn {
@@ -493,7 +580,7 @@ const summary = entry?.data.summary ?? '';
   .roam__toasts {
     position: absolute;
     left: 50%;
-    top: 0.8rem;
+    top: 3.45rem;
     z-index: 6;
     width: 0;
     height: 0;
@@ -543,6 +630,40 @@ const summary = entry?.data.summary ?? '';
     stroke-linecap: round;
     stroke-linejoin: round;
     flex: none;
+  }
+
+  /* 藏品收纳抛物线飞行层：采集后直接就地缩小抛入左上「图鉴」按钮，绝不贴脸挡视线 */
+  .roam__stow {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .roam__stow-item {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2.15rem;
+    height: 2.15rem;
+    margin-left: -1.075rem;
+    margin-top: -1.075rem;
+    display: grid;
+    place-items: center;
+    border: var(--hair) solid var(--item-col, var(--hud-accent));
+    background: rgba(5, 9, 18, 0.82);
+    will-change: transform, opacity;
+  }
+
+  .roam__stow-item svg {
+    width: 1.38rem;
+    height: 1.38rem;
+    fill: none;
+    stroke: var(--item-col, var(--hud-accent));
+    stroke-width: 1.45;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   /* 左下：航天科技遥测模块（1px 准星角标 + 分段激光刻度槽 + 双栏航速导航表） */
@@ -808,7 +929,7 @@ const summary = entry?.data.summary ?? '';
     /* 触屏右下留给加速大圆键，星图雷达挪到右上按键正下方 */
     .roam__radar {
       bottom: auto;
-      top: 3.25rem;
+      top: 4.95rem;
       right: 0.7rem;
     }
 
@@ -1007,7 +1128,7 @@ const summary = entry?.data.summary ?? '';
     font-variant-numeric: tabular-nums;
   }
 
-  /* 终点结算卡片 */
+  /* 终点结算卡片：先黑帘慢落，再由下而上优雅浮现卡片、逐行点亮战绩与底部提示 */
   .roam__overlay {
     position: absolute;
     inset: 0;
@@ -1017,10 +1138,16 @@ const summary = entry?.data.summary ?? '';
     padding: 1rem;
     background: rgba(4, 7, 15, 0.56);
     cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.95s var(--ease-out);
   }
 
   .roam__overlay[hidden] {
     display: none;
+  }
+
+  .roam__overlay[data-show='1'] {
+    opacity: 1;
   }
 
   .roam__card {
@@ -1031,6 +1158,31 @@ const summary = entry?.data.summary ?? '';
     align-items: stretch;
     gap: 0.9rem;
     background: rgba(7, 11, 20, 0.92);
+    opacity: 0;
+    translate: 0 22px;
+    scale: 0.985;
+    transition:
+      opacity 0.95s var(--ease-out) 0.16s,
+      translate 1.05s var(--ease-out) 0.16s,
+      scale 1.05s var(--ease-out) 0.16s;
+  }
+
+  .roam__overlay[data-show='1'] .roam__card {
+    opacity: 1;
+    translate: 0;
+    scale: 1;
+  }
+
+  @starting-style {
+    .roam__overlay[data-show='1'] {
+      opacity: 0;
+    }
+
+    .roam__overlay[data-show='1'] .roam__card {
+      opacity: 0;
+      translate: 0 22px;
+      scale: 0.985;
+    }
   }
 
   .roam__overlay-title {
@@ -1056,6 +1208,32 @@ const summary = entry?.data.summary ?? '';
     align-items: baseline;
     justify-content: space-between;
     padding: 0.52rem 0.15rem;
+    opacity: 0;
+    translate: 0 10px;
+    transition:
+      opacity 0.65s var(--ease-out),
+      translate 0.65s var(--ease-out);
+  }
+
+  .roam__stats div:nth-child(1) {
+    transition-delay: 0.36s;
+  }
+
+  .roam__stats div:nth-child(2) {
+    transition-delay: 0.48s;
+  }
+
+  .roam__stats div:nth-child(3) {
+    transition-delay: 0.60s;
+  }
+
+  .roam__stats div:nth-child(4) {
+    transition-delay: 0.72s;
+  }
+
+  .roam__overlay[data-show='1'] .roam__stats div {
+    opacity: 1;
+    translate: 0;
   }
 
   .roam__stats div + div {
@@ -1081,6 +1259,31 @@ const summary = entry?.data.summary ?? '';
     bottom: 2rem;
     transform: translateX(-50%);
     white-space: nowrap;
+    opacity: 0;
+    translate: 0 10px;
+    transition:
+      opacity 0.85s var(--ease-out) 0.92s,
+      translate 0.85s var(--ease-out) 0.92s;
+  }
+
+  .roam__overlay[data-show='1'] .roam__finish-prompt {
+    opacity: 1;
+    translate: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .roam__overlay {
+      transition-duration: 0.15s;
+    }
+
+    .roam__card,
+    .roam__stats div,
+    .roam__finish-prompt {
+      translate: none;
+      scale: none;
+      transition-duration: 0.15s;
+      transition-delay: 0s;
+    }
   }
 
   /* 星海图鉴弹窗：去掉已收录字样、关闭改为 ×、双列紧凑卡片+集齐打勾 */
@@ -1365,11 +1568,23 @@ const summary = entry?.data.summary ?? '';
     }
 
     .roam__hud {
-      padding: 0.65rem 0.7rem;
+      flex-wrap: wrap;
+      row-gap: 0.35rem;
+      padding: 0.7rem 0.7rem 0.55rem;
+    }
+
+    .roam__tools {
+      margin-left: auto;
+    }
+
+    .roam__route {
+      order: 3;
+      flex: 1 0 100%;
+      height: 1.45rem;
     }
 
     .roam__toasts {
-      top: 2.95rem;
+      top: 4.95rem;
     }
 
     .roam__sector,
@@ -1392,6 +1607,12 @@ const summary = entry?.data.summary ?? '';
 
     .roam__tele-grid {
       grid-template-columns: 3.9rem minmax(0, 1fr);
+    }
+
+    .roam__radar {
+      bottom: auto;
+      top: 4.95rem;
+      right: 0.7rem;
     }
 
     .roam__mini {

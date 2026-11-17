@@ -27,7 +27,7 @@ function diskFrame(rx: number, rz: number, n: THREE.Vector3, u: THREE.Vector3, v
   v.copy(DISK_V).applyQuaternion(diskQuatTmp).normalize();
 }
 
-type GameState = 'ready' | 'playing' | 'paused' | 'atlas' | 'finished';
+type GameState = 'ready' | 'playing' | 'outro' | 'paused' | 'atlas' | 'finished';
 
 const ICONS = {
   ring: '<circle cx="12" cy="12" r="7.5" /><circle cx="12" cy="12" r="3" />',
@@ -62,6 +62,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   const rushCtx = rushCanvas.getContext('2d');
 
   const progressBar = root.querySelector<HTMLElement>('[data-progress]')!;
+  const routeStopsEl = root.querySelector<HTMLElement>('[data-route-stops]')!;
   const sectorEl = root.querySelector<HTMLElement>('[data-sector]')!;
   const relicsEl = root.querySelector<HTMLElement>('[data-relics]')!;
   const atlasBtn = root.querySelector<HTMLButtonElement>('[data-atlas-btn]')!;
@@ -70,6 +71,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   const muteBtn = root.querySelector<HTMLButtonElement>('[data-mute]')!;
   const pauseBtn = root.querySelector<HTMLButtonElement>('[data-pause]')!;
   const toastsEl = root.querySelector<HTMLElement>('[data-toasts]')!;
+  const stowEl = root.querySelector<HTMLElement>('[data-stow]')!;
 
   const teleBox = root.querySelector<HTMLElement>('[data-tele-box]')!;
   const teleModeEl = root.querySelector<HTMLElement>('[data-tele-mode]')!;
@@ -129,7 +131,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x03050c);
-  const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.05, 4200);
+  const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.05, 10500);
   scene.add(camera);
 
   // ---- 黑洞着色器常驻场景（uHoleAlpha 接近 0 时 GPU 跳过步进循环，STEPS 收敛至 56/76 降编译与渲染开销） ----
@@ -173,16 +175,16 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   hole.renderOrder = -1;
   scene.add(hole);
 
-  const dustCount = lite ? 240 : 420;
+  const dustCount = lite ? 480 : 900;
   const dRad = new Float32Array(dustCount);
   const dAng = new Float32Array(dustCount);
   const dLift = new Float32Array(dustCount);
   const dSeed = new Float32Array(dustCount);
   for (let i = 0; i < dustCount; i++) {
-    const thin = i % 5 !== 0;
-    dRad[i] = 3.2 + Math.pow(Math.random(), 1.3) * (thin ? 10 : 15);
+    const thin = i % 6 !== 0;
+    dRad[i] = 2.6 + Math.pow(Math.random(), 1.15) * (thin ? 14.5 : 18.2);
     dAng[i] = Math.random() * Math.PI * 2;
-    dLift[i] = (Math.random() - 0.5) * (thin ? dRad[i] * 0.06 : dRad[i] * 0.55);
+    dLift[i] = (Math.random() - 0.5) * (thin ? dRad[i] * 0.055 : dRad[i] * 0.24);
     dSeed[i] = Math.random();
   }
   const dustGeo = new THREE.BufferGeometry();
@@ -232,11 +234,8 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   shipLight.position.set(14, 26, 20);
   scene.add(shipLight);
 
-  // ---- 斯隆长城星图 + 连续巡航赛道 + 藏品世界 ----
+  // ---- 斯隆长城迷你雷达底座 + 连续巡航赛道 + 藏品世界（只取 starMap.miniPoints 绘雷达，不向三维场景叠加仪表线框与指针） ----
   const starMap = buildStarMap(lite);
-  starMap.group.scale.setScalar(COSMOS_SCALE);
-  starMap.setOpacity(1, 0, ratio);
-  scene.add(starMap.group);
 
   const track = buildCosmicTrack();
   scene.add(track.railsGroup);
@@ -245,36 +244,33 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   scene.add(world.group);
   const totalAtlas = world.catalog.length;
 
+  // ---- 顶部航程路程条的五大星系节点标注 ----
+  const routeStops = new Map<string, HTMLElement>();
+  function syncRouteStops() {
+    routeStops.clear();
+    routeStopsEl.innerHTML = '';
+    for (const ms of track.milestones) {
+      const stop = document.createElement('div');
+      stop.className = 'roam__route-stop';
+      stop.style.left = `${(ms.u * 100).toFixed(2)}%`;
+      stop.style.setProperty('--node-col', ms.node.color);
+      const dot = document.createElement('i');
+      const lbl = document.createElement('span');
+      lbl.textContent = ms.node.name;
+      stop.append(dot, lbl);
+      scopeTree(stop);
+      routeStopsEl.appendChild(stop);
+      routeStops.set(ms.node.id, stop);
+    }
+  }
+  syncRouteStops();
+
   // ---- 精细化飞船（纯外观选择，功能完全一致） ----
   const savedShipId = localStorage.getItem(SHIP_KEY);
   let selectedShip: ShipSpec = SHIPS.find((s) => s.id === savedShipId) ?? SHIPS[0];
   let ship: ShipModel = buildShip(selectedShip);
   ship.root.scale.setScalar(SHIP_SCALE);
   scene.add(ship.root, ship.trail);
-
-  // ---- 速度线 ----
-  const streakN = lite ? 110 : 220;
-  const streakSeed = new Float32Array(streakN * 3);
-  for (let i = 0; i < streakN; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 1.6 + Math.pow(Math.random(), 0.75) * 5.6;
-    streakSeed[i * 3] = Math.cos(a) * r;
-    streakSeed[i * 3 + 1] = Math.sin(a) * r;
-    streakSeed[i * 3 + 2] = -Math.random() * 55;
-  }
-  const streakArr = new Float32Array(streakN * 6);
-  const streakGeo = new THREE.BufferGeometry();
-  streakGeo.setAttribute('position', new THREE.BufferAttribute(streakArr, 3));
-  const streakMat = new THREE.LineBasicMaterial({
-    color: 0xc8e4ff,
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const streaks = new THREE.LineSegments(streakGeo, streakMat);
-  streaks.frustumCulled = false;
-  camera.add(streaks);
 
   // ---- 游戏状态 ----
   let state: GameState = 'ready';
@@ -297,6 +293,10 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   let camLock = 0;
   let ringToneIndex = 0;
   let elapsed = 0;
+  let finalElapsed = 0;
+  let outroTime = 0;
+  let outroDist = 0;
+  let outroPeakSpeed = 58;
   let simTime = 0;
   let lastTheme = -1;
 
@@ -390,6 +390,99 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       }
     }
     if (changed) layoutToasts();
+  }
+
+  // ---- 藏品采集抛物线缩小收纳入「图鉴」按钮动画（绝不拉近遮挡视野） ----
+  interface StowToken {
+    el: HTMLElement;
+    startAt: number;
+    dur: number;
+    sx: number;
+    sy: number;
+    cx: number;
+    cy: number;
+    tx: number;
+    ty: number;
+  }
+  const stowTokens: StowToken[] = [];
+  let bumpTimer = 0;
+
+  function bumpAtlasBtn() {
+    atlasBtn.setAttribute('data-bump', '1');
+    clearTimeout(bumpTimer);
+    bumpTimer = window.setTimeout(() => atlasBtn.removeAttribute('data-bump'), 240);
+  }
+
+  function clearStow() {
+    for (const item of stowTokens) item.el.remove();
+    stowTokens.length = 0;
+    clearTimeout(bumpTimer);
+    atlasBtn.removeAttribute('data-bump');
+  }
+
+  function spawnStowToken(worldPos: THREE.Vector3, spec: AtlasItemSpec) {
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    if (w < 16 || h < 16) return;
+
+    tmpA.copy(worldPos).project(camera);
+    if (tmpA.z > 1) tmpA.copy(shipPos).project(camera);
+    const sx = THREE.MathUtils.clamp((tmpA.x * 0.5 + 0.5) * w, 26, w - 26);
+    const sy = THREE.MathUtils.clamp((-tmpA.y * 0.5 + 0.5) * h, 26, h - 26);
+
+    const stageRect = stage.getBoundingClientRect();
+    const btnRect = atlasBtn.getBoundingClientRect();
+    const tx = btnRect.width > 0 ? btnRect.left - stageRect.left + btnRect.width * 0.5 : 108;
+    const ty = btnRect.height > 0 ? btnRect.top - stageRect.top + btnRect.height * 0.5 : 28;
+
+    const span = Math.hypot(tx - sx, ty - sy);
+    const cx = sx * 0.42 + tx * 0.58 + (sx < tx ? -28 : 44);
+    const cy = Math.max(14, Math.min(sy, ty) - Math.max(44, span * 0.22));
+
+    const el = document.createElement('div');
+    el.className = 'roam__stow-item';
+    el.style.setProperty('--item-col', spec.color);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 28 28');
+    svg.innerHTML = getAtlasModelSvg(spec.regionId);
+    el.appendChild(svg);
+    scopeTree(el);
+    stowEl.appendChild(el);
+
+    stowTokens.push({
+      el,
+      startAt: performance.now(),
+      dur: still ? 160 : 660,
+      sx,
+      sy,
+      cx,
+      cy,
+      tx,
+      ty,
+    });
+  }
+
+  function tickStow(now: number) {
+    for (let i = stowTokens.length - 1; i >= 0; i--) {
+      const tok = stowTokens[i];
+      const u = clamp01((now - tok.startAt) / tok.dur);
+      const e = u * u * (3 - 2 * u);
+      const inv = 1 - e;
+      const x = inv * inv * tok.sx + 2 * inv * e * tok.cx + e * e * tok.tx;
+      const y = inv * inv * tok.sy + 2 * inv * e * tok.cy + e * e * tok.ty;
+      const scale = 1.0 - 0.74 * Math.pow(e, 0.88);
+      const rot = e * 145;
+      const alpha = u > 0.82 ? 1 - (u - 0.82) / 0.18 : 1;
+
+      tok.el.style.opacity = alpha.toFixed(3);
+      tok.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(3)}) rotate(${rot.toFixed(1)}deg)`;
+
+      if (u >= 1) {
+        tok.el.remove();
+        stowTokens.splice(i, 1);
+        bumpAtlasBtn();
+      }
+    }
   }
 
   // ---- 选船按钮（仅颜色与名称） ----
@@ -510,7 +603,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   }
 
   function toggleAtlas() {
-    if (state === 'ready' || state === 'finished') return;
+    if (state === 'ready' || state === 'outro' || state === 'finished') return;
     if (state === 'atlas') {
       state = stateBeforeAtlas;
       audio.setPaused(state !== 'playing');
@@ -537,7 +630,9 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       statRelics.textContent = `${collectedIds.size} / ${totalAtlas}`;
       statLit.textContent = `${litGalaxies.size} / ${STAR_NODES.length}`;
       statSlings.textContent = String(slingshotCount);
-      statTime.textContent = formatClock(elapsed);
+      statTime.textContent = formatClock(finalElapsed);
+    } else {
+      finishModal.removeAttribute('data-show');
     }
   }
 
@@ -574,7 +669,11 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       camGoal.lerp(tmpA, camLock);
       camera.position.lerp(camGoal, 1 - Math.exp(-(6.5 + camLock * 6.5) * dt));
 
-      track.sampleAtS(Math.min(trackS + 68, track.totalLength), lookSample);
+      const aheadS = trackS + 68;
+      track.sampleAtS(Math.min(aheadS, track.totalLength), lookSample);
+      if (aheadS > track.totalLength) {
+        lookSample.pos.addScaledVector(track.finishDir, aheadS - track.totalLength);
+      }
       const lookFreeScale = (1 - camLock) * 0.35;
       camLook
         .copy(lookSample.pos)
@@ -590,7 +689,12 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
   }
 
-  function resetRun() {
+  function resetRun(reseed = false) {
+    if (reseed) {
+      track.regenerate();
+      world.syncToTrack();
+      syncRouteStops();
+    }
     trackS = 0;
     laneX = 0;
     laneY = 0;
@@ -607,7 +711,13 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     camLock = 0;
     ringToneIndex = 0;
     elapsed = 0;
+    finalElapsed = 0;
+    outroTime = 0;
+    outroDist = 0;
+    outroPeakSpeed = 58;
     lastTheme = -1;
+    finishModal.removeAttribute('data-show');
+    clearStow();
     litGalaxies.clear();
     collectedIds.clear();
     slingshotSeen.clear();
@@ -637,8 +747,9 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     (document.activeElement as HTMLElement | null)?.blur?.();
     audio.unlock();
     if (state === 'ready' || state === 'finished') {
-      resetRun();
-      pushToast('进入斯隆长城巡航航道', ICONS.star, 2.2);
+      const reseed = state === 'finished';
+      resetRun(reseed);
+      pushToast(reseed ? '已生成全新巡航星图 · 航程启程' : '进入斯隆长城巡航航道', ICONS.star, 2.2);
     }
     state = 'playing';
     audio.setPaused(false);
@@ -662,15 +773,37 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
   }
 
-  function finishRun() {
-    state = 'finished';
+  function beginOutro() {
+    state = 'outro';
+    outroTime = 0;
+    outroDist = 0;
+    outroPeakSpeed = Math.max(trackSpeed, 58);
+    trackSpeed = outroPeakSpeed;
+    finalElapsed = elapsed;
+    isWarpHeld = true;
+    slingshotTimer = 0;
+    track.triggerFinishGate(simTime);
     if (collectedIds.size > bestCollected) {
       bestCollected = collectedIds.size;
       localStorage.setItem(BEST_KEY, String(bestCollected));
     }
     audio.finish(true);
     updateRecordText();
+    pushToast('冲出斯隆凯旋星门 · 巡航达成', ICONS.star, 2.6);
     syncOverlay();
+  }
+
+  function enterFinishedScreen() {
+    state = 'finished';
+    isWarpHeld = false;
+    syncOverlay();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!disposed && state === 'finished') {
+          finishModal.setAttribute('data-show', '1');
+        }
+      });
+    });
   }
 
   function recordCollection(id: string) {
@@ -733,7 +866,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       muteBtn.setAttribute('aria-pressed', String(!next));
       return;
     }
-    if ((e.code === 'Space' || e.code === 'Enter') && (state === 'ready' || state === 'finished')) {
+    if ((e.code === 'Space' || e.code === 'Enter') && (state === 'ready' || (state === 'finished' && outroTime >= 3.7))) {
       e.preventDefault();
       startRun();
       return;
@@ -752,7 +885,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
   const onStageClick = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, a')) return;
-    if (state === 'ready' || state === 'finished') {
+    if (state === 'ready' || (state === 'finished' && outroTime >= 3.7)) {
       startRun();
     } else if (state === 'paused') {
       togglePause();
@@ -861,6 +994,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     return perp < r + (holeUniforms.uHoleScale.value || 1) * 1.4;
   }
 
+  // 真空高曲速/弹弓光学边缘蓝移光晕（深空无大气风阻，改用相对论周边光学晕光而非空气风切线条）
   function drawRush(factor: number, isSling: boolean) {
     if (!rushCtx) return;
     const w = stage.clientWidth;
@@ -873,29 +1007,32 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
     rushCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     rushCtx.clearRect(0, 0, w, h);
-    if (factor < 0.08 || still) return;
+    if (factor < 0.16 || still) return;
 
     const cx = w * 0.5;
     const cy = h * 0.5;
     const diag = Math.hypot(cx, cy);
-    const n = Math.round((lite ? 14 : 24) * clamp01(factor));
-    rushCtx.strokeStyle = isSling ? 'rgba(130, 232, 255, 0.55)' : 'rgba(255, 224, 178, 0.34)';
-    rushCtx.lineWidth = isSling ? 1.5 : 1.0;
-
-    for (let i = 0; i < n; i++) {
-      const a = (i * 2.39996 + simTime * 4.5) % (Math.PI * 2);
-      const inner = diag * (0.44 + ((i * 17) % 10) * 0.025);
-      const outer = inner + diag * (0.14 + factor * 0.22);
-      rushCtx.beginPath();
-      rushCtx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
-      rushCtx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
-      rushCtx.stroke();
-    }
+    const alpha = clamp01((factor - 0.16) / 0.84) * (isSling ? 0.16 : 0.09);
+    const grad = rushCtx.createRadialGradient(cx, cy, diag * 0.42, cx, cy, diag);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    grad.addColorStop(0.75, isSling ? `rgba(116, 224, 255, ${(alpha * 0.45).toFixed(3)})` : `rgba(255, 220, 174, ${(alpha * 0.35).toFixed(3)})`);
+    grad.addColorStop(1, isSling ? `rgba(116, 224, 255, ${alpha.toFixed(3)})` : `rgba(255, 220, 174, ${alpha.toFixed(3)})`);
+    rushCtx.fillStyle = grad;
+    rushCtx.fillRect(0, 0, w, h);
   }
 
   function updateHUD() {
     const progress = clamp01(trackS / track.totalLength);
-    progressBar.style.transform = `scaleX(${Math.max(0.015, progress)})`;
+    progressBar.style.transform = `scaleX(${Math.max(0.01, progress)})`;
+    for (const ms of track.milestones) {
+      const el = routeStops.get(ms.node.id);
+      if (!el) continue;
+      if (trackS >= ms.s - 185) el.setAttribute('data-reached', '1');
+      else el.removeAttribute('data-reached');
+      if (litGalaxies.has(ms.node.id)) el.setAttribute('data-lit', '1');
+      else el.removeAttribute('data-lit');
+    }
+
     relicsEl.textContent = `${collectedIds.size}/${totalAtlas}`;
 
     const prox = track.evaluateHub(shipPos);
@@ -992,28 +1129,6 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   setLoadProgress(0.45);
   renderer.compileAsync(scene, camera).then(begin, begin);
 
-  function updateStreaks3D(beta: number, dt: number) {
-    if (beta <= 0.01 && streakMat.opacity === 0) return;
-    const spd = 24 + beta * 240;
-    const len = 0.6 + beta * 8.5;
-    for (let i = 0; i < streakN; i++) {
-      let z = streakSeed[i * 3 + 2] + spd * dt;
-      if (z > -0.5) z -= 55;
-      streakSeed[i * 3 + 2] = z;
-      const x = streakSeed[i * 3];
-      const y = streakSeed[i * 3 + 1];
-      const b = i * 6;
-      streakArr[b] = x;
-      streakArr[b + 1] = y;
-      streakArr[b + 2] = z;
-      streakArr[b + 3] = x;
-      streakArr[b + 4] = y;
-      streakArr[b + 5] = z - len;
-    }
-    streakGeo.attributes.position.needsUpdate = true;
-    streakMat.opacity = Math.min(beta * 0.55, 0.42);
-  }
-
   function stepPlaying(dt: number) {
     elapsed += dt;
 
@@ -1027,29 +1142,32 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     if (Math.abs(stickSteerX) > 0.01) inX = stickSteerX;
     if (Math.abs(stickSteerY) > 0.01) inY = stickSteerY;
 
+    const dsEnd = Math.max(0, track.totalLength - trackS);
+    const finalT = dsEnd < 320 ? clamp01((320 - dsEnd) / 320) : 0;
+    const finishLock = dsEnd < 180 ? clamp01((180 - dsEnd) / 115) : 0;
+
     const wantBoost = keys.has('Space') || keys.has('ShiftLeft') || keys.has('ShiftRight') || touchBoost;
-    const isBoosting = wantBoost && warpEnergy > 0.02;
+    const isBoosting = (wantBoost && warpEnergy > 0.02) || finalT > 0.25;
     isWarpHeld = isBoosting;
 
-    // 真实开普勒引力弹弓 + 奥伯特近心机动（以黑洞最近点 ms.s 为势阱零点，划分：势能落入归中 -> 近心点奥伯特爆发 -> 双曲线逃逸余速滑行）
-    const activeMs = track.milestones.find((m) => trackS >= m.s - 95 && trackS <= m.s + 105);
+    // 真实开普勒引力弹弓 + 奥伯特近心机动（随宏大斯隆尺度同步放大引力阱区间）
+    const activeMs = track.milestones.find((m) => trackS >= m.s - 185 && trackS <= m.s + 195);
     const inGravWell = !!activeMs;
     let dsPeri = 0;
-    let guideLock = 0;
+    let gravGuideLock = 0;
     let gravBoost = 0;
 
     if (activeMs) {
       dsPeri = trackS - activeMs.s;
-      const enterLock = clamp01((dsPeri + 95) / 42);
-      const exitLock = clamp01((88 - dsPeri) / 48);
-      guideLock = enterLock * exitLock;
+      const enterLock = clamp01((dsPeri + 185) / 74);
+      const exitLock = clamp01((170 - dsPeri) / 82);
+      gravGuideLock = enterLock * exitLock;
 
-      // 引力势阱下落 (1/sqrt(r)) + 近心点奥伯特爆发 + 离境双曲线余速延续
-      const infallGain = dsPeri <= 0 ? Math.pow(clamp01((dsPeri + 95) / 95), 1.45) * 14.0 : 14.0 * clamp01((90 - dsPeri) / 90);
-      const oberthPeak = Math.exp(-Math.pow((dsPeri - 2) / 18, 2)) * 7.5;
+      const infallGain = dsPeri <= 0 ? Math.pow(clamp01((dsPeri + 185) / 185), 1.45) * 16.0 : 16.0 * clamp01((175 - dsPeri) / 175);
+      const oberthPeak = Math.exp(-Math.pow((dsPeri - 3) / 30, 2)) * 8.5;
       gravBoost = Math.max(infallGain, 0) + oberthPeak;
 
-      if (dsPeri >= -20 && dsPeri <= 28 && !slingshotSeen.has(activeMs.node.id)) {
+      if (dsPeri >= -35 && dsPeri <= 48 && !slingshotSeen.has(activeMs.node.id)) {
         slingshotSeen.add(activeMs.node.id);
         slingshotCount++;
         warpEnergy = Math.min(1, warpEnergy + 0.45);
@@ -1057,33 +1175,35 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
         pushToast(`近心点奥伯特加速 · ${activeMs.node.name}引力弹弓`, ICONS.sling, 2.5);
       }
 
-      if (dsPeri >= 6 && dsPeri <= 52) {
-        escapeCarry = Math.max(escapeCarry, 12.5);
+      if (dsPeri >= 10 && dsPeri <= 105) {
+        escapeCarry = Math.max(escapeCarry, 14.5);
       }
-      slingshotTimer = guideLock > 0.05 ? 0.2 : 0;
+      slingshotTimer = gravGuideLock > 0.05 ? 0.2 : 0;
     } else {
       slingshotTimer = 0;
     }
 
-    if (dsPeri > 52 || !inGravWell) {
-      escapeCarry *= Math.exp(-0.24 * dt);
+    if (dsPeri > 105 || !inGravWell) {
+      escapeCarry *= Math.exp(-0.22 * dt);
       if (escapeCarry < 0.08) escapeCarry = 0;
     }
 
-    if (isBoosting && !inGravWell) {
-      warpEnergy = Math.max(0, warpEnergy - 0.24 * dt);
+    if (wantBoost && warpEnergy > 0.02 && !inGravWell && finalT <= 0.01) {
+      warpEnergy = Math.max(0, warpEnergy - 0.22 * dt);
     } else {
-      warpEnergy = Math.min(1, warpEnergy + (inGravWell ? 0.22 : 0.14) * dt);
+      warpEnergy = Math.min(1, warpEnergy + (inGravWell || finalT > 0.01 ? 0.34 : 0.14) * dt);
     }
 
-    // 视角锁定权重：进入黑洞引力井即柔和固定居中视角，离开时缓慢交还
-    camLock += (guideLock - camLock) * (1 - Math.exp(-5.8 * dt));
+    const guideLock = Math.max(gravGuideLock, finishLock);
+    // 视角锁定权重：进入黑洞引力井或冲向终点星门即柔和居中，离开时缓慢交还
+    camLock += (guideLock - camLock) * (1 - Math.exp(-5.4 * dt));
 
-    // 宽幅且从容的星际巡航惯性；黑洞牵引锁定时接管并先将飞船柔和拉回中轴航线
+    // 深空 RCS 横向响应更利落准确，同时保留温和无风阻滑行惯性
     const freeControl = 1 - guideLock;
-    const targetVelX = inX * 10.6 * freeControl;
-    const targetVelY = inY * 6.8 * freeControl;
-    const steerBlend = 1 - Math.exp(-3.8 * dt);
+    const targetVelX = inX * 12.2 * freeControl;
+    const targetVelY = inY * 7.8 * freeControl;
+    const hasInput = Math.abs(inX) > 0.01 || Math.abs(inY) > 0.01;
+    const steerBlend = 1 - Math.exp(-(hasInput ? 4.4 : 2.5) * dt);
     velX += (targetVelX - velX) * steerBlend;
     velY += (targetVelY - velY) * steerBlend;
 
@@ -1099,10 +1219,28 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       velY *= 1 - pull;
       const pullRateX = (laneX - prevX) / Math.max(dt, 1e-4);
       const tiltBlend = 1 - Math.exp(-5.2 * dt);
-      const targetBank = THREE.MathUtils.clamp(-pullRateX * 0.025, -0.28, 0.28) * (1 - clamp01((dsPeri + 95) / 60) * 0.85);
+      const lockDecay = inGravWell ? 1 - clamp01((dsPeri + 185) / 105) * 0.85 : 1 - finishLock * 0.85;
+      const targetBank = THREE.MathUtils.clamp(-pullRateX * 0.025, -0.28, 0.28) * lockDecay;
       bankRoll += (targetBank - bankRoll) * tiltBlend;
       pitchTilt += (0 - pitchTilt) * tiltBlend;
     } else {
+      // 星门电磁引航漏斗：靠近未穿过星门（前 85 单位）且驶入捕获漏斗时，柔和阻尼吸附进门心圆环
+      for (const g of world.gates) {
+        if (g.triggered) continue;
+        const gds = g.s - trackS;
+        if (gds < -2 || gds > 85) continue;
+        const radErr = Math.hypot(laneX - g.offX, laneY - g.offY);
+        if (radErr < 10.6) {
+          const funnel = (1 - Math.max(gds, 0) / 85) * clamp01(1 - radErr / 10.6) * (hasInput ? 0.45 : 1.0);
+          const pull = 1 - Math.exp(-5.4 * funnel * dt);
+          laneX += (g.offX - laneX) * pull;
+          laneY += (g.offY - laneY) * pull;
+          velX *= 1 - pull * 0.68;
+          velY *= 1 - pull * 0.68;
+        }
+        break;
+      }
+
       if (laneX > 14.2) {
         laneX = 14.2;
         if (velX > 0) velX = 0;
@@ -1119,47 +1257,49 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
         if (velY < 0) velY = 0;
       }
 
-      const tiltBlend = 1 - Math.exp(-4.6 * dt);
-      bankRoll += ((-velX / 10.6) * 0.42 - bankRoll) * tiltBlend;
-      pitchTilt += ((velY / 6.8) * 0.22 - pitchTilt) * tiltBlend;
+      const tiltBlend = 1 - Math.exp(-4.2 * dt);
+      bankRoll += ((-velX / 12.2) * 0.42 - bankRoll) * tiltBlend;
+      pitchTilt += ((velY / 7.8) * 0.22 - pitchTilt) * tiltBlend;
     }
 
+    // 终点星门冲刺段（最后 240 单位）持续加速直至满功率穿门；平时无空气阻力，减速远比加速轻缓
     const totalBoost = Math.max(gravBoost, escapeCarry);
-    const targetSpeed = Math.min(BASE_SPEED + (isBoosting ? 16.0 : 0) + totalBoost, 52);
-    trackSpeed += (targetSpeed - trackSpeed) * Math.min(dt * (inGravWell ? 3.5 : 4.2), 1);
+    const finishBoost = Math.pow(finalT, 0.9) * 38.0;
+    const speedCap = finalT > 0.05 ? 64 : 52;
+    const targetSpeed = Math.min(BASE_SPEED + (isBoosting ? 16.0 : 0) + totalBoost + finishBoost, speedCap);
+    const speedRate = targetSpeed >= trackSpeed ? (inGravWell || finalT > 0.05 ? 3.8 : 4.2) : 0.9;
+    trackSpeed += (targetSpeed - trackSpeed) * Math.min(dt * speedRate, 1);
     trackS = Math.min(trackS + trackSpeed * dt, track.totalLength);
 
     placeShipFromTrack(dt, true);
 
     const prox = track.evaluateHub(shipPos);
 
-    // 曲速星门判定（穿门瞬间激发传送门能量激波特效）
+    // 曲速星门穿越判定：按航向切片与截面半径检测，只要视觉飞进门环内即准确触发
     for (const g of world.gates) {
       if (g.triggered) continue;
-      if (Math.abs(g.s - trackS) < 10.5 && shipPos.distanceTo(g.pos) < g.radius) {
+      const gds = trackS - g.s;
+      if (gds >= -10 && gds <= 16 && Math.hypot(laneX - g.offX, laneY - g.offY) < 7.6) {
         world.triggerGate(g, simTime);
         warpEnergy = Math.min(1, warpEnergy + 0.3);
-        trackSpeed = Math.min(trackSpeed + 6.5, 52);
+        trackSpeed = Math.min(trackSpeed + 7.2, 56);
         ringToneIndex = (ringToneIndex + 1) % 7;
         audio.ring(ringToneIndex + 1);
       }
     }
 
-    // 藏品收录判定：黑洞引力井牵引或高速滑行期间自动卷吸航线周边藏品
+    // 藏品收录判定：黑洞引力井牵引期间扩大拾取包络，触发后在原位直接缩小并按抛物线收纳进右上/左上「图鉴」钮
     const inSlingshot = inGravWell && guideLock > 0.25;
-    const pullBlend = inSlingshot ? 1 - Math.exp(-11 * dt) : 0;
     for (const rel of world.collectibles) {
       if (rel.collected) continue;
       const ds = rel.s - trackS;
       const dist = shipPos.distanceTo(rel.pos);
-      if (inSlingshot && ds >= -18 && ds <= 56 && dist < 38) {
-        rel.group.position.lerp(shipPos, pullBlend);
-      }
       const hit =
-        (Math.abs(ds) < 12.0 && dist < 8.4) ||
-        (inSlingshot && Math.abs(ds) < 15.0 && dist < 24.0);
+        (Math.abs(ds) < 12.0 && dist < 9.0) ||
+        (inSlingshot && Math.abs(ds) < 16.0 && dist < 25.0);
       if (hit) {
         rel.collected = true;
+        spawnStowToken(rel.pos, rel.spec);
         rel.group.visible = false;
         recordCollection(rel.spec.id);
         warpEnergy = Math.min(1, warpEnergy + 0.28);
@@ -1186,7 +1326,74 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     audio.updatePad(prox.alpha > 0.25, clamp01((trackSpeed - BASE_SPEED) / 18));
 
     if (trackS >= track.totalLength) {
-      finishRun();
+      beginOutro();
+    }
+  }
+
+  function stepOutro(dt: number) {
+    outroTime += dt;
+
+    // 穿过凯旋星门后归中调平；前 1.45 秒保持穿门高速惯性冲出深空，再顺滑平缓收油减速，随后展示结算画面
+    const alignBlend = 1 - Math.exp(-5.2 * dt);
+    laneX *= 1 - alignBlend;
+    laneY *= 1 - alignBlend;
+    bankRoll *= 1 - alignBlend;
+    pitchTilt *= 1 - alignBlend;
+
+    if (outroTime < 1.45) {
+      trackSpeed = outroPeakSpeed;
+    } else {
+      const decT = clamp01((outroTime - 1.45) / 1.75);
+      const decEase = decT * decT * (3 - 2 * decT);
+      trackSpeed = outroPeakSpeed + (14.0 - outroPeakSpeed) * decEase;
+    }
+    outroDist += trackSpeed * dt;
+
+    track.sampleAtS(track.totalLength, trackSample);
+    shipPos
+      .copy(track.finishPos)
+      .addScaledVector(track.finishDir, outroDist)
+      .addScaledVector(trackSample.right, laneX)
+      .addScaledVector(trackSample.up, laneY);
+
+    ship.root.position.copy(shipPos);
+    basisMat.makeBasis(trackSample.right, trackSample.up, tmpA.copy(track.finishDir).negate());
+    qBase.setFromRotationMatrix(basisMat);
+    qBank.setFromAxisAngle(axisZ, bankRoll);
+    qPitch.setFromAxisAngle(axisX, pitchTilt);
+    ship.root.quaternion.copy(qBase).multiply(qBank).multiply(qPitch);
+
+    const surgeFactor = clamp01((trackSpeed - BASE_SPEED) / 36);
+    ship.updateVisuals(simTime, dt, 0.28 + surgeFactor * 0.72);
+    ship.updateTrail(dt, 0.28 + surgeFactor * 0.72);
+
+    // 镜头：0..0.6s 维持高速穿门追焦，0.6s..2.5s 缓步拉向右侧后上方构成全景远航构图
+    const panRaw = clamp01((outroTime - 0.6) / 1.9);
+    const pan = panRaw * panRaw * (3 - 2 * panRaw);
+
+    const chaseGoal = tmpA
+      .copy(shipPos)
+      .addScaledVector(track.finishDir, -1.75 - pan * 1.1)
+      .addScaledVector(trackSample.right, pan * 1.4)
+      .addScaledVector(trackSample.up, 0.42 + pan * 0.3);
+    camera.position.lerp(chaseGoal, 1 - Math.exp(-5.4 * dt));
+
+    camLook
+      .copy(shipPos)
+      .addScaledVector(track.finishDir, 68 - pan * 46)
+      .addScaledVector(trackSample.right, -pan * 0.45);
+    camera.lookAt(camLook);
+
+    const targetFov = BASE_FOV + surgeFactor * 13 - pan * 4.5;
+    if (Math.abs(camera.fov - targetFov) > 0.05) {
+      camera.fov += (targetFov - camera.fov) * Math.min(dt * 4.2, 1);
+      camera.updateProjectionMatrix();
+    }
+
+    audio.updatePad(false, surgeFactor);
+
+    if (state === 'outro' && outroTime >= 3.1) {
+      enterFinishedScreen();
     }
   }
 
@@ -1206,6 +1413,8 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
     if (state === 'playing') {
       stepPlaying(dt);
+    } else if (state === 'outro' || state === 'finished') {
+      stepOutro(dt);
     } else if (state === 'ready') {
       // 开场停在发车点前，缓慢旋转近距离展示精雕飞船、矢量喷口与等离子尾焰
       trackS = 0;
@@ -1247,9 +1456,11 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     diskLight.position.copy(holeCenter);
     holeUniforms.uHoleAlpha.value = prox.alpha;
     holeUniforms.uNucleusGlow.value = prox.nucleusGlow;
+    holeUniforms.uCosmosMix.value = 0.74 - prox.alpha * 0.58;
     dustUniforms.uDustAlpha.value = prox.alpha;
 
-    const beta = state === 'playing' ? clamp01((trackSpeed - 25.0) * 0.015 + (slingshotTimer > 0 ? 0.24 : 0)) : 0;
+    const flying = state === 'playing' || state === 'outro' || state === 'finished';
+    const beta = flying ? clamp01((trackSpeed - 25.0) * 0.015 + (slingshotTimer > 0 ? 0.24 : 0)) : 0;
     warpBeta.value = beta;
     holeUniforms.uBeta.value = beta;
     holeUniforms.uCamPos.value.copy(camera.position);
@@ -1257,13 +1468,12 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     holeUniforms.uProjZ.value.set(camera.projectionMatrix.elements[10], camera.projectionMatrix.elements[14]);
     holeUniforms.uCamWorld.value.copy(camera.matrixWorld);
 
-    const activeDt = state === 'playing' ? dt : 0;
-    starMap.setOpacity(1, simTime, ratio);
+    const activeDt = flying ? dt : 0;
     track.setTime(simTime);
-    world.update(simTime, activeDt, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole);
-    drawRush(state === 'playing' ? clamp01((trackSpeed - 31) / 16) : 0, slingshotTimer > 0);
-    updateStreaks3D(beta, activeDt);
+    world.update(simTime, activeDt, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio);
+    drawRush(flying ? clamp01((trackSpeed - 31) / 18) : 0, slingshotTimer > 0);
     tickToasts(now);
+    tickStow(now);
     if (state === 'playing') updateHUD();
 
     if (now - miniAt >= (lite ? 95 : 65)) {
@@ -1311,9 +1521,119 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   };
   document.addEventListener('visibilitychange', onVisible);
 
+  // 本地开发截画册用的调试钩子（仅 DEV 生效，构建产物中完全剔除）
+  if (import.meta.env.DEV) {
+    const devLook = new THREE.Vector3();
+    const devNext = new THREE.Vector3();
+    Object.assign(window, {
+      __cosmic: {
+        track,
+        world,
+        renderer,
+        scene,
+        camera,
+        get state() {
+          return state;
+        },
+        setShip(id: string) {
+          const spec = SHIPS.find((x) => x.id === id);
+          if (!spec) return;
+          selectedShip = spec;
+          rebuildShip();
+          applyAccent(spec.accent);
+        },
+        jump(s: number, offX = 0, offY = 0, lookHole = false) {
+          state = 'playing';
+          syncOverlay();
+          world.attachLandmarks(IMAGE_LAYER);
+          trackS = THREE.MathUtils.clamp(s, 0, track.totalLength);
+          laneX = offX;
+          laneY = offY;
+          velX = 0;
+          velY = 0;
+          bankRoll = 0;
+          pitchTilt = 0;
+          trackSpeed = 36;
+          isWarpHeld = true;
+          placeShipFromTrack(0, false);
+          ship.resetTrail();
+          ship.updateVisuals(simTime, 1 / 60, 0.78);
+          track.sampleAtS(trackS, trackSample);
+          track.sampleAtS(Math.min(track.totalLength, trackS + 68), lookSample);
+          devNext.copy(lookSample.pos);
+          if (lookHole) {
+            const p = track.evaluateHub(shipPos);
+            devLook.set(...p.node.position).multiplyScalar(COSMOS_SCALE);
+            devNext.lerp(devLook, 0.16);
+          }
+          const camDir = devLook.copy(devNext).sub(shipPos).normalize();
+          camera.position
+            .copy(shipPos)
+            .addScaledVector(camDir, -2.25)
+            .addScaledVector(trackSample.up, 0.44);
+          camera.lookAt(devNext);
+          camera.fov = BASE_FOV + 4;
+          camera.updateProjectionMatrix();
+          camera.updateMatrixWorld();
+
+          const prox = track.evaluateHub(shipPos);
+          const theme = prox.node.holeTheme ?? 0;
+          const sc = (prox.node.holeScale ?? 1.85) * HOLE_SCALE_MULT;
+          const [tx, tz] = prox.node.diskTilt ?? [0, 0];
+          diskFrame(tx, tz, diskN, diskU, diskV);
+          holeUniforms.uHoleTheme.value = theme;
+          holeUniforms.uHoleScale.value = sc;
+          dustUniforms.uHoleTheme.value = theme;
+          warpScale.value = sc;
+          holeCenter.set(...prox.node.position).multiplyScalar(COSMOS_SCALE);
+          warpCenter.value.copy(holeCenter);
+          diskLight.position.copy(holeCenter);
+          holeUniforms.uHoleAlpha.value = prox.alpha;
+          holeUniforms.uNucleusGlow.value = prox.nucleusGlow;
+          holeUniforms.uCosmosMix.value = 0.74 - prox.alpha * 0.58;
+          dustUniforms.uDustAlpha.value = prox.alpha;
+          holeUniforms.uBeta.value = 0.16;
+          holeUniforms.uCamPos.value.copy(camera.position);
+          holeUniforms.uInvProj.value.copy(camera.projectionMatrixInverse);
+          holeUniforms.uProjZ.value.set(camera.projectionMatrix.elements[10], camera.projectionMatrix.elements[14]);
+          holeUniforms.uCamWorld.value.copy(camera.matrixWorld);
+          track.setTime(simTime);
+          world.update(simTime, 1 / 60, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio);
+          updateHUD();
+          renderer.render(scene, camera);
+        },
+        capture(w = 1280, h = 800) {
+          const prevW = stage.clientWidth;
+          const prevH = stage.clientHeight;
+          renderer.setPixelRatio(1);
+          renderer.setSize(w, h, false);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          camera.updateMatrixWorld();
+          holeUniforms.uAspect.value = w / h;
+          holeUniforms.uInvProj.value.copy(camera.projectionMatrixInverse);
+          holeUniforms.uProjZ.value.set(camera.projectionMatrix.elements[10], camera.projectionMatrix.elements[14]);
+          renderer.render(scene, camera);
+          const off = document.createElement('canvas');
+          off.width = w;
+          off.height = h;
+          const ctx2 = off.getContext('2d');
+          ctx2?.drawImage(canvas, 0, 0, w, h);
+          const url = off.toDataURL('image/webp', 0.92);
+          renderer.setPixelRatio(ratio);
+          if (prevW > 8 && prevH > 8) syncSize();
+          return url;
+        },
+      },
+    });
+  }
+
   return () => {
     disposed = true;
     clearTimeout(warmupTimer);
+    clearStow();
+    routeStops.clear();
+    routeStopsEl.innerHTML = '';
     cancelAnimationFrame(raf);
     resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', onVisible);
@@ -1343,11 +1663,9 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     track.dispose();
     starMap.dispose();
     dustGeo.dispose();
-    streakGeo.dispose();
     hole.geometry.dispose();
     (hole.material as THREE.Material).dispose();
     (dust.material as THREE.Material).dispose();
-    streakMat.dispose();
     renderer.dispose();
   };
 }

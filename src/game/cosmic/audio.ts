@@ -140,42 +140,42 @@ export function createCosmicAudio(): CosmicAudio {
     }
   }
 
-  function whoosh(f0: number, f1: number, dur: number, vol: number) {
+  // 真空航天器舱内磁共振与引擎低频谐波扫频（无大气风噪声）
+  function warpResonance(f0: number, f1: number, dur: number, vol: number) {
     if (!ctx || !master || muted || paused) return;
     const ac = ctx;
-    const len = Math.floor(ac.sampleRate * dur);
-    const buf = ac.createBuffer(1, len, ac.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-
-    const filter = ac.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.Q.value = 1.6;
     const now = ac.currentTime;
-    filter.frequency.setValueAtTime(f0, now);
-    filter.frequency.exponentialRampToValueAtTime(f1, now + dur);
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(f0 * 2.2, now);
+    filter.frequency.exponentialRampToValueAtTime(f1 * 1.8, now + dur);
 
     const g = ac.createGain();
-    g.gain.setValueAtTime(0.001, now);
-    g.gain.exponentialRampToValueAtTime(vol, now + dur * 0.22);
-    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    g.gain.setValueAtTime(0.0008, now);
+    g.gain.exponentialRampToValueAtTime(vol, now + dur * 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
 
-    src.connect(filter);
     filter.connect(g);
     g.connect(master);
-    src.start(now);
-    src.stop(now + dur + 0.02);
+
+    for (const ratio of [1, 1.5]) {
+      const osc = ac.createOscillator();
+      osc.type = ratio === 1 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(f0 * ratio, now);
+      osc.frequency.exponentialRampToValueAtTime(f1 * ratio, now + dur);
+      osc.connect(filter);
+      osc.start(now);
+      osc.stop(now + dur + 0.03);
+    }
   }
 
   function slingshot() {
-    whoosh(180, 920, 0.65, 0.24);
-    playNote(329.63, 0.45, 0.14, 'sine', 1600);
+    warpResonance(82, 220, 0.72, 0.16);
+    playNote(329.63, 0.45, 0.12, 'sine', 1600);
   }
 
   function warp() {
-    whoosh(130, 740, 0.52, 0.2);
+    warpResonance(74, 165, 0.52, 0.14);
   }
 
   function hurt() {

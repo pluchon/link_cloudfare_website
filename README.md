@@ -2,114 +2,69 @@
 
 # 儒雅的诺诺的学习基地
 
-AI Coding 与日常学习的分享站，地址是 [www.nuonuoya.cn](https://www.nuonuoya.cn)。
+AI Coding 与日常学习的个人博客站，在线地址：[www.nuonuoya.cn](https://www.nuonuoya.cn)。  
+基于 Astro 5 生成纯静态站点，由 Cloudflare Pages 自动构建托管，无后端、无数据库。
 
-纯静态站点：Astro 5 构建，Cloudflare Pages 托管，没有后端和数据库，文章就是仓库里的 Markdown。
+## 站点一览
 
-## 站里有什么
-
-| 页面 | 内容 |
+| 入口 | 说明 |
 | --- | --- |
-| 门户 `/door/` | 每个会话第一次进站时的 3D 黑洞场景，点黑洞穿过视界进入首页 |
-| 首页 `/` | 可拖动、缩放的思维导图，五个分类展开成文章书架 |
-| 分类 `/project/` 等 | 项目、工具、探究、日常、小萌五个分类，可搜索、翻页 |
-| 文章页 | 目录、阅读进度、代码复制、Mermaid 图、伴奏音乐、Markdown 原文下载 |
-| 标签 `/tags/` | 按拼音首字母分组的全部标签和热度榜 |
-| 公告 `/notice/` | 右上角小铃铛进入，最新公告 24 小时内亮红点 |
-| 游戏 `/game/` | 游戏大厅，目前有「果冻 2048」和「鹈鹕骑车」两款 |
-| 关于 `/about/` | 个人介绍 |
+| 门户 `/door/` | 首次进站触发的程序生成 3D 黑洞甲板与「斯隆长城」五系星图 |
+| 首页 `/` | 可拖拽缩放的思维导图画布，按分类展开文章书架 |
+| 内容分类 | `project`、`tool`、`explore`、`daily`、`xiaomeng`，支持客户端全文检索与分页 |
+| 标签 `/tags/` | 跨分类标签索引、拼音分组与常用热度榜 |
+| 公告 `/notice/` | 三栏公告中心，支持 `xiaomeng` / `post` / `link` 卡片与 24h 新帖红点 |
+| 游戏 `/game/` | 游戏大厅，支持昼夜双封面切换、规则弹窗与实机画册 |
+| 关于 `/about/` | 个人简介与技能标签 |
 
-## 鹈鹕骑车
+## 最新游戏：星海漫游
 
-鹈鹕骑着小自行车兜风：一条长路连着穿过十六处风景，沿路用大嘴兜小鱼、穿金圈、飞过断桥。每一局的场景顺序和路形都是随机的；生命是四颗心，很宽松。
+<img src="https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/cosmic-roam/20261117/cover-day.webp" alt="星海漫游封面" width="480">
 
-- 画面全部程序生成（three.js 加简单几何体），没有贴图和模型文件
-- 音效和背景音乐用真实乐器采样渲染（`scripts/game-audio/pelican.py`），再用 `scripts/game-audio/upload.py` 传到 OSS 的 `personal_website_other/`（仓库里不存 mp3）；开局前一次下完，存进浏览器的 Cache Storage，刷新后不用重下
-- 成绩只存在本机浏览器
+直接依托门户页的「斯隆长城」五座星系与黑洞光学底座打造的 3D 太空巡航小游戏：
 
-## 果冻 2048
+- **等长随机漫游航线**：每次开局保留五座已知星系必经点并洗牌顺序，通过二分求解锁定恒定 `~745 Mpc` 宏大航程，每局都是新路线
+- **天体物理与真空推进**：共面差速分子尘埃、十八座电磁捕获星门、三段开普勒引力弹弓与奥伯特近心加速，配真空膨胀羽流与 Web Audio 实时合成声场
+- **漫游艇与图鉴收藏**：金箔旅者 / 纸鸢流萤 / 蓝鲸穿梭三款涂装可选；拾取 25 件藏品后就地缩小并沿抛物线飞入「图鉴」按钮，成绩保存在本机浏览器
 
-<img src="https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/jelly-2048/20261105/cover-day.webp" alt="果冻 2048 封面" width="420">
+## 写作约定
 
-软体物理版的 2048：数字是会挤、会变形、会 Q 弹的果冻。按住托盘里的果冻往外拉，松手弹进下面的井里，相同数字碰到一起就合成，别让果冻越过虚线。
-
-- 物理是手写的位置动力学软体（`src/game/jelly/physics.ts`），没有引第三方引擎
-- 合成音效用 Web Audio 现场合成，连锁合成时画面和声音一起慢放
-- 成绩只存在本机浏览器；误刷新 15 分钟内回来能接着玩，点链接离开会先确认再结算
-
-## 写一篇文章
-
-文章放在 `src/content/<分类>/` 下，**不写 frontmatter**，元信息直接写在正文开头：
+正文直接写在 `src/content/<分类>/` 的 Markdown 文件里，**不写 frontmatter**：
 
 ```markdown
-# 我的项目笔记
+# 文章标题
 
-> 这次做了什么，遇到了什么问题。
+> 一句话简介
+
+![封面](https://你的图床域名/cover.webp)
 
 > tags: [Astro, 静态网站]
+> date: 2026-11-17
 
-> date: 2026-10-29
-
-## 从这里开始写正文
+正文内容……
 ```
 
-- 标题取第一个一级标题，简介取紧跟的引用，分类取所在文件夹
-- 可选的行：`github:` 仓库、`bilibili:` 视频、`music:` 伴奏
-- 图片一律用 OSS 完整外链；文件名以 `_` 开头的是草稿
-- 发布日期以 `date:` 为准，改错字不用动它
+- 第一个 `#` 为标题、紧跟的 `>` 为简介、所在目录名即分类；文件名以 `_` 开头为草稿
+- 支持可选元信息：`github:` 仓库、`bilibili:` 视频、`music:` 伴奏、`speech:` 朗读
+- 模板参考：[文章](./src/content/content_format.md) · [关于](./src/content/profile_format.md) · [公告](./src/content/notice_format.md) · [游戏](./src/content/game_format.md)
 
-完整格式见 [文章模板](./src/content/content_format.md)、[个人介绍模板](./src/content/profile_format.md) 和 [公告模板](./src/content/notice_format.md)。
+## 本地运行与上线
 
-```mermaid
-flowchart LR
-    MD[Markdown 文件] --> Loader[提取标题、简介等信息]
-    Loader --> Astro[Astro 套用页面布局]
-    Astro --> Dist[生成 dist 静态文件]
-```
-
-## 本地运行
-
-需要 Node.js 22：
+环境要求 **Node.js 22**：
 
 ```powershell
 npm install
-npm run dev
-```
-
-开发地址是 `http://127.0.0.1:4321`。`astro dev` 不运行 Pages Functions，所以本地没有进站验证。
-
-```powershell
-npm run build
+npm run dev      # http://127.0.0.1:4321（不跑 Pages Functions）
+npm run build    # node scripts/unshallow.mjs && astro build → dist/
 npm run preview
 ```
 
-## 上线
-
-推送到 GitHub 的 `main` 分支，Cloudflare Pages 自动构建（`npm run build`，输出 `dist`）并发布，大约一分钟。
-
 ```mermaid
 flowchart LR
-    Push[git push origin main] --> Pages[Cloudflare Pages 构建]
-    Pages --> Site[www.nuonuoya.cn]
+    MD[零 frontmatter Markdown] --> Astro[Astro 静态构建 dist/]
+    Git[git push origin main] --> Pages[Cloudflare Pages 自动部署]
+    Pages --> Gate[Pages Functions Turnstile 闸门]
+    Gate --> Site[www.nuonuoya.cn]
 ```
 
-<details>
-<summary>几处值得知道的实现细节</summary>
-
-- **文章日期**：Pages 构建时是浅克隆，`scripts/unshallow.mjs` 先补全 Git 历史，否则没写 `date:` 的文章日期全会变成推送那天
-- **搜索**：构建时给每个分类生成 JSON 全文索引，搜索框第一次获得焦点时才拉取，浏览器里直接筛选，不需要后端
-- **进站验证**：Pages Functions 里的中间件把没有有效 Cookie 的访问送到 `/gate/` 做 Turnstile 验证，通过后下发 24 小时的 HMAC 签名 Cookie。两个 Secret 没配齐时直接放行，避免把站点锁死
-- **门户页**：three.js 只在 `/door/` 加载。黑洞是全屏光线步进着色器，探测器和空间站按开普勒轨道运行，几何体也按引力透镜公式偏折，画面全部程序生成
-- **域名**：DNS 留在阿里云，`www` CNAME 到 Pages，裸域 301 到 www，HTTPS 由 Cloudflare 提供
-
-Pages 需要的环境变量：
-
-| 变量 | 用途 |
-| --- | --- |
-| `PUBLIC_TURNSTILE_SITE_KEY` | 构建进验证页的公开 Site Key |
-| `TURNSTILE_SECRET_KEY` | 服务端校验 token |
-| `GATE_COOKIE_SECRET` | 签名与校验放行 Cookie |
-
-</details>
-
-修改代码前先读 [AGENTS.md](./AGENTS.md)，里面是当前的约定和踩过的坑。
+> 修改代码或内容规范前请先阅读 [AGENTS.md](./AGENTS.md)。

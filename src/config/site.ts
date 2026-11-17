@@ -162,6 +162,8 @@ const JELLY_2048_ALBUM_DIR =
 const PELICAN_ALBUM_DIR =
   'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/pelican-ride/album/20261113';
 const PELICAN_ALBUM_VERSION = '?v=20261114';
+const COSMIC_ROAM_ALBUM_DIR =
+  'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/cosmic-roam/album/20261117';
 
 export interface GameAlbumEntry {
   readonly id: string;
@@ -179,6 +181,22 @@ export const jelly2048Art = {
   emptyRecords: {
     light: `${JELLY_2048_ART_DIR}/empty-day.webp`,
     dark: `${JELLY_2048_ART_DIR}/empty-night.webp`,
+  },
+} as const;
+
+export const pelicanRideArt = {
+  play: '/game/pelican-ride/',
+  cover: {
+    light: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/pelican-ride/20261112/cover.webp',
+    dark: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/pelican-ride/20261117/cover-night.webp',
+  },
+} as const;
+
+export const cosmicRoamArt = {
+  play: '/game/cosmic-roam/',
+  cover: {
+    light: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/cosmic-roam/20261117/cover-day.webp',
+    dark: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/game/cosmic-roam/20261117/cover-night.webp',
   },
 } as const;
 
@@ -278,26 +296,31 @@ export const gameAlbums: Record<string, readonly GameAlbumEntry[]> = {
       id: '01',
       title: '斯隆脊梁',
       caption: '沿四道星流巡航星系团之间',
+      src: `${COSMIC_ROAM_ALBUM_DIR}/01-sloan.webp`,
     },
     {
       id: '02',
       title: '视界掠影',
       caption: '擦着黑洞光子环触发引力弹弓',
+      src: `${COSMIC_ROAM_ALBUM_DIR}/02-horizon.webp`,
     },
     {
       id: '03',
       title: '翡翠棱镜',
       caption: '标签星域里悬浮的光谱阵列',
+      src: `${COSMIC_ROAM_ALBUM_DIR}/03-emerald.webp`,
     },
     {
       id: '04',
       title: '浑仪星环',
       caption: '关于星域中缓缓旋转的赤道环',
+      src: `${COSMIC_ROAM_ALBUM_DIR}/04-armillary.webp`,
     },
     {
       id: '05',
       title: '深空拾遗',
       caption: '寻访漂流在长城中的古老探测器',
+      src: `${COSMIC_ROAM_ALBUM_DIR}/05-relics.webp`,
     },
   ],
 };

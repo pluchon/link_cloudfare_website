@@ -8,9 +8,10 @@ import {
   buildCollectibleCatalogGeos,
   buildGalleryFrameGeo,
   buildGameBeaconGeo,
-  buildPlanetesimalGeo,
+  buildPolarJetGeo,
+  buildPulsarBeaconPair,
   buildStargatePair,
-  buildTidalFilamentGeo,
+  buildTorusSectorGeo,
   createStargatePortalMaterial,
 } from './models';
 import { COSMOS_SCALE, HOLE_SCALE_MULT, type CosmicTrack, type TrackSample } from './track';
@@ -27,6 +28,8 @@ export interface AtlasItemSpec {
 export interface BoostGate {
   index: number;
   s: number;
+  offX: number;
+  offY: number;
   pos: THREE.Vector3;
   radius: number;
   triggered: boolean;
@@ -49,6 +52,7 @@ export interface CosmicWorld {
   collectibles: TrackCollectible[];
   catalog: AtlasItemSpec[];
   attachLandmarks: (imageLayer: number) => void;
+  syncToTrack: () => void;
   triggerGate: (gate: BoostGate, simTime: number) => void;
   update: (
     simTime: number,
@@ -60,6 +64,7 @@ export interface CosmicWorld {
     diskU: THREE.Vector3,
     diskV: THREE.Vector3,
     behindHole: (p: THREE.Vector3, r: number) => boolean,
+    pixelRatio?: number,
   ) => void;
   resetProgress: () => void;
   dispose: () => void;
@@ -106,25 +111,41 @@ const COSMOS_PROBES: Array<{ name: string; hint: string; u: number; offX: number
   { name: '长城漂流号 · Ⅴ', hint: '终点星门前最后直道', u: 0.945, offX: 0, offY: 0.8, color: '#ffd28a' },
 ];
 
-// ---- 外层尘埃环与开普勒剪切潮汐气流弧（两端光滑渐隐、多普勒偏色、严格共面） ----
-const filamentVertex = /* glsl */ `
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function gaussian(rand: () => number) {
+  const u = Math.max(rand(), 1e-6);
+  const v = rand();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// ---- 1. 活动星系核外围尘埃环面着色器（紧接黑洞吸积盘外缘 10.6..22.5 Rs，纯噪声羽化分子云，无硬边管环） ----
+const torusCloudVertex = /* glsl */ `
   ${warpGlsl}
+  attribute float aSeed;
   varying vec2 vUv;
-  varying vec3 vWorld;
   varying vec3 vColor;
   varying float vRadial;
   varying float vDoppler;
-  varying vec3 vWarpTint;
-  uniform vec3 uWarpCenter;
+  varying float vSeed;
   uniform vec3 uDiskN;
   void main() {
     vUv = uv;
+    vSeed = aSeed;
     mat4 m = modelMatrix;
     #ifdef USE_INSTANCING
     m = m * instanceMatrix;
     #endif
     vec4 world = m * vec4(position, 1.0);
-    vWorld = world.xyz;
     #ifdef USE_INSTANCING_COLOR
     vColor = instanceColor;
     #else
@@ -132,78 +153,278 @@ const filamentVertex = /* glsl */ `
     #endif
     vec3 rel = world.xyz - uWarpCenter;
     float rr = length(rel) / max(uWarpScale, 1e-4);
-    vRadial = clamp((rr - 11.5) / 14.5, 0.0, 1.0);
+    vRadial = clamp((rr - 10.6) / 11.4, 0.0, 1.0);
     vec3 orbitDir = length(rel) > 1e-4 ? normalize(cross(uDiskN, rel)) : vec3(1.0, 0.0, 0.0);
     vec3 toCam = normalize(cameraPosition - world.xyz);
-    vDoppler = clamp(1.0 + 0.52 * dot(orbitDir, toCam), 0.55, 1.55);
+    vDoppler = clamp(1.0 + 0.42 * dot(orbitDir, toCam), 0.62, 1.48);
     gl_Position = warpClip(projectionMatrix * viewMatrix * vec4(spaceWarp(world.xyz), 1.0));
   }
 `;
 
-const filamentFragment = /* glsl */ `
+const torusCloudFragment = /* glsl */ `
+  uniform float uTime;
+  uniform float uAlpha;
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vRadial;
   varying float vDoppler;
+  varying float vSeed;
   varying vec3 vWarpTint;
-  uniform float uAlpha;
+
+  float hash21(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 41.7);
+    return fract(p.x * p.y);
+  }
+  float noise2(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+      u.y
+    );
+  }
+  float fbm2(vec2 p) {
+    return noise2(p) * 0.62 + noise2(p * 2.15 + 3.7) * 0.38;
+  }
+
   void main() {
     if (uAlpha <= 0.01) discard;
-    float arcFade = pow(sin(clamp(vUv.x, 0.0, 1.0) * 3.14159265), 1.45);
-    float edgeFade = pow(sin(clamp(vUv.y, 0.0, 1.0) * 3.14159265), 0.75);
-    float fadeOut = 1.0 - smoothstep(0.68, 1.0, vRadial);
-    vec3 dopTint = mix(vec3(1.15, 0.72, 0.56), vec3(0.86, 0.96, 1.18), smoothstep(0.75, 1.35, vDoppler));
-    float lum = arcFade * edgeFade * fadeOut * (0.28 + 0.36 * (1.0 - vRadial)) * vDoppler;
-    float a = clamp(lum * uAlpha, 0.0, 0.65);
+    float fadeU = pow(sin(clamp(vUv.x, 0.0, 1.0) * 3.14159265), 1.35);
+    float fadeV = pow(sin(clamp(vUv.y, 0.0, 1.0) * 3.14159265), 1.05);
+    vec2 q = vec2(vUv.x * 3.4 + vSeed * 11.3, vUv.y * 2.2 - vSeed * 5.7 + uTime * 0.02);
+    float cloud = smoothstep(0.24, 0.84, fbm2(q));
+    float radialFade = smoothstep(0.0, 0.16, vRadial) * (1.0 - smoothstep(0.55, 1.0, vRadial));
+    vec3 coolTint = mix(vec3(1.1, 0.72, 0.52), vec3(0.84, 0.94, 1.15), smoothstep(0.75, 1.35, vDoppler));
+    float a = clamp(fadeU * fadeV * cloud * radialFade * 0.34 * vDoppler * uAlpha, 0.0, 0.42);
     if (a <= 0.004) discard;
-    gl_FragColor = vec4(vColor * dopTint * vWarpTint * a, a);
+    gl_FragColor = vec4(vColor * coolTint * vWarpTint * a, a);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
 `;
 
-// ---- 洛希极限外极远环带硅酸盐微行星着色器（暗玄武岩质，背盘面入夜深暗、向盘面灼热勾边） ----
-const planetesimalVertex = /* glsl */ `
+// ---- 2. 活动星系核相对论双极准直喷流着色器（掠角隐消轮廓 + 磁螺旋条纹 + 激波节脉冲） ----
+const polarJetVertex = /* glsl */ `
   ${warpGlsl}
+  varying vec2 vUv;
   varying vec3 vWorld;
-  varying vec3 vColor;
-  varying vec3 vWarpTint;
+  varying vec3 vNormal;
   void main() {
-    mat4 m = modelMatrix;
-    #ifdef USE_INSTANCING
-    m = m * instanceMatrix;
-    #endif
-    vec4 world = m * vec4(position, 1.0);
+    vUv = uv;
+    vec4 world = modelMatrix * vec4(position, 1.0);
     vWorld = world.xyz;
-    #ifdef USE_INSTANCING_COLOR
-    vColor = instanceColor;
-    #else
-    vColor = vec3(0.32);
-    #endif
+    vNormal = normalize(mat3(modelMatrix) * normal);
     gl_Position = warpClip(projectionMatrix * viewMatrix * vec4(spaceWarp(world.xyz), 1.0));
   }
 `;
 
-const planetesimalFragment = /* glsl */ `
-  varying vec3 vWorld;
-  varying vec3 vColor;
-  varying vec3 vWarpTint;
-  uniform vec3 uWarpCenter;
-  uniform vec3 uDiskTint;
+const polarJetFragment = /* glsl */ `
+  uniform float uTime;
   uniform float uAlpha;
+  uniform vec3 uCoreCol;
+  uniform vec3 uJetCol;
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+  varying vec3 vWarpTint;
   void main() {
     if (uAlpha <= 0.01) discard;
-    vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
-    vec3 toLight = normalize(uWarpCenter - vWorld);
-    vec3 viewDir = normalize(cameraPosition - vWorld);
-    float ndl = max(dot(n, toLight), 0.0);
-    float ndv = max(dot(n, viewDir), 0.0);
-    float regolith = ndl / max(ndl + ndv * 0.6, 0.22);
-    float rim = pow(1.0 - ndv, 3.0) * smoothstep(-0.15, 0.55, dot(n, toLight));
-    vec3 col = vColor * (vec3(0.025, 0.028, 0.042) + regolith * uDiskTint * 1.1) + uDiskTint * rim * 0.42;
-    gl_FragColor = vec4(col * vWarpTint * uAlpha, uAlpha);
+    vec3 V = normalize(cameraPosition - vWorld);
+    // 圆柱锥体边缘切线自然隐去，完全没有几何体硬边
+    float radialSoft = pow(abs(dot(normalize(vNormal), V)), 1.55);
+    float baseFade = smoothstep(0.01, 0.14, vUv.y);
+    float tipFade = 1.0 - smoothstep(0.42, 1.0, vUv.y);
+    float helix = 0.55 + 0.45 * sin(vUv.x * 12.56637 - vUv.y * 15.0 - uTime * 3.4);
+    float knots = 0.58 + 0.42 * pow(0.5 + 0.5 * sin(vUv.y * 22.0 - uTime * 5.2), 3.0);
+    float intensity = radialSoft * baseFade * tipFade * helix * knots * 0.46;
+    vec3 col = mix(uCoreCol, uJetCol, smoothstep(0.06, 0.52, vUv.y));
+    float a = clamp(intensity * uAlpha, 0.0, 0.52);
+    if (a <= 0.004) discard;
+    gl_FragColor = vec4(col * vWarpTint * a, a);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
+  }
+`;
+
+// ---- 3. 大尺度真实深空与宿主星系恒星着色器（真实星等亮度分布 + 晕染光冕绘星，绝不用硬直线十字线） ----
+const cosmosStarVertex = /* glsl */ `
+  attribute vec3 aColor;
+  attribute float aSize;
+  attribute float aKind;
+  attribute float aLum;
+  attribute float aSeed;
+
+  uniform float uPixelRatio;
+  uniform float uTime;
+
+  varying vec3 vColor;
+  varying float vAlpha;
+  varying float vKind;
+  varying float vSeed;
+
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float dist = max(-mv.z, 22.0);
+    float px = aSize * uPixelRatio * (310.0 / dist);
+    gl_PointSize = clamp(px, 1.0, aKind > 1.5 ? 24.0 : 18.0);
+    float shimmer = aKind > 1.5 ? 1.0 : (0.9 + 0.1 * sin(uTime * 1.1 + aSeed * 62.83));
+    float nearFade = smoothstep(14.0, 44.0, dist);
+    vColor = aColor;
+    vAlpha = shimmer * nearFade * aLum;
+    vKind = aKind;
+    vSeed = aSeed;
+  }
+`;
+
+const cosmosStarFragment = /* glsl */ `
+  precision highp float;
+  varying vec3 vColor;
+  varying float vAlpha;
+  varying float vKind;
+  varying float vSeed;
+
+  void main() {
+    if (vAlpha <= 0.005) discard;
+    vec2 p = gl_PointCoord - 0.5;
+    float d2 = dot(p, p);
+    if (d2 > 0.25) discard;
+    float r = sqrt(d2) * 2.0;
+    float shape = 0.0;
+    vec3 tint = vColor;
+
+    if (vKind > 1.5) {
+      // 遥远椭圆背景星系 / H-II 电离星云结（柔雾核心与倾角星盘）
+      float ang = vSeed * 6.28318;
+      float cs = cos(ang);
+      float sn = sin(ang);
+      vec2 q = mat2(cs, -sn, sn, cs) * p * 2.0;
+      q.y *= 1.55 + fract(vSeed * 7.3) * 0.9;
+      float er = length(q);
+      float halo = exp(-er * er * 4.2) * 0.44 + exp(-er * 2.8) * 0.16;
+      shape = halo * smoothstep(1.0, 0.36, r);
+      tint = mix(vColor, vec3(1.0, 0.93, 0.85), exp(-er * er * 8.0) * 0.42);
+    } else {
+      // 光球核心 + 内外柔和日冕晕，呈真天文实拍高斯光斑感
+      float core = exp(-r * r * 42.0);
+      float corona = exp(-r * r * 10.0) * 0.40 + exp(-r * 3.8) * 0.11;
+      shape = (core + corona) * smoothstep(1.0, 0.32, r);
+      if (vKind > 0.5) {
+        // 极少数亮巨星：绘出软边四瓣光晕花瓣（宽幅高斯晕染，彻底去除生硬直线）
+        float ang = atan(p.y, p.x) + vSeed * 6.28318;
+        float petals = pow(0.5 + 0.5 * cos(4.0 * ang), 3.4);
+        float aureole = exp(-r * 3.3) * (0.24 + 0.32 * petals) + exp(-r * r * 4.8) * 0.38;
+        shape += aureole * smoothstep(1.0, 0.22, r);
+      }
+      tint = mix(vColor, vec3(1.0), smoothstep(0.32, 0.98, core));
+    }
+
+    float a = clamp(shape * vAlpha, 0.0, 1.0);
+    gl_FragColor = vec4(tint * a, a);
+  }
+`;
+
+// ---- 4. 宏观宇宙网体积丝状星云纱带（仅在斯隆长城主脊与五大星系旋臂铺开柔和深空星雾，零硬框边缘） ----
+const cosmicCloudVertex = /* glsl */ `
+  attribute vec3 aWarm;
+  attribute vec3 aCool;
+  attribute float aSeed;
+  attribute float aGain;
+  varying vec2 vUv;
+  varying vec3 vWarm;
+  varying vec3 vCool;
+  varying float vSeed;
+  varying float vGain;
+  void main() {
+    vUv = uv - 0.5;
+    vWarm = aWarm;
+    vCool = aCool;
+    vSeed = aSeed;
+    vGain = aGain;
+    vec4 wp = vec4(position, 1.0);
+    #ifdef USE_INSTANCING
+    wp = instanceMatrix * wp;
+    #endif
+    gl_Position = projectionMatrix * modelViewMatrix * wp;
+  }
+`;
+
+const cosmicCloudFragment = /* glsl */ `
+  precision highp float;
+  uniform float uTime;
+  varying vec2 vUv;
+  varying vec3 vWarm;
+  varying vec3 vCool;
+  varying float vSeed;
+  varying float vGain;
+
+  float hash21(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 43.27);
+    return fract(p.x * p.y);
+  }
+  float noise2(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+      u.y
+    );
+  }
+  float fbm2(vec2 p) {
+    return noise2(p) * 0.62 + noise2(mat2(0.8, 0.6, -0.6, 0.8) * p * 2.1 + 4.1) * 0.38;
+  }
+
+  void main() {
+    vec2 p = vUv * 2.0;
+    float edge = (1.0 - smoothstep(0.32, 1.0, length(p))) * smoothstep(1.0, 0.28, abs(p.x)) * smoothstep(1.0, 0.28, abs(p.y));
+    if (edge <= 0.004) discard;
+    vec2 q = vec2(p.x * 2.2 + vSeed * 9.1 + uTime * 0.008, p.y * 1.8 - vSeed * 6.3);
+    float n1 = fbm2(q);
+    float n2 = fbm2(q * 1.85 + vec2(n1 * 1.6, -n1 * 1.2));
+    float ridge = pow(max(1.0 - abs(n2 - 0.48) * 2.9, 0.0), 1.8);
+    float mist = smoothstep(0.24, 0.84, n1) * 0.45;
+    float mixCol = clamp(0.5 + (p.y + (n1 - 0.5) * 0.85) * 0.8, 0.0, 1.0);
+    vec3 col = mix(vWarm, vCool, mixCol);
+    float a = clamp((ridge * 0.78 + mist) * edge * vGain, 0.0, 0.24);
+    if (a <= 0.003) discard;
+    gl_FragColor = vec4(col * a, a);
+  }
+`;
+
+// ---- 5. 深空脉冲星航标软边同步辐射光束着色器（消除锥体硬切线，只留柔光极轴脉冲射线） ----
+const pulsarBeamVertex = /* glsl */ `
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+  void main() {
+    vUv = uv;
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vWorld = world.xyz;
+    vNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * world;
+  }
+`;
+
+const pulsarBeamFragment = /* glsl */ `
+  uniform float uTime;
+  uniform vec3 uColor;
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+  void main() {
+    vec3 V = normalize(cameraPosition - vWorld);
+    float edgeSoft = pow(abs(dot(normalize(vNormal), V)), 2.2);
+    float axial = smoothstep(0.0, 0.2, vUv.y) * smoothstep(1.0, 0.16, vUv.y);
+    float pulse = 0.72 + 0.28 * sin(uTime * 4.2 - vUv.y * 10.0);
+    float a = clamp(edgeSoft * axial * pulse * 0.24, 0.0, 0.28);
+    if (a <= 0.004) discard;
+    gl_FragColor = vec4(uColor * a * 1.05, a);
   }
 `;
 
@@ -224,26 +445,55 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   let rocks: Rocks | null = null;
   let realmProps: RealmPropsHandle | null = null;
 
-  // ---- 符合天体物理学规律的双层黑洞外围吸积系统（严格与黑洞盘面共面，开普勒 ω ∝ r^-1.5） ----
-  interface FilamentSpec {
+  const origin = new THREE.Vector3(0, 0, 0);
+  const centerVec = new THREE.Vector3();
+  const diskBasis = new THREE.Matrix4();
+  const diskQuat = new THREE.Quaternion();
+  const diskEuTmp = new THREE.Euler();
+  const diskQ = new THREE.Quaternion();
+  const instPos = new THREE.Vector3();
+  const instQuat = new THREE.Quaternion();
+  const instSpin = new THREE.Quaternion();
+  const instScale = new THREE.Vector3();
+  const instMat4 = new THREE.Matrix4();
+
+  // ---- 层 1：活动星系核外围尘埃环面（10.6..22.0 Rs 气体羽化云片） ----
+  interface TorusSpec {
     a: number;
     r: number;
     lift: number;
     speed: number;
-    lenScale: number;
-    thick: number;
+    scaleRad: number;
   }
-  const filamentCount = lite ? 44 : 76;
-  const filamentGeo = trackGeo(buildTidalFilamentGeo());
-  const filamentMat = trackMat(
+  const torusCount = lite ? 32 : 54;
+  const torusGeo = trackGeo(buildTorusSectorGeo());
+  const torusSeeds = new Float32Array(torusCount);
+  const torusSpecs: TorusSpec[] = [];
+  for (let i = 0; i < torusCount; i++) {
+    const t = ((i * 23) % torusCount) / torusCount;
+    const r = 11.2 + Math.pow(t, 1.08) * 10.6;
+    const a = (i / torusCount) * Math.PI * 2 + (i % 5) * 0.48;
+    torusSpecs.push({
+      a,
+      r,
+      lift: ((i % 7) - 3) * 0.18,
+      speed: 2.0 * Math.pow(r, -1.5),
+      scaleRad: r * (0.94 + (i % 3) * 0.08),
+    });
+    torusSeeds[i] = i * 0.73;
+  }
+  torusGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(torusSeeds, 1));
+
+  const torusMat = trackMat(
     new THREE.ShaderMaterial({
-      vertexShader: filamentVertex,
-      fragmentShader: filamentFragment,
+      vertexShader: torusCloudVertex,
+      fragmentShader: torusCloudFragment,
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       uniforms: {
+        uTime: { value: 0 },
         uAlpha: { value: 0 },
         uDiskN: { value: new THREE.Vector3(0, 1, 0) },
         uWarpBeta: warpBeta,
@@ -253,51 +503,33 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
       },
     }),
   );
-  const filamentMesh = new THREE.InstancedMesh(filamentGeo, filamentMat, filamentCount);
-  filamentMesh.frustumCulled = false;
-  filamentMesh.visible = false;
-  const filamentSpecs: FilamentSpec[] = [];
-  const fCol = new THREE.Color();
-  for (let i = 0; i < filamentCount; i++) {
-    const t = ((i * 29) % filamentCount) / filamentCount;
-    const r = 11.8 + Math.pow(t, 1.15) * 14.0;
-    const a = (i / filamentCount) * Math.PI * 2 + (i % 7) * 0.42;
-    filamentSpecs.push({
-      a,
-      r,
-      lift: ((i % 9) - 4) * 0.085,
-      speed: 2.2 * Math.pow(r, -1.5),
-      lenScale: 0.72 + (i % 5) * 0.18,
-      thick: 0.65 + (1 - t) * 0.65,
-    });
-    // 越靠内圈色温越炽白金橙，越靠外圈逐渐冷却成尘埃红褐与深空蓝晕
-    fCol.setHSL(0.065 - t * 0.03, 0.62, 0.68 - t * 0.28);
-    filamentMesh.setColorAt(i, fCol);
+  const torusMesh = new THREE.InstancedMesh(torusGeo, torusMat, torusCount);
+  torusMesh.frustumCulled = false;
+  torusMesh.visible = false;
+  const tCol = new THREE.Color();
+  for (let i = 0; i < torusCount; i++) {
+    const t = ((i * 23) % torusCount) / torusCount;
+    tCol.setHSL(0.06 - t * 0.025, 0.65, 0.56 - t * 0.22);
+    torusMesh.setColorAt(i, tCol);
   }
-  if (filamentMesh.instanceColor) filamentMesh.instanceColor.needsUpdate = true;
-  group.add(filamentMesh);
+  if (torusMesh.instanceColor) torusMesh.instanceColor.needsUpdate = true;
+  group.add(torusMesh);
 
-  interface ColdRockSpec {
-    a: number;
-    r: number;
-    lift: number;
-    speed: number;
-    sc: number;
-    rx: number;
-    ry: number;
-    spin: number;
-  }
-  const coldCount = lite ? 20 : 34;
-  const coldGeo = trackGeo(buildPlanetesimalGeo());
-  const coldMat = trackMat(
+  // ---- 层 2：活动星系核双极相对论准直喷流 ----
+  const jetGeo = trackGeo(buildPolarJetGeo());
+  const jetMat = trackMat(
     new THREE.ShaderMaterial({
-      vertexShader: planetesimalVertex,
-      fragmentShader: planetesimalFragment,
+      vertexShader: polarJetVertex,
+      fragmentShader: polarJetFragment,
       transparent: true,
-      depthWrite: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
       uniforms: {
+        uTime: { value: 0 },
         uAlpha: { value: 0 },
-        uDiskTint: { value: new THREE.Color(0xffbe84) },
+        uCoreCol: { value: new THREE.Color(0xd8ecff) },
+        uJetCol: { value: new THREE.Color(0x5288ff) },
         uWarpBeta: warpBeta,
         uWarpImage: warpImage,
         uWarpCenter: warpCenter,
@@ -305,47 +537,387 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
       },
     }),
   );
-  const coldBeltMesh = new THREE.InstancedMesh(coldGeo, coldMat, coldCount);
-  coldBeltMesh.frustumCulled = false;
-  coldBeltMesh.visible = false;
-  const coldSpecs: ColdRockSpec[] = [];
-  const cCol = new THREE.Color();
-  for (let i = 0; i < coldCount; i++) {
-    const r = 30.0 + ((i * 23) % 21) * 1.05;
-    const a = (i / coldCount) * Math.PI * 2 + (i % 5) * 0.31;
-    coldSpecs.push({
-      a,
-      r,
-      lift: ((i % 7) - 3) * 0.22,
-      speed: 1.65 * Math.pow(r, -1.5),
-      sc: 0.14 + (i % 4) * 0.065,
-      rx: i * 0.9,
-      ry: i * 1.3,
-      spin: 0.08 + (i % 4) * 0.05,
+  const polarJetMesh = new THREE.Mesh(jetGeo, jetMat);
+  polarJetMesh.frustumCulled = false;
+  polarJetMesh.visible = false;
+  group.add(polarJetMesh);
+
+  const JET_PALETTES: Array<[number, number]> = [
+    [0xfff0d2, 0x5288ff], // 0 base 暖金 + 蓝辛烷喷流
+    [0xffd8f0, 0xb876ff], // 1 gallery 玫瑰银紫
+    [0xc8f6ff, 0xffaa4c], // 2 game 电离青金
+    [0xd2ffea, 0x4fd2ff], // 3 tags 翡翠青蓝
+    [0xffdec8, 0x7a8eff], // 4 about 暮色珊瑚月靛
+  ];
+
+  // ---- 层 3：真实宇宙尺度宿主星系群（五大星系 60..265 单位恒星旋臂盘 + 斯隆长城深空星流，控制星点数与真实星等层次） ----
+  const rand = mulberry32(20261118);
+  const perGalaxyStars = lite ? 340 : 680;
+  const cosmosStarCount = lite ? 2000 : 4000;
+  const totalFieldStars = STAR_NODES.length * perGalaxyStars + cosmosStarCount;
+
+  const starPos = new Float32Array(totalFieldStars * 3);
+  const starCol = new Float32Array(totalFieldStars * 3);
+  const starSize = new Float32Array(totalFieldStars);
+  const starKind = new Float32Array(totalFieldStars);
+  const starLum = new Float32Array(totalFieldStars);
+  const starSeed = new Float32Array(totalFieldStars);
+  let sIdx = 0;
+
+  const tmpU = new THREE.Vector3();
+  const tmpV = new THREE.Vector3();
+  const tmpN = new THREE.Vector3();
+  const tmpWorld = new THREE.Vector3();
+  const tmpHub = new THREE.Vector3();
+  const cTmp = new THREE.Color();
+
+  const pushCosmosPoint = (
+    x: number,
+    y: number,
+    z: number,
+    r: number,
+    g: number,
+    b: number,
+    size: number,
+    kind: number,
+    lum: number,
+  ) => {
+    if (sIdx >= totalFieldStars) return;
+    const i3 = sIdx * 3;
+    starPos[i3] = x;
+    starPos[i3 + 1] = y;
+    starPos[i3 + 2] = z;
+    starCol[i3] = r;
+    starCol[i3 + 1] = g;
+    starCol[i3 + 2] = b;
+    starSize[sIdx] = size;
+    starKind[sIdx] = kind;
+    starLum[sIdx] = lum;
+    starSeed[sIdx] = rand();
+    sIdx++;
+  };
+
+  // A. 五座宿主星系真尺度恒星旋臂盘（覆盖半径 55..268，严密包络中心黑洞吸积盘）
+  for (let ni = 0; ni < STAR_NODES.length; ni++) {
+    const node = STAR_NODES[ni];
+    tmpHub.set(...node.position).multiplyScalar(COSMOS_SCALE);
+    const [tx, tz] = node.diskTilt ?? [0, 0];
+    diskQ.setFromEuler(diskEuTmp.set(tx, 0, tz));
+    tmpU.set(1, 0, 0).applyQuaternion(diskQ);
+    tmpV.set(0, 0, -1).applyQuaternion(diskQ);
+    tmpN.set(0, 1, 0).applyQuaternion(diskQ);
+    cTmp.set(node.color);
+
+    const isRing = node.id === 'tags';
+    const isLenticular = node.id === 'about';
+    const isBarred = node.id === 'base' || node.id === 'game';
+
+    for (let k = 0; k < perGalaxyStars; k++) {
+      let lx = 0;
+      let lz = 0;
+      let ly = 0;
+      let starTemp = rand();
+      let isKnot = false;
+
+      if (isRing) {
+        if (k < perGalaxyStars * 0.22) {
+          const rad = 95 + rand() * 65;
+          const th = rand() * Math.PI * 2;
+          lx = Math.cos(th) * rad;
+          lz = Math.sin(th) * rad;
+          ly = gaussian(rand) * 24;
+          starTemp = 0.08;
+        } else {
+          const rad = 260 + gaussian(rand) * 48 + rand() * 115;
+          const th = rand() * Math.PI * 2;
+          lx = Math.cos(th) * rad;
+          lz = Math.sin(th) * rad;
+          ly = gaussian(rand) * (6.2 + rad * 0.02);
+          isKnot = rand() < 0.06;
+        }
+      } else if (isLenticular) {
+        const inRing = k > perGalaxyStars * 0.65;
+        const rad = inRing ? 280 + rand() * 230 : 100 + Math.pow(rand(), 0.72) * 165;
+        const th = rand() * Math.PI * 2;
+        lx = Math.cos(th) * rad;
+        lz = Math.sin(th) * rad;
+        ly = gaussian(rand) * (inRing ? 8.0 : 28 * (1 - (rad - 90) / 210));
+        isKnot = inRing && rand() < 0.04;
+      } else if (isBarred && k < perGalaxyStars * 0.18) {
+        const along = (rand() - 0.5) * 480;
+        const across = gaussian(rand) * 34;
+        const barAng = ni * 0.8 + 0.4;
+        lx = along * Math.cos(barAng) - across * Math.sin(barAng);
+        lz = along * Math.sin(barAng) + across * Math.cos(barAng);
+        ly = gaussian(rand) * 18;
+        starTemp = 0.12;
+      } else {
+        const rad = 128 + Math.pow(rand(), 0.82) * 405;
+        const armIdx = k % 2;
+        const pitch = 2.65 * Math.log(rad / 115);
+        const onArm = rand() < 0.78;
+        const spreadAng = onArm ? gaussian(rand) * (0.28 + rad * 0.0008) : rand() * Math.PI * 2;
+        const th = armIdx * Math.PI + pitch + spreadAng;
+        lx = Math.cos(th) * rad;
+        lz = Math.sin(th) * rad;
+        ly = gaussian(rand) * (8.5 + rad * 0.025);
+        isKnot = onArm && rand() < 0.06;
+      }
+
+      tmpWorld
+        .copy(tmpHub)
+        .addScaledVector(tmpU, lx)
+        .addScaledVector(tmpV, lz)
+        .addScaledVector(tmpN, ly);
+
+      if (isKnot) {
+        pushCosmosPoint(
+          tmpWorld.x,
+          tmpWorld.y,
+          tmpWorld.z,
+          cTmp.r * 0.82 + 0.14,
+          cTmp.g * 0.82 + 0.14,
+          cTmp.b * 0.82 + 0.14,
+          5.6 + rand() * 5.2,
+          2,
+          0.34 + rand() * 0.22,
+        );
+      } else {
+        const isBright = rand() < 0.035;
+        const sz = isBright ? 4.8 + rand() * 3.8 : 1.1 + rand() * 1.9;
+        const lum = isBright ? 0.92 + rand() * 0.35 : 0.24 + Math.pow(rand(), 2.2) * 0.56;
+        if (starTemp < 0.3) {
+          pushCosmosPoint(tmpWorld.x, tmpWorld.y, tmpWorld.z, 1.0, 0.84, 0.64, sz, isBright ? 1 : 0, lum);
+        } else if (starTemp < 0.7) {
+          pushCosmosPoint(
+            tmpWorld.x,
+            tmpWorld.y,
+            tmpWorld.z,
+            0.74 + cTmp.r * 0.2,
+            0.84 + cTmp.g * 0.14,
+            0.96 + cTmp.b * 0.04,
+            sz,
+            isBright ? 1 : 0,
+            lum,
+          );
+        } else {
+          pushCosmosPoint(tmpWorld.x, tmpWorld.y, tmpWorld.z, 0.96, 0.98, 1.0, sz, isBright ? 1 : 0, lum);
+        }
+      }
+    }
+  }
+
+  // B. 斯隆长城高耸主脊星流、拉尼亚凯亚引力桥与深空河外星系海（克制亮度、拉开虚实层次）
+  const sloanSpine = (u: number): [number, number, number] => {
+    const t = u * 2 - 1;
+    return [
+      (t * 168 + Math.sin(t * 2.3) * 24) * COSMOS_SCALE,
+      (68 + Math.sin(t * 2.1 + 0.4) * 26 + Math.cos(t * 4.0) * 11) * COSMOS_SCALE,
+      (-112 - Math.cos(t * 1.45) * 36 + Math.sin(t * 2.8) * 14) * COSMOS_SCALE,
+    ];
+  };
+  const bootesVoid = new THREE.Vector3(-960, -240, 820);
+
+  while (sIdx < totalFieldStars) {
+    const bucket = rand();
+    let gx = 0;
+    let gy = 0;
+    let gz = 0;
+    let isCluster = false;
+
+    if (bucket < 0.48) {
+      const [sx, sy, sz] = sloanSpine(rand());
+      const sp = 58 + rand() * 130;
+      gx = sx + gaussian(rand) * sp;
+      gy = sy + gaussian(rand) * (sp * 0.65);
+      gz = sz + gaussian(rand) * (sp * 0.72);
+      isCluster = rand() < 0.12;
+    } else if (bucket < 0.7) {
+      const t = rand();
+      const sPt = track.curve.getPointAt(t);
+      const rad = 115 + Math.pow(rand(), 0.7) * 440;
+      const th = rand() * Math.PI * 2;
+      const ph = (rand() - 0.5) * 1.4;
+      gx = sPt.x + Math.cos(ph) * Math.cos(th) * rad;
+      gy = sPt.y + Math.sin(ph) * rad * 0.75;
+      gz = sPt.z + Math.cos(ph) * Math.sin(th) * rad;
+      isCluster = rand() < 0.08;
+    } else {
+      const rad = 1900 + Math.pow(rand(), 0.8) * 2650;
+      const th = rand() * Math.PI * 2;
+      const ph = Math.acos(2 * rand() - 1) - Math.PI * 0.5;
+      gx = Math.cos(ph) * Math.cos(th) * rad;
+      gy = Math.sin(ph) * rad * 0.8;
+      gz = Math.cos(ph) * Math.sin(th) * rad;
+      const dx = gx - bootesVoid.x;
+      const dy = gy - bootesVoid.y;
+      const dz = gz - bootesVoid.z;
+      if (dx * dx + dy * dy + dz * dz < 480 * 480 && rand() < 0.96) continue;
+      isCluster = rand() < 0.16;
+    }
+
+    const temp = rand();
+    if (isCluster) {
+      const sz = 6.5 + rand() * 8.5;
+      const lum = 0.28 + rand() * 0.22;
+      if (temp < 0.45) pushCosmosPoint(gx, gy, gz, 0.96, 0.76, 0.54, sz, 2, lum);
+      else if (temp < 0.8) pushCosmosPoint(gx, gy, gz, 0.62, 0.8, 0.98, sz, 2, lum);
+      else pushCosmosPoint(gx, gy, gz, 0.9, 0.66, 0.88, sz, 2, lum);
+    } else {
+      const bright = rand() < 0.032;
+      const sz = bright ? 5.2 + rand() * 4.2 : 1.05 + rand() * 1.85;
+      const lum = bright ? 0.95 + rand() * 0.35 : 0.22 + Math.pow(rand(), 2.3) * 0.54;
+      if (temp < 0.34) pushCosmosPoint(gx, gy, gz, 1.0, 0.84, 0.68, sz, bright ? 1 : 0, lum);
+      else if (temp < 0.72) pushCosmosPoint(gx, gy, gz, 0.76, 0.88, 1.0, sz, bright ? 1 : 0, lum);
+      else pushCosmosPoint(gx, gy, gz, 0.98, 0.98, 1.0, sz, bright ? 1 : 0, lum);
+    }
+  }
+
+  const fieldGeo = trackGeo(new THREE.BufferGeometry());
+  fieldGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  fieldGeo.setAttribute('aColor', new THREE.BufferAttribute(starCol, 3));
+  fieldGeo.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+  fieldGeo.setAttribute('aKind', new THREE.BufferAttribute(starKind, 1));
+  fieldGeo.setAttribute('aLum', new THREE.BufferAttribute(starLum, 1));
+  fieldGeo.setAttribute('aSeed', new THREE.BufferAttribute(starSeed, 1));
+  const fieldUniforms = {
+    uPixelRatio: { value: 1 },
+    uTime: { value: 0 },
+  };
+  const fieldMat = trackMat(
+    new THREE.ShaderMaterial({
+      vertexShader: cosmosStarVertex,
+      fragmentShader: cosmosStarFragment,
+      uniforms: fieldUniforms,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  const fieldPoints = new THREE.Points(fieldGeo, fieldMat);
+  fieldPoints.frustumCulled = false;
+  group.add(fieldPoints);
+
+  // ---- 层 4：巨尺度斯隆长城星云脊 & 宿主星系漫射外晕星雾（1 次 InstancedMesh，静态几何） ----
+  interface VeilEntry {
+    pos: THREE.Vector3;
+    rot: THREE.Quaternion;
+    sx: number;
+    sy: number;
+    warm: string;
+    cool: string;
+    seed: number;
+    gain: number;
+  }
+  const veils: VeilEntry[] = [];
+  const qTmp = new THREE.Quaternion();
+  const qRot = new THREE.Quaternion();
+  const xDir = new THREE.Vector3(1, 0, 0);
+
+  const sloanVeilN = lite ? 28 : 52;
+  for (let i = 0; i < sloanVeilN; i++) {
+    const u = (i + 0.5) / sloanVeilN;
+    const p0 = new THREE.Vector3(...sloanSpine(Math.max(u - 0.02, 0)));
+    const p1 = new THREE.Vector3(...sloanSpine(Math.min(u + 0.02, 1)));
+    const dir = p1.sub(p0).normalize();
+    qTmp.setFromUnitVectors(xDir, dir);
+    qRot.setFromAxisAngle(dir, i * 1.15);
+    qRot.multiply(qTmp);
+    const warmPal = ['#e66e5e', '#f29a6e', '#d474b8'];
+    const coolPal = ['#5ab8ff', '#7ce2ff', '#7d92ff'];
+    veils.push({
+      pos: new THREE.Vector3(...sloanSpine(u)).add(
+        new THREE.Vector3((rand() - 0.5) * 95, (rand() - 0.5) * 72, (rand() - 0.5) * 78),
+      ),
+      rot: qRot.clone(),
+      sx: 370 + rand() * 290,
+      sy: 165 + rand() * 125,
+      warm: warmPal[i % warmPal.length],
+      cool: coolPal[i % coolPal.length],
+      seed: i * 0.43,
+      gain: lite ? 0.13 : 0.11,
     });
-    cCol.setHSL(0.07 + (i % 4) * 0.015, 0.1, 0.22 + (i % 4) * 0.05);
-    coldBeltMesh.setColorAt(i, cCol);
-  }
-  if (coldBeltMesh.instanceColor) coldBeltMesh.instanceColor.needsUpdate = true;
-  group.add(coldBeltMesh);
-
-  function attachLandmarks(imageLayer: number) {
-    if (station) return;
-    station = buildStation();
-    station.scale.setScalar(2.6);
-    warpObject(station, true);
-    station.traverse((obj) => obj.layers.enable(imageLayer));
-    group.add(station);
-
-    rocks = buildRocks(lite, new THREE.Vector3(1, 0, 0));
-    rocks.group.scale.setScalar(2.6);
-    rocks.group.traverse((obj) => obj.layers.enable(imageLayer));
-    group.add(rocks.group);
-
-    realmProps = buildRealmProps(lite);
-    group.add(realmProps.group);
   }
 
+  // 每个核心星系外围包裹大尺度共面星系外盘尘雾
+  const galCloudPal: Array<[string, string]> = [
+    ['#ffb26b', '#6ea4ff'],
+    ['#6ee7b7', '#7dd3fc'],
+    ['#f074b4', '#86a2ff'],
+    ['#ff9872', '#8f9ef6'],
+    ['#ffd076', '#56dcff'],
+  ];
+  for (let i = 0; i < STAR_NODES.length; i++) {
+    const node = STAR_NODES[i];
+    const [tx, tz] = node.diskTilt ?? [0, 0];
+    diskQ.setFromEuler(diskEuTmp.set(tx, 0, tz));
+    const [warm, cool] = galCloudPal[i % galCloudPal.length];
+    for (let k = 0; k < 4; k++) {
+      const spin = (k / 4) * Math.PI * 2;
+      const offR = 195;
+      tmpU.set(Math.cos(spin) * offR, 0, Math.sin(spin) * offR).applyQuaternion(diskQ);
+      tmpWorld.set(...node.position).multiplyScalar(COSMOS_SCALE).add(tmpU);
+      qRot.copy(diskQ).multiply(qTmp.setFromEuler(diskEuTmp.set(-Math.PI * 0.5, 0, spin)));
+      veils.push({
+        pos: tmpWorld.clone(),
+        rot: qRot.clone(),
+        sx: 390 + k * 28,
+        sy: 295 + k * 22,
+        warm,
+        cool,
+        seed: 70 + i * 7 + k,
+        gain: 0.09,
+      });
+    }
+  }
+
+  const vGeo = trackGeo(new THREE.PlaneGeometry(1, 1));
+  const vWarm = new Float32Array(veils.length * 3);
+  const vCool = new Float32Array(veils.length * 3);
+  const vSeed = new Float32Array(veils.length);
+  const vGain = new Float32Array(veils.length);
+  const vc = new THREE.Color();
+  for (let i = 0; i < veils.length; i++) {
+    const v = veils[i];
+    vc.set(v.warm);
+    vWarm[i * 3] = vc.r;
+    vWarm[i * 3 + 1] = vc.g;
+    vWarm[i * 3 + 2] = vc.b;
+    vc.set(v.cool);
+    vCool[i * 3] = vc.r;
+    vCool[i * 3 + 1] = vc.g;
+    vCool[i * 3 + 2] = vc.b;
+    vSeed[i] = v.seed;
+    vGain[i] = v.gain;
+  }
+  vGeo.setAttribute('aWarm', new THREE.InstancedBufferAttribute(vWarm, 3));
+  vGeo.setAttribute('aCool', new THREE.InstancedBufferAttribute(vCool, 3));
+  vGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(vSeed, 1));
+  vGeo.setAttribute('aGain', new THREE.InstancedBufferAttribute(vGain, 1));
+
+  const vMat = trackMat(
+    new THREE.ShaderMaterial({
+      vertexShader: cosmicCloudVertex,
+      fragmentShader: cosmicCloudFragment,
+      uniforms: { uTime: { value: 0 } },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    }),
+  );
+  const cosmicCloudMesh = new THREE.InstancedMesh(vGeo, vMat, veils.length);
+  cosmicCloudMesh.frustumCulled = false;
+  for (let i = 0; i < veils.length; i++) {
+    const v = veils[i];
+    instScale.set(v.sx, v.sy, 1);
+    instMat4.compose(v.pos, v.rot, instScale);
+    cosmicCloudMesh.setMatrixAt(i, instMat4);
+  }
+  cosmicCloudMesh.instanceMatrix.needsUpdate = true;
+  group.add(cosmicCloudMesh);
+
+  // ---- 层 5：深空航道侧翼脉冲星航标塔（与 26 座巨构星门协同拉起史诗远景参照物） ----
   const sample: TrackSample = {
     u: 0,
     s: 0,
@@ -354,9 +926,71 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     right: new THREE.Vector3(),
     up: new THREE.Vector3(),
   };
+  const pulsarPair = buildPulsarBeaconPair();
+  trackGeo(pulsarPair.hull);
+  trackGeo(pulsarPair.beams);
+  const pulsarHullMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xbacadc,
+      emissive: 0x101c30,
+      emissiveIntensity: 0.22,
+      roughness: 0.34,
+      metalness: 0.82,
+    }),
+  );
+  const pulsarRotators: Array<{ root: THREE.Group; s: number; speed: number; beamMat: THREE.ShaderMaterial }> = [];
+  const pulsarUs = [0.15, 0.36, 0.56, 0.74];
+  const pulsarColors = [0xffae8c, 0xffadd2, 0x8ef0c8, 0x7ce2ff];
+  for (let i = 0; i < pulsarUs.length; i++) {
+    const s = pulsarUs[i] * track.totalLength;
+    track.sampleAtS(s, sample);
+    const side = i % 2 === 0 ? 1 : -1;
+    const pRoot = new THREE.Group();
+    pRoot.position
+      .copy(sample.pos)
+      .addScaledVector(sample.right, side * 46)
+      .addScaledVector(sample.up, (i % 2 === 0 ? 1 : -1) * 14);
+    pRoot.scale.setScalar(1.65);
+    const beamMat = trackMat(
+      new THREE.ShaderMaterial({
+        vertexShader: pulsarBeamVertex,
+        fragmentShader: pulsarBeamFragment,
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: new THREE.Color(pulsarColors[i]) },
+        },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    pRoot.add(new THREE.Mesh(pulsarPair.hull, pulsarHullMat), new THREE.Mesh(pulsarPair.beams, beamMat));
+    pRoot.rotation.set(0.38, i * 1.1, 0.26);
+    group.add(pRoot);
+    pulsarRotators.push({ root: pRoot, s, speed: 0.55 + i * 0.12, beamMat });
+  }
+
+  function attachLandmarks(imageLayer: number) {
+    if (station) return;
+    station = buildStation();
+    station.scale.setScalar(3.4);
+    warpObject(station, true);
+    station.traverse((obj) => obj.layers.enable(imageLayer));
+    group.add(station);
+
+    rocks = buildRocks(lite, new THREE.Vector3(1, 0, 0));
+    rocks.group.scale.setScalar(3.4);
+    rocks.group.traverse((obj) => obj.layers.enable(imageLayer));
+    group.add(rocks.group);
+
+    realmProps = buildRealmProps(lite);
+    group.add(realmProps.group);
+  }
+
   const zAxis = new THREE.Vector3(0, 0, 1);
 
-  // ---- 精细化画廊立体画框雕塑与游戏电离灯塔雕像（各共用 1 份合并几何体） ----
+  // ---- 精细化画廊立体画框雕塑与游戏电离灯塔雕像 ----
   const extras: THREE.Object3D[] = [];
   const galFrameGeo = trackGeo(buildGalleryFrameGeo());
   const gameBeaconGeo = trackGeo(buildGameBeaconGeo());
@@ -378,8 +1012,8 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     for (let f = 0; f < 4; f++) {
       const holder = new THREE.Mesh(galFrameGeo, frameMat);
       const a = (f / 4) * Math.PI * 2 + 0.5;
-      holder.position.set(gx + Math.cos(a) * 82, gy + (f % 2 === 0 ? 14 : -14), gz + Math.sin(a) * 82);
-      holder.scale.setScalar(2.8);
+      holder.position.set(gx + Math.cos(a) * 165, gy + (f % 2 === 0 ? 24 : -24), gz + Math.sin(a) * 165);
+      holder.scale.setScalar(4.2);
       holder.lookAt(gx, gy, gz);
       group.add(holder);
       extras.push(holder);
@@ -404,16 +1038,16 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
       );
       const beacon = new THREE.Mesh(gameBeaconGeo, jMat);
       const a = (j / 3) * Math.PI * 2 + 0.8;
-      beacon.position.set(jx + Math.cos(a) * 78, jy + (j - 1) * 14, jz + Math.sin(a) * 78);
-      beacon.scale.setScalar(2.8);
+      beacon.position.set(jx + Math.cos(a) * 162, jy + (j - 1) * 24, jz + Math.sin(a) * 162);
+      beacon.scale.setScalar(4.2);
       group.add(beacon);
       extras.push(beacon);
     }
   }
 
-  // ---- 26 座星际文明巨构星门（双层批处理 InstancedMesh：外装甲巨环 1 次 + 能量传送门环 1 次） ----
+  // ---- 18 座远距星际文明巨构星门（支持随随机新航线零分配重排） ----
   const gates: BoostGate[] = [];
-  const GATE_COUNT = 26;
+  const GATE_COUNT = 18;
   const stargatePair = buildStargatePair(1.0);
   trackGeo(stargatePair.hull);
   trackGeo(stargatePair.portal);
@@ -440,37 +1074,12 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   const dummyMat = new THREE.Matrix4();
   const dummyQuat = new THREE.Quaternion();
   const dummyScale = new THREE.Vector3(1, 1, 1);
-  const gateColors: THREE.Color[] = [];
+  const gateColors: THREE.Color[] = Array.from({ length: GATE_COUNT }, () => new THREE.Color());
   const hullTint = new THREE.Color();
 
   for (let i = 0; i < GATE_COUNT; i++) {
-    const u = 0.03 + ((i + 1) / (GATE_COUNT + 1)) * 0.92;
-    const s = u * track.totalLength;
-    track.sampleAtS(s, sample);
-    const offX = Math.sin((i + 1) * 1.65) * 9.5;
-    const offY = Math.cos((i + 1) * 1.15) * 4.2;
-    const gatePos = sample.pos
-      .clone()
-      .addScaledVector(sample.right, offX)
-      .addScaledVector(sample.up, offY);
-    const near = track.evaluateHub(gatePos);
-    const col = new THREE.Color(near.node.color);
-    gateColors.push(col);
-    hullTint.copy(col).lerp(new THREE.Color(0xcad8ea), 0.62);
-
-    dummyQuat.setFromUnitVectors(zAxis, sample.forward);
-    dummyMat.compose(gatePos, dummyQuat, dummyScale);
-    gateHullInst.setMatrixAt(i, dummyMat);
-    gateHullInst.setColorAt(i, hullTint);
-    gatePortalInst.setMatrixAt(i, dummyMat);
-    gatePortalInst.setColorAt(i, col);
-
-    gates.push({ index: i, s, pos: gatePos, radius: 6.8, triggered: false });
+    gates.push({ index: i, s: 0, offX: 0, offY: 0, pos: new THREE.Vector3(), radius: 7.4, triggered: false });
   }
-  gateHullInst.instanceMatrix.needsUpdate = true;
-  gatePortalInst.instanceMatrix.needsUpdate = true;
-  if (gateHullInst.instanceColor) gateHullInst.instanceColor.needsUpdate = true;
-  if (gatePortalInst.instanceColor) gatePortalInst.instanceColor.needsUpdate = true;
   group.add(gateHullInst, gatePortalInst);
 
   const dimGateColor = new THREE.Color();
@@ -486,6 +1095,11 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   // ---- 25 件精细化藏品建模（按星域分工缓存 6 套合并几何体，共享金属壳 + 发光核材质） ----
   const catalog: AtlasItemSpec[] = [];
   const collectibles: TrackCollectible[] = [];
+  type CollectibleBind =
+    | { item: TrackCollectible; kind: 'hub'; regionId: string; du: number; ox: number; oy: number }
+    | { item: TrackCollectible; kind: 'probe'; u: number; ox: number; oy: number };
+  const collectibleBinds: CollectibleBind[] = [];
+
   const catalogGeos = buildCollectibleCatalogGeos();
   for (const pair of Object.values(catalogGeos)) {
     trackGeo(pair.frame);
@@ -511,18 +1125,17 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     }),
   );
 
-  // 适应加宽后星际航道（±14.2）的藏品弧线走位点
   const offsets: Array<[number, number, number]> = [
-    [-0.028, -8.6, 2.4],
-    [-0.01, 8.0, 3.0],
-    [0.012, 8.8, -2.5],
-    [0.03, -7.4, -2.6],
+    [-0.018, -8.6, 2.4],
+    [-0.007, 8.0, 3.0],
+    [0.008, 8.8, -2.5],
+    [0.019, -7.4, -2.6],
   ];
 
-  for (const ms of track.milestones) {
-    const defs = GALAXY_RELIC_CATALOG[ms.node.id] ?? [];
-    const pair = catalogGeos[ms.node.id] ?? catalogGeos.base;
-    const accent = new THREE.Color(ms.node.color);
+  for (const node of STAR_NODES) {
+    const defs = GALAXY_RELIC_CATALOG[node.id] ?? [];
+    const pair = catalogGeos[node.id] ?? catalogGeos.base;
+    const accent = new THREE.Color(node.color);
     const coreMat = trackMat(
       new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -536,23 +1149,16 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     for (let k = 0; k < defs.length; k++) {
       const def = defs[k];
       const spec: AtlasItemSpec = {
-        id: `${ms.node.id}-relic-${k}`,
-        regionId: ms.node.id,
-        regionName: ms.node.name,
+        id: `${node.id}-relic-${k}`,
+        regionId: node.id,
+        regionName: node.name,
         name: def.name,
         hint: def.hint,
-        color: ms.node.color,
+        color: node.color,
       };
       catalog.push(spec);
 
-      const [du, ox, oy] = offsets[k];
-      const su = Math.min(Math.max(ms.u + du, 0.02), 0.97);
-      const s = su * track.totalLength;
-      track.sampleAtS(s, sample);
-      const pos = sample.pos.clone().addScaledVector(sample.right, ox).addScaledVector(sample.up, oy);
-
       const rGroup = new THREE.Group();
-      rGroup.position.copy(pos);
       rGroup.scale.setScalar(1.08);
       const frame = new THREE.Mesh(pair.frame, chassisMat);
       const core = new THREE.Mesh(pair.core, coreMat);
@@ -560,40 +1166,38 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
       rGroup.visible = false;
       group.add(rGroup);
 
-      collectibles.push({
+      const item: TrackCollectible = {
         spec,
         group: rGroup,
         core,
         frame,
-        basePos: pos.clone(),
+        basePos: new THREE.Vector3(),
         pos: rGroup.position,
-        s,
+        s: 0,
         collected: false,
-      });
+      };
+      collectibles.push(item);
+      const [du, ox, oy] = offsets[k];
+      collectibleBinds.push({ item, kind: 'hub', regionId: node.id, du, ox, oy });
     }
   }
 
   // 五具斯隆深空探测器
   const probePair = catalogGeos.cosmos;
   for (let i = 0; i < COSMOS_PROBES.length; i++) {
-    const item = COSMOS_PROBES[i];
-    const col = new THREE.Color(item.color);
+    const def = COSMOS_PROBES[i];
+    const col = new THREE.Color(def.color);
     const spec: AtlasItemSpec = {
       id: `cosmos-probe-${i}`,
       regionId: 'cosmos',
       regionName: '斯隆深空',
-      name: item.name,
-      hint: item.hint,
-      color: item.color,
+      name: def.name,
+      hint: def.hint,
+      color: def.color,
     };
     catalog.push(spec);
 
-    const s = item.u * track.totalLength;
-    track.sampleAtS(s, sample);
-    const pos = sample.pos.clone().addScaledVector(sample.right, item.offX).addScaledVector(sample.up, item.offY);
-
     const rGroup = new THREE.Group();
-    rGroup.position.copy(pos);
     rGroup.scale.setScalar(1.12);
     const frame = new THREE.Mesh(probePair.frame, probeChassisMat);
     const core = new THREE.Mesh(
@@ -613,28 +1217,100 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     rGroup.visible = false;
     group.add(rGroup);
 
-    collectibles.push({
+    const item: TrackCollectible = {
       spec,
       group: rGroup,
       core,
       frame,
-      basePos: pos.clone(),
+      basePos: new THREE.Vector3(),
       pos: rGroup.position,
-      s,
+      s: 0,
       collected: false,
-    });
+    };
+    collectibles.push(item);
+    collectibleBinds.push({ item, kind: 'probe', u: def.u, ox: def.offX, oy: def.offY });
   }
 
-  const origin = new THREE.Vector3(0, 0, 0);
-  const centerVec = new THREE.Vector3();
-  const diskBasis = new THREE.Matrix4();
-  const diskQuat = new THREE.Quaternion();
-  const instPos = new THREE.Vector3();
-  const instQuat = new THREE.Quaternion();
-  const instSpin = new THREE.Quaternion();
-  const instEuler = new THREE.Euler();
-  const instScale = new THREE.Vector3();
-  const instMat4 = new THREE.Matrix4();
+  /** 按当前随机巡航航线原地重排星门、脉冲星航标与 25 件藏品坐标，零几何体分配 */
+  function syncToTrack() {
+    for (let i = 0; i < pulsarRotators.length; i++) {
+      const s = pulsarUs[i] * track.totalLength;
+      track.sampleAtS(s, sample);
+      const side = i % 2 === 0 ? 1 : -1;
+      pulsarRotators[i].s = s;
+      pulsarRotators[i].root.position
+        .copy(sample.pos)
+        .addScaledVector(sample.right, side * 52)
+        .addScaledVector(sample.up, (i % 2 === 0 ? 1 : -1) * 16);
+    }
+
+    flashArr.fill(-10);
+    flashAttr.needsUpdate = true;
+    for (let i = 0; i < GATE_COUNT; i++) {
+      const u = 0.045 + (i / (GATE_COUNT - 1)) * 0.86;
+      const s = u * track.totalLength;
+      track.sampleAtS(s, sample);
+
+      let minMsGap = Infinity;
+      for (const ms of track.milestones) {
+        minMsGap = Math.min(minMsGap, Math.abs(s - ms.s));
+      }
+      const wellFade = Math.min(Math.max((minMsGap - 95) / 110, 0), 1);
+      const offX = Math.sin((i + 1) * 1.45) * 6.8 * wellFade;
+      const offY = Math.cos((i + 1) * 1.05) * 2.6 * wellFade;
+
+      const gate = gates[i];
+      gate.s = s;
+      gate.offX = offX;
+      gate.offY = offY;
+      gate.triggered = false;
+      gate.pos
+        .copy(sample.pos)
+        .addScaledVector(sample.right, offX)
+        .addScaledVector(sample.up, offY);
+
+      const near = track.evaluateHub(gate.pos);
+      const col = gateColors[i];
+      col.set(near.node.color);
+      hullTint.copy(col).lerp(new THREE.Color(0xcad8ea), 0.62);
+
+      dummyQuat.setFromUnitVectors(zAxis, sample.forward);
+      dummyMat.compose(gate.pos, dummyQuat, dummyScale);
+      gateHullInst.setMatrixAt(i, dummyMat);
+      gateHullInst.setColorAt(i, hullTint);
+      gatePortalInst.setMatrixAt(i, dummyMat);
+      gatePortalInst.setColorAt(i, col);
+    }
+    gateHullInst.instanceMatrix.needsUpdate = true;
+    gatePortalInst.instanceMatrix.needsUpdate = true;
+    if (gateHullInst.instanceColor) gateHullInst.instanceColor.needsUpdate = true;
+    if (gatePortalInst.instanceColor) gatePortalInst.instanceColor.needsUpdate = true;
+
+    for (const bind of collectibleBinds) {
+      let su = 0;
+      if (bind.kind === 'hub') {
+        const ms = track.milestones.find((m) => m.node.id === bind.regionId);
+        const baseU = ms ? ms.u : 0.1;
+        su = Math.min(Math.max(baseU + bind.du, 0.02), 0.97);
+      } else {
+        su = bind.u;
+      }
+      const s = su * track.totalLength;
+      track.sampleAtS(s, sample);
+      bind.item.s = s;
+      bind.item.collected = false;
+      bind.item.basePos
+        .copy(sample.pos)
+        .addScaledVector(sample.right, bind.ox)
+        .addScaledVector(sample.up, bind.oy);
+      bind.item.group.position.copy(bind.item.basePos);
+      bind.item.frame.position.y = 0;
+      bind.item.core.position.y = 0;
+      bind.item.group.visible = false;
+    }
+  }
+
+  syncToTrack();
 
   function update(
     simTime: number,
@@ -646,10 +1322,14 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     diskU: THREE.Vector3,
     diskV: THREE.Vector3,
     behindHole: (p: THREE.Vector3, r: number) => boolean,
+    pixelRatio = 1,
   ) {
-    // 严格复用黑洞盘面的倾斜坐标系 (diskU, diskN, -diskV)
     diskBasis.makeBasis(diskU, diskN, instPos.copy(diskV).negate());
     diskQuat.setFromRotationMatrix(diskBasis);
+
+    fieldUniforms.uPixelRatio.value = pixelRatio;
+    fieldUniforms.uTime.value = simTime;
+    vMat.uniforms.uTime.value = simTime;
 
     if (station && rocks) {
       const baseNear = nearNode.id === 'base' && holeAlpha > 0.02;
@@ -670,63 +1350,62 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     gatePortalMat.uniforms.uTime.value = simTime;
 
     if (realmProps) {
-      realmProps.update(nearNode.holeTheme ?? 0, holeAlpha, simTime, centerVec, sc, diskQuat, true);
+      realmProps.update(nearNode.holeTheme ?? 0, holeAlpha * 0.72, simTime, centerVec, sc, diskQuat, true);
     }
 
-    const showAccretion = holeAlpha > 0.04;
-    filamentMesh.visible = showAccretion;
-    coldBeltMesh.visible = showAccretion;
+    const showAccretion = holeAlpha > 0.03;
+    torusMesh.visible = showAccretion;
+    polarJetMesh.visible = showAccretion;
 
     if (showAccretion) {
-      // 1. 外层分子尘埃环带与剪切潮汐气流弧（严格沿 diskU / diskV 盘面以 ω ∝ r^-1.5 差速公转）
-      filamentMat.uniforms.uAlpha.value = holeAlpha;
-      filamentMat.uniforms.uDiskN.value.copy(diskN);
-      for (let i = 0; i < filamentCount; i++) {
-        const f = filamentSpecs[i];
-        const ang = f.a + simTime * f.speed;
-        const rad = f.r * sc;
-        instPos
-          .copy(centerVec)
-          .addScaledVector(diskN, f.lift * sc);
+      // 1. 活动星系核外围羽化尘埃环面（与黑洞赤道面严格共面，开普勒 ω ∝ r^-1.5）
+      torusMat.uniforms.uTime.value = simTime;
+      torusMat.uniforms.uAlpha.value = holeAlpha;
+      torusMat.uniforms.uDiskN.value.copy(diskN);
+      for (let i = 0; i < torusCount; i++) {
+        const t = torusSpecs[i];
+        const ang = t.a + simTime * t.speed;
+        const rad = t.scaleRad * sc;
+        instPos.copy(centerVec).addScaledVector(diskN, t.lift * sc);
         instSpin.setFromAxisAngle(diskN, ang);
         instQuat.copy(instSpin).multiply(diskQuat);
-        instScale.set(rad, f.thick * sc * 0.85, rad);
+        instScale.set(rad, sc, rad);
         instMat4.compose(instPos, instQuat, instScale);
-        filamentMesh.setMatrixAt(i, instMat4);
+        torusMesh.setMatrixAt(i, instMat4);
       }
-      filamentMesh.instanceMatrix.needsUpdate = true;
+      torusMesh.instanceMatrix.needsUpdate = true;
 
-      // 2. 洛希极限外极远硅酸盐冷碎岩盘（薄赤道层 H/R ≈ 0.025）
-      coldMat.uniforms.uAlpha.value = holeAlpha;
-      coldMat.uniforms.uDiskTint.value.set(nearNode.color);
-      for (let i = 0; i < coldCount; i++) {
-        const c = coldSpecs[i];
-        const ang = c.a + simTime * c.speed;
-        const ca = Math.cos(ang);
-        const sa = Math.sin(ang);
-        const rad = c.r * sc;
-        instPos
-          .copy(centerVec)
-          .addScaledVector(diskU, ca * rad)
-          .addScaledVector(diskV, sa * rad)
-          .addScaledVector(diskN, c.lift * sc);
-        instSpin.setFromEuler(instEuler.set(c.rx + simTime * c.spin, c.ry + simTime * c.spin * 0.7, 0));
-        instQuat.copy(diskQuat).multiply(instSpin);
-        instScale.setScalar(c.sc * sc);
-        instMat4.compose(instPos, instQuat, instScale);
-        coldBeltMesh.setMatrixAt(i, instMat4);
-      }
-      coldBeltMesh.instanceMatrix.needsUpdate = true;
+      // 2. 垂直穿过磁极的双极相对论准直喷流
+      const themeIdx = Math.min(JET_PALETTES.length - 1, Math.max(0, Math.round(nearNode.holeTheme ?? 0)));
+      const [coreHex, jetHex] = JET_PALETTES[themeIdx];
+      polarJetMesh.position.copy(centerVec);
+      polarJetMesh.quaternion.copy(diskQuat);
+      polarJetMesh.scale.setScalar(sc);
+      jetMat.uniforms.uTime.value = simTime;
+      jetMat.uniforms.uAlpha.value = holeAlpha;
+      jetMat.uniforms.uCoreCol.value.setHex(coreHex);
+      jetMat.uniforms.uJetCol.value.setHex(jetHex);
     }
 
-    // 赛道视距裁剪：仅更新和显示视野区间内的藏品（大幅节省矩阵更新与 GPU 顶点绘制）
+    // 深空侧翼脉冲星航标塔按航程远近显隐并旋转
+    for (let i = 0; i < pulsarRotators.length; i++) {
+      const p = pulsarRotators[i];
+      const inView = p.s >= trackS - 280 && p.s <= trackS + 1450;
+      p.root.visible = inView;
+      if (inView) {
+        p.beamMat.uniforms.uTime.value = simTime;
+        if (dt > 0) p.root.rotation.y += dt * p.speed;
+      }
+    }
+
+    // 赛道视距裁剪：仅更新和显示视野区间内的藏品
     for (let i = 0; i < collectibles.length; i++) {
       const rel = collectibles[i];
       if (rel.collected) {
         rel.group.visible = false;
         continue;
       }
-      const inRange = rel.s >= trackS - 35 && rel.s <= trackS + 380;
+      const inRange = rel.s >= trackS - 55 && rel.s <= trackS + 750;
       rel.group.visible = inRange;
       if (!inRange) continue;
       rel.group.rotation.y += dt * 0.95;
@@ -774,6 +1453,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     collectibles,
     catalog,
     attachLandmarks,
+    syncToTrack,
     triggerGate,
     update,
     resetProgress,

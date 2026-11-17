@@ -79,7 +79,7 @@ function getHullBump(): THREE.CanvasTexture {
   return tex;
 }
 
-// 体积等离子尾焰着色器：柔性菲涅尔边缘消融 + 马赫震波环 + 炽白喉口到电离外鞘的真过渡，绝无硬边假锥感
+// 真空离子推力羽流着色器：无大气压缩马赫环与风压抖振，呈真空 Prandtl-Meyer 顺滑膨胀电离扇
 const plumeVertex = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vNormalV;
@@ -89,13 +89,12 @@ const plumeVertex = /* glsl */ `
 
   void main() {
     vUv = uv;
-    // uv.y: 0 在喷口喉部，1 在尾焰末端
+    // uv.y: 0 在喷口喉部，1 在真空膨胀末端
     float t = uv.y;
-    float flutter = sin(t * 14.0 - uTime * 42.0) * 0.055 * t * (0.4 + uThrust);
-    float flare = 1.0 + t * (0.28 + 0.22 * uThrust) + flutter;
+    float expansion = 1.0 + pow(t, 0.82) * (0.58 + 0.34 * uThrust);
     vec3 pos = position;
-    pos.xz *= flare;
-    pos.y *= (0.72 + uThrust * 0.78);
+    pos.xz *= expansion;
+    pos.y *= (0.76 + uThrust * 0.82);
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
     vViewPos = -mv.xyz;
     vNormalV = normalize(normalMatrix * normal);
@@ -116,24 +115,21 @@ const plumeFragment = /* glsl */ `
     float t = vUv.y;
     vec3 n = normalize(vNormalV);
     vec3 v = normalize(vViewPos);
-    // 中心越厚实、边缘平滑归零，消灭多边形轮廓
     float rim = abs(dot(n, v));
-    float radial = pow(rim, 1.45);
+    float radial = pow(rim, 1.6);
 
-    // 高频高速等离子脉动 + 马赫震波节（Mach Diamonds）
-    float turb = 0.78 + 0.22 * sin(t * 28.0 - uTime * 58.0 + sin(vUv.x * 18.84) * 0.6);
-    float shock = pow(max(0.0, cos(t * 16.5 - uTime * 18.0)), 4.0) * (1.0 - t) * 0.85;
-
-    float axial = smoothstep(0.0, 0.09, t) * pow(1.0 - smoothstep(0.05, 1.0, t), 1.65);
-    float coreMask = pow(rim, 2.8) * (1.0 - smoothstep(0.0, 0.72, t));
+    // 真空中平滑稀释，仅留轻微磁场谐振微脉动（无大气湍流噪点）
+    float magPulse = 0.92 + 0.08 * sin(t * 10.0 - uTime * 22.0);
+    float axial = smoothstep(0.0, 0.08, t) * pow(1.0 - smoothstep(0.04, 1.0, t), 1.9);
+    float coreMask = pow(rim, 3.0) * (1.0 - smoothstep(0.0, 0.55, t));
 
     vec3 hotWhite = vec3(1.0, 0.98, 0.94);
-    vec3 col = mix(uOuterCol, uCoreCol, smoothstep(0.2, 0.85, radial));
-    col = mix(col, hotWhite, clamp(coreMask * 0.9 + shock * 0.55, 0.0, 1.0));
+    vec3 col = mix(uOuterCol, uCoreCol, smoothstep(0.18, 0.84, radial));
+    col = mix(col, hotWhite, clamp(coreMask * 0.85, 0.0, 1.0));
 
-    float intensity = (axial * radial * turb + shock * radial * 0.6) * (0.65 + uThrust * 0.95);
+    float intensity = axial * radial * magPulse * (0.58 + uThrust * 0.92);
     if (intensity < 0.008) discard;
-    gl_FragColor = vec4(col * intensity * 1.45, clamp(intensity, 0.0, 1.0));
+    gl_FragColor = vec4(col * intensity * 1.4, clamp(intensity, 0.0, 1.0));
   }
 `;
 
