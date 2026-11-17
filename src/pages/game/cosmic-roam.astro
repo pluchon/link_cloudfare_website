@@ -1,0 +1,1425 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageBackdrop from '../../components/PageBackdrop.astro';
+import { pageBackdrops } from '../../config/site';
+import { getGames } from '../../lib/content';
+
+const PLAY = '/game/cosmic-roam/';
+const entry = (await getGames()).find((item) => item.data.play === PLAY);
+const title = entry?.data.title ?? '星海漫游';
+const summary = entry?.data.summary ?? '';
+---
+
+<BaseLayout title={title} description={summary}>
+  <PageBackdrop art={pageBackdrops.game} />
+
+  <section class="wrap roam-page">
+    <header class="roam-head">
+      <h1 class="roam-head__title">{title}</h1>
+      <a class="roam-head__back" href="/game/"><span aria-hidden="true">←</span> 游戏大厅</a>
+    </header>
+
+    <div class="roam" data-roam data-state="ready" data-title={title}>
+      <div class="roam__top" aria-hidden="true">
+        <span class="roam__brand">NUONUO · COSMIC ROAM</span>
+        <span class="roam__vents"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="roam__lamp"></span>
+      </div>
+
+      <div class="roam__stage" data-stage>
+        <canvas class="roam__canvas" data-canvas aria-label="星海漫游三维星空画布"></canvas>
+        <canvas class="roam__rush" data-rush aria-hidden="true"></canvas>
+
+        <!-- 顶边 2px 航程进度细线 -->
+        <div class="roam__progress" aria-hidden="true"><i data-progress></i></div>
+
+        <!-- 四角清爽排版：左上仅一条「星域 + 图鉴」，右上仅「声音 + 暂停」两颗方键 -->
+        <div class="roam__hud">
+          <div class="roam__left">
+            <span class="roam__sector roam__panel" data-sector>斯隆长城</span>
+            <button type="button" class="roam-btn roam__atlas-btn" data-atlas-btn title="打开星海图鉴 (G)">
+              <span>图鉴</span>
+              <b data-relics>0/25</b>
+            </button>
+          </div>
+
+          <div class="roam__tools">
+            <button type="button" class="roam-btn roam-btn--icon roam-btn--sound" data-mute aria-pressed="true" aria-label="声音开关">
+              <svg class="roam-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
+                <path class="roam-btn__wave" d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+                <path class="roam-btn__mute" d="M16 9.5l5 5M21 9.5l-5 5" />
+              </svg>
+            </button>
+            <button type="button" class="roam-btn roam-btn--icon" data-pause aria-pressed="false" aria-label="暂停或继续">
+              <svg class="roam-btn__icon roam-btn__icon--on" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 6v12M15 6v12" />
+              </svg>
+              <svg class="roam-btn__icon roam-btn__icon--off" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5.5v13l10.5-6.5z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="roam__toasts" data-toasts aria-live="polite"></div>
+
+        <!-- 左下：航天遥测仪表（分段曲速刻度 + 双栏航速/导航坐标） -->
+        <aside class="roam__tele roam__panel" data-tele-box data-mode="cruise" aria-hidden="true">
+          <div class="roam__tele-head">
+            <span class="roam__tele-sys"><i class="roam__tele-dot"></i>TELEMETRY // NAV-03</span>
+            <span class="roam__tele-mode" data-tele-mode>CRUISE</span>
+          </div>
+          <div class="roam__tele-row">
+            <span class="roam__tele-k">WARP</span>
+            <span class="roam__tele-line">
+              <i data-warp></i>
+              <b class="roam__tele-ticks" aria-hidden="true"></b>
+            </span>
+            <em class="roam__tele-v" data-warp-num>100%</em>
+          </div>
+          <div class="roam__tele-grid">
+            <div class="roam__tele-cell">
+              <span class="roam__tele-lbl">VEL</span>
+              <strong data-tele-speed>26.4 c</strong>
+            </div>
+            <div class="roam__tele-cell">
+              <span class="roam__tele-lbl">TARGET</span>
+              <span data-tele-next>基地 · 38 Mpc</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- 右下：独立星图雷达（桌面独占右下角与左下遥测对称；触屏自动收去右上） -->
+        <div class="roam__radar roam__panel" aria-hidden="true">
+          <canvas class="roam__mini" data-mini width="124" height="72"></canvas>
+        </div>
+
+        <div class="roam__stick" data-stick aria-hidden="true"><i class="roam__knob" data-knob></i></div>
+        <button type="button" class="roam-btn roam__boost" data-turbo>曲速</button>
+
+        <!-- 开局态：无画布标题、无额外操作文案，底部居中的轻盈 3A 排版提示 + 纯外观选船 -->
+        <!-- 居中科幻加载界面：深邃旷远宇宙星雾底 + 居中进度条 -->
+        <div class="roam__loader" data-loader role="status" aria-live="polite">
+          <div class="roam__loader-core">
+            <p class="roam__loader-text">正在搭建场景...</p>
+            <div class="roam__loader-rail" aria-hidden="true">
+              <i data-loader-bar></i>
+            </div>
+            <span class="roam__loader-pct" data-loader-pct>18%</span>
+          </div>
+        </div>
+
+        <div class="roam__ready" data-ready>
+          <div class="roam__ready-dock">
+            <div class="roam__picks" data-picks role="group" aria-label="选择飞船外观"></div>
+            <p class="roam__aaa-prompt">点击空白区域开始游戏</p>
+          </div>
+        </div>
+
+        <!-- 暂停态：没有任何弹窗盒子，画面原地定格，底部居中只浮出一行轻盈文字 -->
+        <div class="roam__pause-hint" data-pause-hint hidden>
+          <p class="roam__aaa-prompt">点击任意区域继续</p>
+        </div>
+
+        <!-- 终点归档卡片：左右对称信息列表 + 底部点击任意区域重新巡航 -->
+        <div class="roam__overlay" data-finish hidden>
+          <div class="roam__card roam__panel">
+            <p class="roam__overlay-title">巡航完成</p>
+            <dl class="roam__stats">
+              <div>
+                <dt>藏品</dt>
+                <dd data-stat-relics>0 / 25</dd>
+              </div>
+              <div>
+                <dt>点亮星系</dt>
+                <dd data-stat-lit>0 / 5</dd>
+              </div>
+              <div>
+                <dt>引力弹弓</dt>
+                <dd data-stat-slings>0</dd>
+              </div>
+              <div>
+                <dt>巡航用时</dt>
+                <dd data-stat-time>00:00</dd>
+              </div>
+            </dl>
+          </div>
+          <p class="roam__aaa-prompt roam__finish-prompt">点击任意区域重新巡航</p>
+        </div>
+
+        <!-- 星海图鉴弹层：去掉右侧计数，关闭改 ×，每行两张紧凑区域小卡，集齐打勾 -->
+        <div class="roam__atlas" data-atlas hidden>
+          <div class="roam__atlas-panel roam__panel">
+            <header class="roam__atlas-top">
+              <h3>星海图鉴</h3>
+              <button type="button" class="roam-btn roam-btn--icon" data-atlas-close aria-label="关闭星海图鉴">
+                <svg class="roam-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </header>
+            <div class="roam__atlas-list" data-atlas-list></div>
+          </div>
+        </div>
+
+        <p class="roam__nogl" data-nogl hidden>这台设备的浏览器不支持 WebGL2，暂时玩不了这个游戏。</p>
+      </div>
+
+      <div class="roam__foot">
+        <svg class="roam__dpad" viewBox="0 0 44 44" aria-hidden="true">
+          <rect class="roam__key roam__key--l" x="4" y="16" width="12" height="12" />
+          <rect class="roam__key roam__key--r" x="28" y="16" width="12" height="12" />
+          <rect class="roam__key roam__key--u" x="16" y="4" width="12" height="12" />
+          <rect class="roam__key roam__key--d" x="16" y="28" width="12" height="12" />
+          <path d="M16 4h12v12h12v12H28v12H16V28H4V16h12z" />
+          <path d="M22 8.5v3M22 32.5v3M8.5 22h3M32.5 22h3" />
+        </svg>
+        <p class="roam__record" data-record aria-live="polite">
+          <span class="roam__high">HIGH</span>
+          <span>图鉴 <b data-record-val>0 / 25</b></span>
+        </p>
+        <p class="roam__keys">
+          <span><kbd>WASD</kbd><kbd>↑↓←→</kbd> 转向</span>
+          <span><kbd>空格</kbd> 曲速</span>
+          <span><kbd>G</kbd> 图鉴</span>
+          <span><kbd>P</kbd> 暂停</span>
+          <span><kbd>M</kbd> 静音</span>
+        </p>
+        <svg class="roam__ab" viewBox="0 0 50 44" aria-hidden="true">
+          <circle class="roam__key roam__key--b" cx="13" cy="29" r="9.5" />
+          <circle class="roam__key roam__key--a" cx="37" cy="15" r="9.5" />
+          <text x="13" y="32">G</text>
+          <text x="37" y="18">A</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { mountCosmicRoam, supportsWebGL2 } from '../../game/cosmic/game';
+
+  let destroy: (() => void) | null = null;
+
+  function boot() {
+    const root = document.querySelector<HTMLElement>('[data-roam]');
+    if (!root || root.dataset.mounted) return;
+    root.dataset.mounted = '1';
+    if (!supportsWebGL2()) {
+      root.querySelector<HTMLElement>('[data-nogl]')!.hidden = false;
+      root.dataset.state = 'nogl';
+      return;
+    }
+    destroy = mountCosmicRoam(root);
+  }
+
+  boot();
+  document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:before-swap', () => {
+    destroy?.();
+    destroy = null;
+  });
+</script>
+
+<style>
+  .roam-page {
+    position: relative;
+    z-index: 1;
+    padding-block: 1rem 1.25rem;
+  }
+
+  .roam-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.65rem;
+    margin-bottom: 1rem;
+    border-bottom: var(--hair) solid var(--line);
+  }
+
+  .roam-head__title {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(1.4rem, 3.6vw, 1.9rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .roam-head__back {
+    padding: 0.3rem 0.7rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .roam-head__back:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .roam-head__back span {
+    display: inline-block;
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+
+  .roam-head__back:hover span {
+    transform: translateX(-3px);
+  }
+
+  .roam {
+    padding: 0.55rem 0.8rem 0.6rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 74%, transparent);
+    --hud-paper: #070b14;
+    --hud-ink: #edf3ff;
+    --hud-accent: #e8b658;
+    --hud-line: rgba(226, 238, 255, 0.28);
+    --hud-soft: rgba(226, 238, 255, 0.72);
+  }
+
+  .roam__panel,
+  .roam__stage .roam-btn {
+    border: var(--hair) solid var(--hud-line);
+    background: rgba(7, 11, 20, 0.72);
+    color: var(--hud-ink);
+    transition:
+      background-color var(--dur-2) var(--ease-out),
+      border-color var(--dur-2) var(--ease-out),
+      color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__top {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    height: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .roam__brand {
+    margin-right: auto;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.22em;
+    color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  .roam__vents {
+    display: flex;
+    gap: 4px;
+  }
+
+  .roam__vents i {
+    width: 1px;
+    height: 9px;
+    background: var(--line-strong);
+  }
+
+  .roam__lamp {
+    width: 6px;
+    height: 6px;
+    border: var(--hair) solid var(--line-strong);
+  }
+
+  .roam[data-state='playing'] .roam__lamp {
+    background: var(--hud-accent);
+    border-color: var(--hud-accent);
+  }
+
+  .roam__stage {
+    position: relative;
+    height: clamp(23rem, calc(100svh - 14rem), 43rem);
+    border: var(--hair) solid var(--line);
+    background: #03050c;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .roam[data-state='ready'] .roam__stage,
+  .roam[data-state='paused'] .roam__stage {
+    cursor: pointer;
+  }
+
+  .roam__canvas,
+  .roam__rush {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .roam__rush {
+    pointer-events: none;
+  }
+
+  .roam__progress {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.12);
+    z-index: 4;
+    pointer-events: none;
+  }
+
+  .roam__progress i {
+    display: block;
+    height: 100%;
+    width: 100%;
+    background: var(--hud-accent);
+    transform-origin: left;
+    transform: scaleX(0.015);
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  .roam[data-state='ready'] .roam__hud,
+  .roam[data-state='ready'] .roam__tele,
+  .roam[data-state='ready'] .roam__radar,
+  .roam[data-state='ready'] .roam__progress {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .roam[data-state='paused'] .roam__hud,
+  .roam[data-state='paused'] .roam__tele,
+  .roam[data-state='paused'] .roam__radar {
+    opacity: 0.45;
+  }
+
+  /* 顶部左右对齐：左一条等高状态 + 右两颗方键 */
+  .roam__hud {
+    position: relative;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.8rem 0.9rem;
+    pointer-events: none;
+    transition: opacity var(--dur-2) var(--ease-out);
+  }
+
+  .roam__left,
+  .roam__tools {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    pointer-events: auto;
+  }
+
+  .roam__sector,
+  .roam__atlas-btn {
+    height: 2rem;
+    padding: 0 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .roam__sector {
+    color: var(--hud-accent);
+    border-left: 2px solid var(--hud-accent);
+  }
+
+  .roam__atlas-btn b {
+    font-weight: 600;
+    color: var(--hud-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .roam-btn {
+    padding: 0.34rem 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+  }
+
+  .roam-btn:hover {
+    border-color: var(--hud-accent);
+    color: var(--hud-accent);
+  }
+
+  .roam__stage .roam-btn:focus,
+  .roam__stage .roam-btn:focus-visible,
+  .roam__stage:focus {
+    outline: none;
+  }
+
+  .roam-btn--icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+  }
+
+  .roam-btn__icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .roam-btn--sound[aria-pressed='true'] .roam-btn__mute,
+  .roam-btn--sound[aria-pressed='false'] .roam-btn__wave {
+    display: none;
+  }
+
+  [data-pause][aria-pressed='false'] .roam-btn__icon--off,
+  [data-pause][aria-pressed='true'] .roam-btn__icon--on {
+    display: none;
+  }
+
+  .roam__toasts {
+    position: absolute;
+    left: 50%;
+    top: 0.8rem;
+    z-index: 6;
+    width: 0;
+    height: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .roam__toast {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0 0.78rem;
+    border: var(--hair) solid var(--hud-line);
+    background: rgba(7, 11, 20, 0.88);
+    color: var(--hud-ink);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, calc(-0.65rem + var(--row, 0) * 2.4rem));
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      transform var(--dur-3) cubic-bezier(0.34, 1.45, 0.64, 1);
+  }
+
+  .roam__toast[data-show] {
+    opacity: 1;
+    transform: translate(-50%, calc(var(--row, 0) * 2.4rem));
+  }
+
+  .roam__toast[data-leave] {
+    opacity: 0;
+    transform: translate(-50%, calc(-0.55rem + var(--row, 0) * 2.4rem));
+  }
+
+  .roam__toast-icon {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: var(--hud-accent);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex: none;
+  }
+
+  /* 左下：航天科技遥测模块（1px 准星角标 + 分段激光刻度槽 + 双栏航速导航表） */
+  .roam__tele {
+    position: absolute;
+    left: 0.9rem;
+    bottom: 0.9rem;
+    z-index: 4;
+    min-width: 14.2rem;
+    padding: 0.45rem 0.68rem 0.48rem;
+    border-left: 2px solid var(--hud-accent);
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+    pointer-events: none;
+    font-family: var(--font-mono);
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      border-color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__tele::before,
+  .roam__tele::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    pointer-events: none;
+    border-color: var(--hud-accent);
+    border-style: solid;
+    transition: border-color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__tele::before {
+    top: -1px;
+    right: -1px;
+    border-width: 1px 1px 0 0;
+  }
+
+  .roam__tele::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 1px 1px 0;
+  }
+
+  .roam__tele-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding-bottom: 0.28rem;
+    border-bottom: var(--hair) dashed rgba(226, 238, 255, 0.18);
+  }
+
+  .roam__tele-sys {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.34rem;
+    font-size: 0.5625rem;
+    letter-spacing: 0.14em;
+    color: rgba(226, 238, 255, 0.56);
+  }
+
+  .roam__tele-dot {
+    width: 4px;
+    height: 4px;
+    background: var(--hud-accent);
+    transition: background-color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__tele-mode {
+    padding: 0.04rem 0.32rem;
+    border: var(--hair) solid color-mix(in srgb, var(--hud-accent) 65%, transparent);
+    font-size: 0.5625rem;
+    letter-spacing: 0.12em;
+    color: var(--hud-accent);
+  }
+
+  .roam__tele-row {
+    display: grid;
+    grid-template-columns: 2.3rem 1fr 2.4rem;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.625rem;
+  }
+
+  .roam__tele-k {
+    letter-spacing: 0.12em;
+    color: var(--hud-soft);
+  }
+
+  .roam__tele-line {
+    position: relative;
+    height: 9px;
+    padding: 2px;
+    border: var(--hair) solid rgba(226, 238, 255, 0.28);
+    background: rgba(3, 6, 14, 0.86);
+  }
+
+  .roam__tele-line > i {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--hud-accent);
+    transform-origin: left;
+    transform: scaleX(1);
+    transition: background-color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__tele-ticks {
+    position: absolute;
+    inset: 2px;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      90deg,
+      transparent 0 7px,
+      rgba(5, 9, 18, 0.88) 7px 9px
+    );
+  }
+
+  [data-tele-box][data-mode='sling'] {
+    border-left-color: #7ce2ff;
+  }
+
+  [data-tele-box][data-mode='sling']::before,
+  [data-tele-box][data-mode='sling']::after {
+    border-color: #7ce2ff;
+  }
+
+  [data-tele-box][data-mode='sling'] .roam__tele-dot,
+  [data-tele-box][data-mode='sling'] .roam__tele-line > i {
+    background: #7ce2ff;
+  }
+
+  [data-tele-box][data-mode='sling'] .roam__tele-mode {
+    border-color: #7ce2ff;
+    color: #7ce2ff;
+  }
+
+  .roam__tele-v {
+    font-style: normal;
+    text-align: right;
+    font-size: 0.6875rem;
+    color: var(--hud-ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .roam__tele-grid {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    padding-top: 0.3rem;
+    border-top: var(--hair) solid rgba(226, 238, 255, 0.14);
+  }
+
+  .roam__tele-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+    min-width: 0;
+  }
+
+  .roam__tele-cell + .roam__tele-cell {
+    padding-left: 0.58rem;
+    border-left: var(--hair) solid rgba(226, 238, 255, 0.16);
+  }
+
+  .roam__tele-lbl {
+    font-size: 0.5rem;
+    letter-spacing: 0.16em;
+    color: rgba(226, 238, 255, 0.48);
+  }
+
+  .roam__tele-cell strong,
+  .roam__tele-cell span:last-child {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--hud-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .roam__tele-cell strong {
+    color: var(--hud-accent);
+  }
+
+  [data-tele-box][data-mode='sling'] .roam__tele-cell strong {
+    color: #7ce2ff;
+  }
+
+  /* 右下：斯隆长城雷达（与左下遥测成对对称） */
+  .roam__radar {
+    position: absolute;
+    right: 0.9rem;
+    bottom: 0.9rem;
+    z-index: 4;
+    padding: 3px;
+    pointer-events: none;
+    transition: opacity var(--dur-2) var(--ease-out);
+  }
+
+  .roam__mini {
+    display: block;
+    width: 124px;
+    height: 72px;
+  }
+
+  /* 移动端虚拟摇杆与曲速键 */
+  .roam__stick {
+    position: absolute;
+    z-index: 4;
+    width: 6.5rem;
+    height: 6.5rem;
+    border: var(--hair) solid rgba(255, 255, 255, 0.38);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-1) var(--ease-out);
+  }
+
+  .roam__stick[data-on='1'] {
+    opacity: 1;
+  }
+
+  .roam__knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: var(--hair) solid var(--hud-accent);
+    background: color-mix(in srgb, var(--hud-accent) 26%, transparent);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .roam__boost {
+    display: none;
+    position: absolute;
+    right: 0.9rem;
+    bottom: 0.9rem;
+    z-index: 4;
+    width: 4.2rem;
+    height: 4.2rem;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 0.8125rem;
+  }
+
+  .roam__boost.is-on {
+    border-color: var(--hud-accent);
+    background: color-mix(in srgb, var(--hud-accent) 28%, transparent);
+  }
+
+  @media (pointer: coarse) {
+    .roam__boost {
+      display: grid;
+      place-items: center;
+    }
+
+    /* 触屏右下留给加速大圆键，星图雷达挪到右上按键正下方 */
+    .roam__radar {
+      bottom: auto;
+      top: 3.25rem;
+      right: 0.7rem;
+    }
+
+    .roam__mini {
+      width: 92px;
+      height: 54px;
+    }
+  }
+
+  /* 开局底部：选船 + 3A 轻量悬停字样（顶部与中央全空留给飞船） */
+  .roam__ready {
+    position: absolute;
+    inset: auto 0 1.65rem;
+    z-index: 6;
+    display: flex;
+    justify-content: center;
+    padding-inline: 1rem;
+    pointer-events: none;
+  }
+
+  .roam__ready[hidden] {
+    display: none;
+  }
+
+  .roam__ready-dock {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.05rem;
+    pointer-events: auto;
+  }
+
+  .roam__picks {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.55rem;
+  }
+
+  .roam__pick {
+    padding: 0.48rem 0.95rem;
+    border: var(--hair) solid var(--hud-line);
+    background: rgba(7, 11, 20, 0.72);
+    color: var(--hud-ink);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.52rem;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      transform var(--dur-1) var(--ease-out);
+  }
+
+  .roam__pick[aria-pressed='true'] {
+    border-color: var(--hud-accent);
+    transform: translateY(-2px);
+    background: color-mix(in srgb, var(--hud-accent) 16%, rgba(7, 11, 20, 0.85));
+  }
+
+  .roam__pick-swatches {
+    display: inline-flex;
+    gap: 0.22rem;
+  }
+
+  .roam__pick-swatches i {
+    width: 0.48rem;
+    height: 0.48rem;
+    border: var(--hair) solid rgba(255, 255, 255, 0.28);
+  }
+
+  .roam__pick strong {
+    font-family: var(--font-serif);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+
+  /* 3A 大作风格轻量字体：超细字重 + 宽字距 + 两端发丝短线 + 极克制微弱投影 */
+  .roam__aaa-prompt {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.9rem;
+    font-family: var(--font-sans);
+    font-weight: 300;
+    font-size: 0.84rem;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    color: rgba(237, 243, 255, 0.84);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .roam__aaa-prompt::before,
+  .roam__aaa-prompt::after {
+    content: '';
+    width: 1.9rem;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(237, 243, 255, 0.52));
+  }
+
+  .roam__aaa-prompt::after {
+    background: linear-gradient(90deg, rgba(237, 243, 255, 0.52), transparent);
+  }
+
+  /* 暂停：原地冻结画面，无任何弹窗，只浮一行轻量字 */
+  .roam__pause-hint {
+    position: absolute;
+    inset: auto 0 2.1rem;
+    z-index: 6;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .roam__pause-hint[hidden] {
+    display: none;
+  }
+
+  /* 居中科幻加载画面：深邃旷远深空底 + 发丝星图环 + 激光进度条 */
+  .roam__loader {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    display: grid;
+    place-items: center;
+    background-color: #02040b;
+    background-image:
+      radial-gradient(ellipse 68% 46% at 50% 42%, rgba(44, 86, 152, 0.22), transparent 72%),
+      radial-gradient(circle at 22% 28%, rgba(232, 182, 88, 0.08), transparent 46%),
+      radial-gradient(circle at 78% 68%, rgba(110, 231, 183, 0.07), transparent 48%),
+      radial-gradient(1px 1px at 14% 22%, rgba(235, 244, 255, 0.55), transparent),
+      radial-gradient(1px 1px at 31% 74%, rgba(235, 244, 255, 0.35), transparent),
+      radial-gradient(1px 1px at 67% 19%, rgba(255, 218, 170, 0.45), transparent),
+      radial-gradient(1px 1px at 84% 58%, rgba(168, 224, 255, 0.48), transparent),
+      radial-gradient(1px 1px at 46% 86%, rgba(235, 244, 255, 0.32), transparent);
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+
+  .roam__loader[data-done='1'] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .roam__loader[hidden] {
+    display: none;
+  }
+
+  .roam__loader-core {
+    width: min(19rem, 78%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.72rem;
+    padding: 1.4rem 1.2rem;
+    border-top: var(--hair) solid rgba(164, 210, 255, 0.2);
+    border-bottom: var(--hair) solid rgba(164, 210, 255, 0.2);
+    background: radial-gradient(circle, rgba(10, 18, 36, 0.45), transparent 80%);
+  }
+
+  .roam__loader-text {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-weight: 300;
+    font-size: 0.84rem;
+    letter-spacing: 0.26em;
+    text-indent: 0.26em;
+    color: rgba(237, 243, 255, 0.88);
+  }
+
+  .roam__loader-rail {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    padding: 2px;
+    border: var(--hair) solid rgba(154, 206, 255, 0.42);
+    background: rgba(4, 9, 20, 0.88);
+  }
+
+  .roam__loader-rail > i {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #4fa8ff, #9ee9ff 72%, #fff2d6);
+    transform-origin: left;
+    transform: scaleX(0.18);
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  .roam__loader-pct {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.16em;
+    color: rgba(168, 214, 255, 0.72);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 终点结算卡片 */
+  .roam__overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(4, 7, 15, 0.56);
+    cursor: pointer;
+  }
+
+  .roam__overlay[hidden] {
+    display: none;
+  }
+
+  .roam__card {
+    width: min(21rem, 100%);
+    padding: 1.3rem 1.45rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.9rem;
+    background: rgba(7, 11, 20, 0.92);
+  }
+
+  .roam__overlay-title {
+    margin: 0;
+    text-align: center;
+    font-family: var(--font-serif);
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+
+  .roam__stats {
+    margin: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    border-top: var(--hair) solid var(--hud-line);
+    border-bottom: var(--hair) solid var(--hud-line);
+  }
+
+  .roam__stats div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0.52rem 0.15rem;
+  }
+
+  .roam__stats div + div {
+    border-top: var(--hair) dashed rgba(226, 238, 255, 0.16);
+  }
+
+  .roam__stats dt {
+    font-size: 0.8125rem;
+    color: var(--hud-soft);
+  }
+
+  .roam__stats dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: var(--hud-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .roam__finish-prompt {
+    position: absolute;
+    left: 50%;
+    bottom: 2rem;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  /* 星海图鉴弹窗：去掉已收录字样、关闭改为 ×、双列紧凑卡片+集齐打勾 */
+  .roam__atlas {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    display: grid;
+    place-items: center;
+    padding: 0.85rem;
+    background: rgba(4, 7, 15, 0.68);
+  }
+
+  .roam__atlas[hidden] {
+    display: none;
+  }
+
+  .roam__atlas-panel {
+    width: min(44rem, 100%);
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: rgba(7, 11, 20, 0.94);
+  }
+
+  .roam__atlas-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 0.6rem 0.9rem;
+    border-bottom: var(--hair) solid var(--hud-line);
+  }
+
+  .roam__atlas-top h3 {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.02rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .roam__atlas-list {
+    padding: 0.7rem 0.85rem 0.85rem;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+
+  .roam__atlas-group {
+    border: var(--hair) solid var(--hud-line);
+    border-left: 2px solid var(--group-accent, var(--hud-accent));
+    padding: 0.48rem 0.62rem;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .roam__atlas-group.is-complete {
+    border-color: color-mix(in srgb, var(--group-accent, var(--hud-accent)) 68%, transparent);
+    background: color-mix(in srgb, var(--group-accent, var(--hud-accent)) 8%, rgba(7, 11, 20, 0.8));
+  }
+
+  .roam__atlas-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.36rem;
+    padding-bottom: 0.24rem;
+    border-bottom: var(--hair) solid rgba(255, 255, 255, 0.1);
+    font-size: 0.78rem;
+  }
+
+  .roam__atlas-head strong {
+    font-family: var(--font-serif);
+    color: var(--group-accent, var(--hud-ink));
+  }
+
+  .roam__atlas-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--hud-soft);
+  }
+
+  .roam__atlas-group.is-complete .roam__atlas-stat {
+    color: var(--group-accent, var(--hud-accent));
+  }
+
+  .roam__atlas-check {
+    width: 0.82rem;
+    height: 0.82rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .roam__atlas-items {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.28rem 0.45rem;
+  }
+
+  .roam__atlas-items li {
+    display: flex;
+    align-items: center;
+    gap: 0.36rem;
+    min-width: 0;
+    padding: 0.22rem 0.42rem;
+    border: var(--hair) solid rgba(255, 255, 255, 0.1);
+    font-size: 0.7rem;
+  }
+
+  .roam__atlas-items li > i {
+    flex: none;
+    width: 0.36rem;
+    height: 0.36rem;
+    border: var(--hair) solid rgba(255, 255, 255, 0.36);
+  }
+
+  .roam__atlas-items li.is-found {
+    border-color: color-mix(in srgb, var(--group-accent, var(--hud-accent)) 52%, transparent);
+    background: color-mix(in srgb, var(--group-accent, var(--hud-accent)) 10%, transparent);
+  }
+
+  .roam__atlas-items li.is-found > i {
+    border-color: var(--group-accent, var(--hud-accent));
+    background: var(--group-accent, var(--hud-accent));
+  }
+
+  .roam__atlas-items li > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .roam__atlas-items li.is-found > span {
+    color: var(--hud-ink);
+  }
+
+  .roam__atlas-items li.is-hidden > span {
+    color: rgba(226, 238, 255, 0.48);
+  }
+
+  .roam__atlas-model {
+    margin-left: auto;
+    flex: none;
+    width: 1.4rem;
+    height: 1.4rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    color: rgba(226, 238, 255, 0.28);
+    transition: color var(--dur-2) var(--ease-out);
+  }
+
+  .roam__atlas-items li.is-found .roam__atlas-model {
+    color: var(--group-accent, var(--hud-accent));
+  }
+
+  .roam__nogl {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 1.5rem;
+    color: var(--fg-muted);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  .roam__nogl[hidden] {
+    display: none;
+  }
+
+  .roam__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.2rem;
+    margin-top: 0.55rem;
+  }
+
+  .roam__dpad,
+  .roam__ab {
+    width: 2.3rem;
+    height: 2.3rem;
+    fill: none;
+    stroke: var(--line-strong);
+    stroke-width: 1.2;
+  }
+
+  .roam__ab text {
+    fill: var(--fg-faint);
+    stroke: none;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-anchor: middle;
+  }
+
+  .roam__key {
+    fill: transparent;
+    transition: fill var(--dur-1) var(--ease-out);
+  }
+
+  .roam__key.is-on {
+    fill: var(--accent);
+  }
+
+  .roam__record {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-muted);
+  }
+
+  .roam__record b {
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .roam__high {
+    padding: 0.05rem 0.34rem;
+    border: var(--hair) solid var(--accent);
+    color: var(--accent);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    line-height: 1.3;
+  }
+
+  .roam__keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.38rem 0.95rem;
+    margin: 0 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+    color: var(--fg-faint);
+  }
+
+  .roam__keys kbd {
+    display: inline-block;
+    min-width: 1.3rem;
+    margin-right: 0.2rem;
+    padding: 0.05rem 0.28rem;
+    border: var(--hair) solid var(--line-strong);
+    font: inherit;
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
+  @media (max-width: 40rem) {
+    .roam {
+      padding: 0.4rem 0.45rem 0.45rem;
+    }
+
+    .roam__stage {
+      height: clamp(22rem, calc(100svh - 15.5rem), 40rem);
+    }
+
+    .roam__dpad,
+    .roam__ab {
+      display: none;
+    }
+
+    .roam__hud {
+      padding: 0.65rem 0.7rem;
+    }
+
+    .roam__toasts {
+      top: 2.95rem;
+    }
+
+    .roam__sector,
+    .roam__atlas-btn {
+      height: 1.85rem;
+      padding: 0 0.55rem;
+      font-size: 0.7rem;
+    }
+
+    .roam__tele {
+      left: 0.7rem;
+      bottom: 0.7rem;
+      min-width: 11.5rem;
+      padding: 0.38rem 0.52rem;
+    }
+
+    .roam__tele-row {
+      grid-template-columns: 2rem 1fr 2.2rem;
+    }
+
+    .roam__tele-grid {
+      grid-template-columns: 3.9rem minmax(0, 1fr);
+    }
+
+    .roam__mini {
+      width: 92px;
+      height: 54px;
+    }
+
+    .roam__aaa-prompt {
+      font-size: 0.75rem;
+      letter-spacing: 0.22em;
+      text-indent: 0.22em;
+      gap: 0.55rem;
+    }
+
+    .roam__aaa-prompt::before,
+    .roam__aaa-prompt::after {
+      width: 1.1rem;
+    }
+
+    .roam__atlas-list {
+      grid-template-columns: 1fr;
+    }
+
+    .roam__keys {
+      justify-content: flex-start;
+      margin-left: 0;
+      gap: 0.3rem 0.75rem;
+      font-size: 0.625rem;
+    }
+  }
+</style>

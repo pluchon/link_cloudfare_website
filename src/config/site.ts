@@ -273,6 +273,33 @@ export const gameAlbums: Record<string, readonly GameAlbumEntry[]> = {
       src: `${PELICAN_ALBUM_DIR}/09-cave.webp${PELICAN_ALBUM_VERSION}`,
     },
   ],
+  '/game/cosmic-roam/': [
+    {
+      id: '01',
+      title: '斯隆脊梁',
+      caption: '沿四道星流巡航星系团之间',
+    },
+    {
+      id: '02',
+      title: '视界掠影',
+      caption: '擦着黑洞光子环触发引力弹弓',
+    },
+    {
+      id: '03',
+      title: '翡翠棱镜',
+      caption: '标签星域里悬浮的光谱阵列',
+    },
+    {
+      id: '04',
+      title: '浑仪星环',
+      caption: '关于星域中缓缓旋转的赤道环',
+    },
+    {
+      id: '05',
+      title: '深空拾遗',
+      caption: '寻访漂流在长城中的古老探测器',
+    },
+  ],
 };
 
 // 游戏大厅条目：每一项都是一个独立的小游戏。cover 填 OSS 完整 URL，留空则显示发丝线点阵占位框；href 填好后即可点击进入该游戏

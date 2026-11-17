@@ -128,8 +128,8 @@ function gaussian(rand: () => number) {
 const gridVertex = /* glsl */ `
   varying vec3 vWorld;
   void main() {
+    vWorld = position;
     vec4 wp = modelMatrix * vec4(position, 1.0);
-    vWorld = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
   }
 `;
@@ -1296,12 +1296,20 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   return { group, polarDots, miniPoints, setOpacity, dispose };
 }
 
+export interface MiniMapExtras {
+  shipPos?: { x: number; y: number; z: number } | null;
+  litIds?: ReadonlySet<string>;
+  targetId?: string | null;
+  trackPoints?: ReadonlyArray<{ x: number; y: number; z: number }>;
+}
+
 // 右上角独立斯隆长城深空视窗：在幽深黑底之上勾勒发光星云丝带、同心星盘与核心星系定位
 export function renderMiniMap(
   canvas: HTMLCanvasElement,
   miniPoints: MiniPoint[],
   simTime: number,
   activeGalaxyId?: string | null,
+  extras?: MiniMapExtras,
 ) {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -1402,6 +1410,22 @@ export function renderMiniMap(
   }
   ctx.globalAlpha = 1;
 
+  if (extras?.trackPoints && extras.trackPoints.length > 1) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 224, 172, 0.52)';
+    ctx.lineWidth = 1.15;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    for (let i = 0; i < extras.trackPoints.length; i++) {
+      const pt = extras.trackPoints[i];
+      const p = project(pt.x, pt.y, pt.z);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // 核心星系标点；身处某个黑洞星系核内时，用呼吸十字准星高亮该星系
   for (let i = 0; i < STAR_NODES.length; i++) {
     const node = STAR_NODES[i];
@@ -1409,39 +1433,71 @@ export function renderMiniMap(
     const top = project(nx, ny, nz);
     const base = project(nx, 0, nz);
     const isActive = activeGalaxyId === node.id;
+    const isLit = extras?.litIds?.has(node.id) ?? false;
+    const isTarget = extras?.targetId === node.id;
 
     if (Math.abs(ny) > 0.2) {
-      ctx.strokeStyle = isActive ? node.color : 'rgba(210, 232, 255, 0.4)';
+      ctx.strokeStyle = isActive || isLit ? node.color : 'rgba(210, 232, 255, 0.4)';
       ctx.beginPath();
       ctx.moveTo(base.x, base.y);
       ctx.lineTo(top.x, top.y);
       ctx.stroke();
     }
 
-    const rDot = isActive ? 2.6 : 1.9;
+    const rDot = isActive ? 2.6 : isLit ? 2.4 : 1.9;
     ctx.fillStyle = node.color;
     ctx.beginPath();
     ctx.arc(top.x, top.y, rDot, 0, Math.PI * 2);
     ctx.fill();
 
-    if (isActive) {
-      const pulseR = 5.5 + 2.0 * Math.sin(simTime * 3.4);
+    if (isLit && !isActive) {
       ctx.strokeStyle = node.color;
-      ctx.globalAlpha = 0.88;
+      ctx.globalAlpha = 0.72;
       ctx.beginPath();
-      ctx.arc(top.x, top.y, pulseR, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(top.x - pulseR - 3, top.y);
-      ctx.lineTo(top.x - pulseR + 1, top.y);
-      ctx.moveTo(top.x + pulseR - 1, top.y);
-      ctx.lineTo(top.x + pulseR + 3, top.y);
-      ctx.moveTo(top.x, top.y - pulseR - 3);
-      ctx.lineTo(top.x, top.y - pulseR + 1);
-      ctx.moveTo(top.x, top.y + pulseR - 1);
-      ctx.lineTo(top.x, top.y + pulseR + 3);
+      ctx.arc(top.x, top.y, 4.4, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+
+    if (isActive || isTarget) {
+      const pulseR = (isActive ? 5.5 : 4.8) + 1.8 * Math.sin(simTime * 3.4);
+      ctx.strokeStyle = node.color;
+      ctx.globalAlpha = isActive ? 0.88 : 0.65;
+      ctx.beginPath();
+      ctx.arc(top.x, top.y, pulseR, 0, Math.PI * 2);
+      ctx.stroke();
+      if (isActive) {
+        ctx.beginPath();
+        ctx.moveTo(top.x - pulseR - 3, top.y);
+        ctx.lineTo(top.x - pulseR + 1, top.y);
+        ctx.moveTo(top.x + pulseR - 1, top.y);
+        ctx.lineTo(top.x + pulseR + 3, top.y);
+        ctx.moveTo(top.x, top.y - pulseR - 3);
+        ctx.lineTo(top.x, top.y - pulseR + 1);
+        ctx.moveTo(top.x, top.y + pulseR - 1);
+        ctx.lineTo(top.x, top.y + pulseR + 3);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (extras?.shipPos) {
+    const sp = project(extras.shipPos.x, extras.shipPos.y, extras.shipPos.z);
+    const sb = project(extras.shipPos.x, 0, extras.shipPos.z);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(sb.x, sb.y);
+    ctx.lineTo(sp.x, sp.y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(sp.x, sp.y - 3.6);
+    ctx.lineTo(sp.x + 3.2, sp.y);
+    ctx.lineTo(sp.x, sp.y + 3.6);
+    ctx.lineTo(sp.x - 3.2, sp.y);
+    ctx.closePath();
+    ctx.fill();
   }
 }

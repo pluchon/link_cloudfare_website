@@ -68,68 +68,89 @@ function rng(seed: number) {
   };
 }
 
-// 基地外围引力监测浮标（扁棱观测翼 + 菱心结构）
+function joinParts(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const expanded = parts.map((p) => {
+    const g = p.index ? p.toNonIndexed() : p.clone();
+    if (!g.attributes.normal) g.computeVertexNormals();
+    p.dispose();
+    return g;
+  });
+  let total = 0;
+  for (const g of expanded) total += g.attributes.position.count;
+  const pos = new Float32Array(total * 3);
+  const norm = new Float32Array(total * 3);
+  let off = 0;
+  for (const g of expanded) {
+    pos.set(g.attributes.position.array as Float32Array, off * 3);
+    norm.set(g.attributes.normal.array as Float32Array, off * 3);
+    off += g.attributes.position.count;
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  return out;
+}
+
+function tfPart(g: THREE.BufferGeometry, rx = 0, ry = 0, rz = 0, tx = 0, ty = 0, tz = 0) {
+  const m = new THREE.Matrix4().compose(
+    new THREE.Vector3(tx, ty, tz),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
+    new THREE.Vector3(1, 1, 1),
+  );
+  g.applyMatrix4(m);
+  return g;
+}
+
+// 基地外围引力监测浮标（八角探测核心 + 正交稳定环 + 传感翼 + 锥形天线帽，取代扁平纸片菱形）
 function relayGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.OctahedronGeometry(1, 0);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    pos.setXYZ(i, x * 1.15, y * 0.55, z * 0.42);
-  }
-  geo.computeVertexNormals();
-  return geo;
+  return joinParts([
+    new THREE.CylinderGeometry(0.36, 0.42, 0.72, 8),
+    tfPart(new THREE.ConeGeometry(0.28, 0.36, 8), 0, 0, 0, 0, 0.54, 0),
+    tfPart(new THREE.ConeGeometry(0.26, 0.3, 8), Math.PI, 0, 0, 0, -0.5, 0),
+    tfPart(new THREE.TorusGeometry(0.76, 0.055, 6, 16), Math.PI * 0.5, 0, 0),
+    tfPart(new THREE.BoxGeometry(1.55, 0.07, 0.34), 0.18, 0, 0),
+  ]);
 }
 
-// 低面晶体菱柱（画廊：8 面长棱晶雕塑）
+// 立体石英晶簇雕塑（画廊：三柱错位六棱晶柱 + 底座托环）
 function crystalGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.OctahedronGeometry(1, 0);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    pos.setXYZ(i, x * 0.42, y * 1.48, z * 0.34);
-  }
-  geo.computeVertexNormals();
-  return geo;
+  return joinParts([
+    tfPart(new THREE.CylinderGeometry(0.54, 0.62, 0.24, 6), 0, 0, 0, 0, -0.55, 0),
+    tfPart(new THREE.CylinderGeometry(0.08, 0.26, 1.45, 6), 0.05, 0.2, -0.05, 0, 0.14, 0),
+    tfPart(new THREE.CylinderGeometry(0.06, 0.2, 1.08, 6), -0.3, 0.4, 0.28, 0.24, -0.04, 0.16),
+    tfPart(new THREE.CylinderGeometry(0.05, 0.19, 0.96, 6), 0.28, -0.3, -0.32, -0.22, -0.08, -0.14),
+  ]);
 }
 
-// 低面航天信标棱塔（游戏：双锥尖塔结构）
+// 立体航天信标棱塔（游戏：阶梯八角底座 + 锥形塔身 + 悬空冠环）
 function pylonGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.CylinderGeometry(0.18, 0.52, 2.1, 4, 1);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const flare = y > 0.6 ? 0.55 : 1.0;
-    pos.setXYZ(i, x * flare, y, z * flare);
-  }
-  geo.computeVertexNormals();
-  return geo;
+  return joinParts([
+    tfPart(new THREE.CylinderGeometry(0.46, 0.58, 0.32, 8), 0, 0, 0, 0, -0.78, 0),
+    new THREE.CylinderGeometry(0.18, 0.44, 1.65, 6),
+    tfPart(new THREE.TorusGeometry(0.56, 0.055, 6, 16), Math.PI * 0.5, 0, 0, 0, 0.48, 0),
+    tfPart(new THREE.OctahedronGeometry(0.24, 0), 0, 0, 0, 0, 1.05, 0),
+  ]);
 }
 
-// 六角光谱索引棱板（标签：切面索引石板）
+// 光谱索引陀螺仪（标签：八角双锥棱核 + 厚重立体护环）
 function prismGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.CylinderGeometry(0.56, 0.44, 1.8, 6, 1);
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    pos.setXYZ(i, x * 1.15, y, z * 0.34);
-  }
-  geo.computeVertexNormals();
-  return geo;
+  return joinParts([
+    tfPart(new THREE.ConeGeometry(0.38, 0.72, 6), 0, 0, 0, 0, 0.36, 0),
+    tfPart(new THREE.ConeGeometry(0.38, 0.72, 6), Math.PI, 0, 0, 0, -0.36, 0),
+    tfPart(new THREE.TorusGeometry(0.84, 0.075, 6, 18), 0.36, 0.22, 0),
+    tfPart(new THREE.TorusGeometry(0.64, 0.055, 6, 16), -0.45, 0.85, 0.2),
+  ]);
 }
 
-// 切面天文浑仪星环（关于：档案天文仪环）
+// 立体天文浑仪球（关于：嵌套圆角铜环 + 极轴心球）
 function astrolabeGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.TorusGeometry(0.92, 0.14, 4, 10);
-  geo.computeVertexNormals();
-  return geo;
+  return joinParts([
+    tfPart(new THREE.TorusGeometry(0.92, 0.075, 8, 22), 0.25, 0.15, 0),
+    tfPart(new THREE.TorusGeometry(0.72, 0.06, 6, 20), Math.PI * 0.48, 0.75, 0.2),
+    tfPart(new THREE.CylinderGeometry(0.04, 0.04, 1.78, 6), 0, 0, 0.32),
+    new THREE.IcosahedronGeometry(0.28, 0),
+  ]);
 }
 
 function buildOrbitRing(radius: number, tiltX: number, tiltZ: number, hex: number, segments = 140) {
@@ -237,7 +258,15 @@ function makeSet(
 
 export interface RealmPropsHandle {
   group: THREE.Group;
-  update: (theme: number, opacity: number, simTime: number, center: THREE.Vector3, scale: number) => void;
+  update: (
+    theme: number,
+    opacity: number,
+    simTime: number,
+    center: THREE.Vector3,
+    scale: number,
+    tiltQuat?: THREE.Quaternion,
+    outerOnly?: boolean,
+  ) => void;
   dispose: () => void;
 }
 
@@ -390,12 +419,25 @@ export function buildRealmProps(lite: boolean): RealmPropsHandle {
 
   const dummy = new THREE.Object3D();
 
-  const update = (theme: number, opacity: number, simTime: number, center: THREE.Vector3, scale: number) => {
+  const update = (
+    theme: number,
+    opacity: number,
+    simTime: number,
+    center: THREE.Vector3,
+    scale: number,
+    tiltQuat?: THREE.Quaternion,
+    outerOnly = false,
+  ) => {
     const show = opacity > 0.01;
     group.visible = show;
     if (!show) return;
 
     group.position.copy(center);
+    if (tiltQuat) {
+      group.quaternion.copy(tiltQuat);
+    } else {
+      group.quaternion.identity();
+    }
     group.scale.setScalar(scale);
 
     const activeIdx = Math.min(sets.length - 1, Math.max(0, Math.round(theme)));
@@ -409,10 +451,16 @@ export function buildRealmProps(lite: boolean): RealmPropsHandle {
 
     for (let i = 0; i < active.specs.length; i++) {
       const s = active.specs[i];
+      if (outerOnly && s.rad < 17) {
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        active.mesh.setMatrixAt(i, dummy.matrix);
+        continue;
+      }
       const ang = s.a + simTime * s.speed;
       dummy.position.set(
         Math.cos(ang) * s.rad,
-        s.y + Math.sin(simTime * active.bobRate + i) * active.bobAmp,
+        outerOnly ? s.y * 0.28 : s.y + Math.sin(simTime * active.bobRate + i) * active.bobAmp,
         Math.sin(ang) * s.rad,
       );
       dummy.rotation.set(
