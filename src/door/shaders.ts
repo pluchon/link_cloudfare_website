@@ -244,27 +244,39 @@ export const holeFragment = /* glsl */ `
   }
 
   vec3 sky(vec3 d) {
-    // 按所在星域参数化切换星系盘倾角、星云色温与邻域星系（基地 / 画廊 / 游戏共用同一套精简分支，避免着色器编译膨胀）
+    // 按所在星域参数化切换星系盘倾角、星云色温与邻域星系（基地/画廊/游戏/标签/关于共用同一套精简分支，避免着色器编译膨胀）
     float t0 = 1.0 - step(0.5, uHoleTheme);
-    float t2 = step(1.5, uHoleTheme);
-    float t1 = 1.0 - t0 - t2;
+    float t1 = step(0.5, uHoleTheme) * (1.0 - step(1.5, uHoleTheme));
+    float t2 = step(1.5, uHoleTheme) * (1.0 - step(2.5, uHoleTheme));
+    float t3 = step(2.5, uHoleTheme) * (1.0 - step(3.5, uHoleTheme));
+    float t4 = step(3.5, uHoleTheme);
 
     float galacticMask = 1.0 - uCosmosMix * 0.96;
-    vec3 n = t0 * vec3(0.4197, 0.8994, 0.1199)
+    vec3 n = normalize(
+      t0 * vec3(0.4197, 0.8994, 0.1199)
       + t1 * vec3(-0.5784, 0.5983, 0.5544)
-      + t2 * vec3(0.2400, 0.8800, -0.4100);
-    vec3 core = t0 * vec3(-0.3507, 0.1603, -0.9227)
+      + t2 * vec3(0.2400, 0.8800, -0.4100)
+      + t3 * vec3(0.3800, 0.8400, 0.3900)
+      + t4 * vec3(-0.4600, 0.7200, -0.5200)
+    );
+    vec3 core = normalize(
+      t0 * vec3(-0.3507, 0.1603, -0.9227)
       + t1 * vec3(0.6800, 0.2800, 0.6776)
-      + t2 * vec3(0.5200, -0.1400, 0.8426);
+      + t2 * vec3(0.5200, -0.1400, 0.8426)
+      + t3 * vec3(-0.5600, 0.3200, -0.7640)
+      + t4 * vec3(0.7100, -0.1800, -0.6810)
+    );
 
     float lat = dot(d, n);
-    float band = exp(-lat * lat * (t0 * 32.0 + t1 * 24.0 + t2 * 28.0));
+    float band = exp(-lat * lat * (t0 * 32.0 + t1 * 24.0 + t2 * 28.0 + t3 * 26.0 + t4 * 25.0));
     float coreDot = max(dot(d, core), 0.0);
     float coreGlow = coreDot * coreDot * coreDot * coreDot * coreDot;
 
     vec3 bgBase = t0 * vec3(0.0012, 0.0018, 0.0038)
       + t1 * vec3(0.0022, 0.0010, 0.0030)
-      + t2 * vec3(0.0008, 0.0022, 0.0044);
+      + t2 * vec3(0.0008, 0.0022, 0.0044)
+      + t3 * vec3(0.0008, 0.0024, 0.0028)
+      + t4 * vec3(0.0024, 0.0012, 0.0028);
     vec3 col = mix(bgBase, vec3(0.0007, 0.0012, 0.0028), uCosmosMix);
 
     if (band > 0.008 && galacticMask > 0.02) {
@@ -272,35 +284,73 @@ export const holeFragment = /* glsl */ `
       float grain = fbm3lo(d * 15.0 + 3.0);
       float dust = smoothstep(0.38, 0.66, fbm3lo(d * 6.8 + 9.0)) * exp(-lat * lat * 210.0);
       float milky = band * (0.14 + 0.86 * clouds * clouds) * (0.45 + 0.55 * grain) * (1.0 - 0.86 * dust) * (0.38 + 1.12 * coreGlow);
-      vec3 bandEdge = t0 * vec3(0.52, 0.64, 0.92) + t1 * vec3(0.66, 0.44, 0.84) + t2 * vec3(0.30, 0.72, 1.0);
-      vec3 bandCore = t0 * vec3(1.0, 0.82, 0.62) + t1 * vec3(1.0, 0.56, 0.74) + t2 * vec3(0.84, 0.96, 1.0);
-      col += mix(bandEdge, bandCore, coreGlow) * milky * (t0 * 0.18 + (t1 + t2) * 0.19) * galacticMask;
+      vec3 bandEdge = t0 * vec3(0.52, 0.64, 0.92) + t1 * vec3(0.66, 0.44, 0.84) + t2 * vec3(0.30, 0.72, 1.0)
+        + t3 * vec3(0.24, 0.84, 0.68) + t4 * vec3(0.58, 0.46, 0.92);
+      vec3 bandCore = t0 * vec3(1.0, 0.82, 0.62) + t1 * vec3(1.0, 0.56, 0.74) + t2 * vec3(0.84, 0.96, 1.0)
+        + t3 * vec3(0.86, 1.0, 0.88) + t4 * vec3(1.0, 0.76, 0.60);
+      col += mix(bandEdge, bandCore, coreGlow) * milky * (t0 * 0.18 + (1.0 - t0) * 0.19) * galacticMask;
     }
 
     if (galacticMask > 0.02) {
-      vec3 nebD1 = normalize(t0 * vec3(-0.7035, 0.3518, -0.6172) + t1 * vec3(0.58, 0.36, 0.73) + t2 * vec3(0.44, 0.28, 0.85));
-      vec3 nebA1 = t0 * vec3(0.95, 0.25, 0.35) + t1 * vec3(0.96, 0.36, 0.64) + t2 * vec3(0.20, 0.82, 1.0);
-      vec3 nebB1 = t0 * vec3(0.30, 0.75, 0.90) + t1 * vec3(0.62, 0.48, 0.95) + t2 * vec3(0.98, 0.66, 0.28);
+      vec3 nebD1 = normalize(
+        t0 * vec3(-0.7035, 0.3518, -0.6172)
+        + t1 * vec3(0.58, 0.36, 0.73)
+        + t2 * vec3(0.44, 0.28, 0.85)
+        + t3 * vec3(-0.48, 0.42, 0.77)
+        + t4 * vec3(0.62, -0.32, -0.71)
+      );
+      vec3 nebA1 = t0 * vec3(0.95, 0.25, 0.35) + t1 * vec3(0.96, 0.36, 0.64) + t2 * vec3(0.20, 0.82, 1.0)
+        + t3 * vec3(0.20, 0.92, 0.64) + t4 * vec3(1.0, 0.48, 0.32);
+      vec3 nebB1 = t0 * vec3(0.30, 0.75, 0.90) + t1 * vec3(0.62, 0.48, 0.95) + t2 * vec3(0.98, 0.66, 0.28)
+        + t3 * vec3(0.46, 0.84, 1.0) + t4 * vec3(0.56, 0.52, 0.96);
 
-      vec3 nebD2 = normalize(t0 * vec3(0.7412, -0.1977, -0.6424) + t1 * vec3(-0.72, 0.18, -0.67) + t2 * vec3(-0.68, -0.22, 0.70));
-      vec3 nebA2 = t0 * vec3(0.25, 0.55, 0.95) + t1 * vec3(0.88, 0.54, 0.38) + t2 * vec3(0.32, 0.56, 1.0);
-      vec3 nebB2 = t0 * vec3(0.95, 0.50, 0.30) + t1 * vec3(0.82, 0.35, 0.78) + t2 * vec3(0.38, 0.94, 0.88);
+      vec3 nebD2 = normalize(
+        t0 * vec3(0.7412, -0.1977, -0.6424)
+        + t1 * vec3(-0.72, 0.18, -0.67)
+        + t2 * vec3(-0.68, -0.22, 0.70)
+        + t3 * vec3(0.70, -0.26, -0.66)
+        + t4 * vec3(-0.64, 0.30, 0.71)
+      );
+      vec3 nebA2 = t0 * vec3(0.25, 0.55, 0.95) + t1 * vec3(0.88, 0.54, 0.38) + t2 * vec3(0.32, 0.56, 1.0)
+        + t3 * vec3(0.92, 0.84, 0.42) + t4 * vec3(0.76, 0.44, 0.94);
+      vec3 nebB2 = t0 * vec3(0.95, 0.50, 0.30) + t1 * vec3(0.82, 0.35, 0.78) + t2 * vec3(0.38, 0.94, 0.88)
+        + t3 * vec3(0.24, 0.76, 0.72) + t4 * vec3(0.96, 0.62, 0.44);
 
-      vec3 nebD3 = normalize(t0 * vec3(0.0995, 0.5970, 0.7960) + t1 * vec3(-0.22, -0.64, 0.73) + t2 * vec3(0.18, -0.58, -0.79));
-      vec3 nebA3 = t0 * vec3(0.75, 0.30, 0.80) + t1 * vec3(0.55, 0.42, 0.94) + t2 * vec3(0.95, 0.62, 0.24);
-      vec3 nebB3 = t0 * vec3(0.40, 0.80, 0.70) + t1 * vec3(0.95, 0.62, 0.78) + t2 * vec3(0.28, 0.78, 1.0);
+      vec3 nebD3 = normalize(
+        t0 * vec3(0.0995, 0.5970, 0.7960)
+        + t1 * vec3(-0.22, -0.64, 0.73)
+        + t2 * vec3(0.18, -0.58, -0.79)
+        + t3 * vec3(-0.34, 0.58, -0.74)
+        + t4 * vec3(0.28, 0.64, -0.71)
+      );
+      vec3 nebA3 = t0 * vec3(0.75, 0.30, 0.80) + t1 * vec3(0.55, 0.42, 0.94) + t2 * vec3(0.95, 0.62, 0.24)
+        + t3 * vec3(0.34, 0.86, 0.96) + t4 * vec3(0.94, 0.42, 0.48);
+      vec3 nebB3 = t0 * vec3(0.40, 0.80, 0.70) + t1 * vec3(0.95, 0.62, 0.78) + t2 * vec3(0.28, 0.78, 1.0)
+        + t3 * vec3(0.68, 0.96, 0.62) + t4 * vec3(0.64, 0.72, 1.0);
 
-      col += nebula(d, nebD1, nebA1, nebB1, t0 * 3.0 + t1 * 5.0 + t2 * 7.0) * galacticMask;
-      col += nebula(d, nebD2, nebA2, nebB2, t0 * 11.0 + t1 * 14.0 + t2 * 19.0) * galacticMask;
-      col += nebula(d, nebD3, nebA3, nebB3, t0 * 23.0 + t1 * 27.0 + t2 * 29.0) * galacticMask;
+      col += nebula(d, nebD1, nebA1, nebB1, t0 * 3.0 + t1 * 5.0 + t2 * 7.0 + t3 * 9.0 + t4 * 12.0) * galacticMask;
+      col += nebula(d, nebD2, nebA2, nebB2, t0 * 11.0 + t1 * 14.0 + t2 * 19.0 + t3 * 21.0 + t4 * 25.0) * galacticMask;
+      col += nebula(d, nebD3, nebA3, nebB3, t0 * 23.0 + t1 * 27.0 + t2 * 29.0 + t3 * 33.0 + t4 * 37.0) * galacticMask;
       #ifndef LITE
       col += nebula(d, vec3(-0.3002, -0.2502, 0.9207), nebA1 * 0.9 + 0.1, nebB2, 31.0) * galacticMask * 0.85;
       #endif
     }
 
     // 远处伴星系（依星域变换方向与形态，保持着色器体积极简）
-    vec3 galD1 = normalize(t0 * vec3(-0.4491, 0.2794, -0.8483) + t1 * vec3(-0.32, 0.44, -0.84) + t2 * vec3(0.64, 0.24, 0.73));
-    vec3 galD2 = normalize(t0 * vec3(0.6178, 0.1196, 0.7772) + t1 * vec3(0.54, -0.26, 0.80) + t2 * vec3(-0.48, 0.32, -0.82));
+    vec3 galD1 = normalize(
+      t0 * vec3(-0.4491, 0.2794, -0.8483)
+      + t1 * vec3(-0.32, 0.44, -0.84)
+      + t2 * vec3(0.64, 0.24, 0.73)
+      + t3 * vec3(-0.62, 0.26, 0.74)
+      + t4 * vec3(0.42, -0.44, -0.79)
+    );
+    vec3 galD2 = normalize(
+      t0 * vec3(0.6178, 0.1196, 0.7772)
+      + t1 * vec3(0.54, -0.26, 0.80)
+      + t2 * vec3(-0.48, 0.32, -0.82)
+      + t3 * vec3(0.58, 0.38, -0.72)
+      + t4 * vec3(-0.52, -0.28, 0.81)
+    );
     col += galaxy(d, galD1, 0.028, 0.56, 2.4, 0.24);
     col += barredGalaxy(d, galD2, 0.036, -0.52, 1.6, 0.25);
     #ifndef LITE
@@ -337,10 +387,21 @@ export const holeFragment = /* glsl */ `
     float coreSpot = pow(align, 12.0) * 0.30;
     float halo = pow(align, 4.0) * 0.22;
     float wisp = 0.45 + 0.55 * fbm3lo(normalize(d) * 5.2 + vec3(uTime * 0.02));
-    vec3 innerCol = uHoleTheme < 1.5 ? vec3(0.95, 0.78, 0.86) : vec3(0.74, 0.90, 1.0);
-    vec3 outerCol = uHoleTheme < 0.5
-      ? vec3(0.88, 0.56, 0.36)
-      : (uHoleTheme < 1.5 ? vec3(0.85, 0.42, 0.72) : vec3(0.32, 0.74, 0.96));
+    float t0 = 1.0 - step(0.5, uHoleTheme);
+    float t1 = step(0.5, uHoleTheme) * (1.0 - step(1.5, uHoleTheme));
+    float t2 = step(1.5, uHoleTheme) * (1.0 - step(2.5, uHoleTheme));
+    float t3 = step(2.5, uHoleTheme) * (1.0 - step(3.5, uHoleTheme));
+    float t4 = step(3.5, uHoleTheme);
+    vec3 innerCol = t0 * vec3(0.96, 0.88, 0.78)
+      + t1 * vec3(0.95, 0.78, 0.86)
+      + t2 * vec3(0.74, 0.90, 1.0)
+      + t3 * vec3(0.80, 0.98, 0.88)
+      + t4 * vec3(0.98, 0.84, 0.82);
+    vec3 outerCol = t0 * vec3(0.88, 0.56, 0.36)
+      + t1 * vec3(0.85, 0.42, 0.72)
+      + t2 * vec3(0.32, 0.74, 0.96)
+      + t3 * vec3(0.24, 0.88, 0.64)
+      + t4 * vec3(0.96, 0.52, 0.36);
     return (innerCol * coreSpot + outerCol * halo * wisp) * gain;
   }
 
@@ -406,20 +467,28 @@ export const holeFragment = /* glsl */ `
     dens *= rings;
     dens *= smoothstep(RIN, RIN + 0.22, r) * (1.0 - smoothstep(ROUT * 0.36, ROUT, r));
 
-    // 黑体辐射温度梯度：支持基地暖金（0）、画廊玫瑰金紫（1）、游戏电离青金（2）三种主题
+    // 黑体辐射温度梯度：基地暖金(0) / 画廊玫瑰金紫(1) / 游戏电离青金(2) / 标签翡翠玉白(3) / 关于暮色珊瑚(4)
     float t = pow(RIN / r, 0.86);
-    vec3 outCol = vec3(0.48, 0.11, 0.03);
-    vec3 midCol = vec3(1.0, 0.50, 0.16);
-    vec3 inCol = vec3(1.0, 0.95, 0.88);
-    if (uHoleTheme > 0.5 && uHoleTheme < 1.5) {
-      outCol = vec3(0.32, 0.08, 0.34);
-      midCol = vec3(0.98, 0.44, 0.72);
-      inCol = vec3(1.0, 0.93, 0.98);
-    } else if (uHoleTheme >= 1.5) {
-      outCol = vec3(0.05, 0.24, 0.48);
-      midCol = vec3(0.24, 0.84, 1.0);
-      inCol = vec3(1.0, 0.94, 0.76);
-    }
+    float t0 = 1.0 - step(0.5, uHoleTheme);
+    float t1 = step(0.5, uHoleTheme) * (1.0 - step(1.5, uHoleTheme));
+    float t2 = step(1.5, uHoleTheme) * (1.0 - step(2.5, uHoleTheme));
+    float t3 = step(2.5, uHoleTheme) * (1.0 - step(3.5, uHoleTheme));
+    float t4 = step(3.5, uHoleTheme);
+    vec3 outCol = t0 * vec3(0.48, 0.11, 0.03)
+      + t1 * vec3(0.32, 0.08, 0.34)
+      + t2 * vec3(0.05, 0.24, 0.48)
+      + t3 * vec3(0.04, 0.28, 0.22)
+      + t4 * vec3(0.36, 0.08, 0.14);
+    vec3 midCol = t0 * vec3(1.0, 0.50, 0.16)
+      + t1 * vec3(0.98, 0.44, 0.72)
+      + t2 * vec3(0.24, 0.84, 1.0)
+      + t3 * vec3(0.22, 0.92, 0.68)
+      + t4 * vec3(1.0, 0.48, 0.28);
+    vec3 inCol = t0 * vec3(1.0, 0.95, 0.88)
+      + t1 * vec3(1.0, 0.93, 0.98)
+      + t2 * vec3(1.0, 0.94, 0.76)
+      + t3 * vec3(0.96, 1.0, 0.90)
+      + t4 * vec3(1.0, 0.94, 0.90);
     vec3 col = mix(outCol, midCol, smoothstep(0.16, 0.48, t));
     col = mix(col, inCol, smoothstep(0.52, 0.94, t));
 
@@ -535,12 +604,21 @@ export const holeFragment = /* glsl */ `
     }
 
     float keep = swallowed ? alpha : 1.0;
-    vec3 hazeTint = uHoleTheme < 0.5
-      ? vec3(1.0, 0.58, 0.32)
-      : (uHoleTheme < 1.5 ? vec3(0.95, 0.45, 0.78) : vec3(0.32, 0.82, 1.0));
-    vec3 jetTint = uHoleTheme < 0.5
-      ? vec3(0.45, 0.62, 1.0)
-      : (uHoleTheme < 1.5 ? vec3(0.76, 0.52, 1.0) : vec3(1.0, 0.72, 0.32));
+    float t0 = 1.0 - step(0.5, uHoleTheme);
+    float t1 = step(0.5, uHoleTheme) * (1.0 - step(1.5, uHoleTheme));
+    float t2 = step(1.5, uHoleTheme) * (1.0 - step(2.5, uHoleTheme));
+    float t3 = step(2.5, uHoleTheme) * (1.0 - step(3.5, uHoleTheme));
+    float t4 = step(3.5, uHoleTheme);
+    vec3 hazeTint = t0 * vec3(1.0, 0.58, 0.32)
+      + t1 * vec3(0.95, 0.45, 0.78)
+      + t2 * vec3(0.32, 0.82, 1.0)
+      + t3 * vec3(0.28, 0.92, 0.66)
+      + t4 * vec3(1.0, 0.46, 0.30);
+    vec3 jetTint = t0 * vec3(0.45, 0.62, 1.0)
+      + t1 * vec3(0.76, 0.52, 1.0)
+      + t2 * vec3(1.0, 0.72, 0.32)
+      + t3 * vec3(0.46, 0.82, 1.0)
+      + t4 * vec3(0.62, 0.72, 1.0);
     if (!hideHole) {
       col += haze * hazeTint * 0.085 * keep * (1.0 + uDive * 2.5);
       col += jet * jetTint * 0.115 * keep * (1.0 + uDive * 2.0);
@@ -563,8 +641,16 @@ export const holeFragment = /* glsl */ `
         float d2 = (minR - 1.62) * 10.0;
         float pRing1 = exp(-d1 * d1) * 3.1 * ringAsym;
         float pRing2 = exp(-d2 * d2) * 0.85 * ringAsym;
-        vec3 ringInner = uHoleTheme < 0.5 ? vec3(1.0, 0.92, 0.80) : (uHoleTheme < 1.5 ? vec3(1.0, 0.88, 0.96) : vec3(0.86, 0.97, 1.0));
-        vec3 ringOuter = uHoleTheme < 0.5 ? vec3(1.0, 0.66, 0.38) : (uHoleTheme < 1.5 ? vec3(0.95, 0.48, 0.76) : vec3(0.35, 0.82, 1.0));
+        vec3 ringInner = t0 * vec3(1.0, 0.92, 0.80)
+          + t1 * vec3(1.0, 0.88, 0.96)
+          + t2 * vec3(0.86, 0.97, 1.0)
+          + t3 * vec3(0.92, 1.0, 0.94)
+          + t4 * vec3(1.0, 0.92, 0.88);
+        vec3 ringOuter = t0 * vec3(1.0, 0.66, 0.38)
+          + t1 * vec3(0.95, 0.48, 0.76)
+          + t2 * vec3(0.35, 0.82, 1.0)
+          + t3 * vec3(0.32, 0.94, 0.68)
+          + t4 * vec3(1.0, 0.50, 0.34);
         col += (1.0 - alpha * 0.75) * (ringInner * pRing1 + ringOuter * pRing2);
         float d3 = (minR - 1.72) * 3.4;
         col += (1.0 - alpha) * jetTint * exp(-d3 * d3) * 0.09 * (1.0 + uHover * 0.9);
@@ -670,12 +756,21 @@ export const dustFragment = /* glsl */ `
     float d = length(c);
     if (d > 0.5) discard;
     float core = smoothstep(0.5, 0.0, d);
-    vec3 cool = uHoleTheme < 0.5
-      ? vec3(1.0, 0.55, 0.3)
-      : (uHoleTheme < 1.5 ? vec3(0.92, 0.44, 0.78) : vec3(0.26, 0.82, 1.0));
-    vec3 warm = uHoleTheme < 0.5
-      ? vec3(1.0, 0.9, 0.78)
-      : (uHoleTheme < 1.5 ? vec3(1.0, 0.9, 0.96) : vec3(1.0, 0.94, 0.76));
+    float t0 = 1.0 - step(0.5, uHoleTheme);
+    float t1 = step(0.5, uHoleTheme) * (1.0 - step(1.5, uHoleTheme));
+    float t2 = step(1.5, uHoleTheme) * (1.0 - step(2.5, uHoleTheme));
+    float t3 = step(2.5, uHoleTheme) * (1.0 - step(3.5, uHoleTheme));
+    float t4 = step(3.5, uHoleTheme);
+    vec3 cool = t0 * vec3(1.0, 0.55, 0.3)
+      + t1 * vec3(0.92, 0.44, 0.78)
+      + t2 * vec3(0.26, 0.82, 1.0)
+      + t3 * vec3(0.24, 0.92, 0.66)
+      + t4 * vec3(1.0, 0.48, 0.32);
+    vec3 warm = t0 * vec3(1.0, 0.9, 0.78)
+      + t1 * vec3(1.0, 0.9, 0.96)
+      + t2 * vec3(1.0, 0.94, 0.76)
+      + t3 * vec3(0.92, 1.0, 0.90)
+      + t4 * vec3(1.0, 0.93, 0.88);
     vec3 col = mix(cool, warm, clamp(vHeat + vSeed * 0.25, 0.0, 1.0));
     float a = core * core * vFade * (0.22 + 0.78 * uDive) * uDustAlpha;
     gl_FragColor = vec4(col * a, a);

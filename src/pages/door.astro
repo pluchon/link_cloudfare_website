@@ -286,7 +286,7 @@ const tags = [
       tags.map((t) =>
         t.href ? (
           <a class:list={['callout__label', t.id === 'hole' && 'callout__label--hole']} data-tag-label={t.id} href={t.href}>
-            {t.text}
+            <span data-tag-text={t.id}>{t.text}</span>
             {t.sub && <small>{t.sub}</small>}
           </a>
         ) : (
@@ -1058,7 +1058,7 @@ const tags = [
       }
 
       .callout__label small {
-        margin-left: 0.5em;
+        margin-left: 0.95em;
         font-family: var(--door-din);
         font-size: 0.6rem;
         letter-spacing: 0.16em;

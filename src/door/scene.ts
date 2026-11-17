@@ -133,7 +133,7 @@ const IMAGE_LAYER = 1;
 const BASE_MIN_DIST = 6;
 const BASE_MAX_DIST = 240;
 const SCALE_SPLIT = 0.35;
-const MAP_OVERVIEW_POS = new THREE.Vector3(24, 108, 198);
+const MAP_OVERVIEW_POS = new THREE.Vector3(22, 114, 224);
 const MAP_MIN_DIST = 42;
 const MAP_MAX_DIST = 460;
 
@@ -467,7 +467,8 @@ export function mountDoor(options: DoorOptions): () => void {
   const offset = new THREE.Vector3();
   const spherical = new THREE.Spherical();
   const sm = options.starmap;
-  const baseHoleHtml = options.hole.label.innerHTML;
+  const holeTextEl = options.hole.label.querySelector<HTMLElement>('[data-tag-text]') ?? options.hole.label;
+  const baseHoleText = holeTextEl.textContent ?? '';
   const starNodeMap = new Map(STAR_NODES.map((n) => [n.id, n]));
   const starPosVec = new Map(STAR_NODES.map((n) => [n.id, new THREE.Vector3(...n.position)]));
   const diskTiltQuat = new THREE.Quaternion();
@@ -734,6 +735,9 @@ export function mountDoor(options: DoorOptions): () => void {
     activeGalaxy = null;
     mapFocus = null;
     enterMapGoal.copy(goalPos);
+    if (goalPos === MAP_OVERVIEW_POS && camera.aspect < 1) {
+      enterMapGoal.multiplyScalar(1.22);
+    }
     settleControls();
     controls.enabled = false;
     canvas.style.cursor = '';
@@ -766,7 +770,7 @@ export function mountDoor(options: DoorOptions): () => void {
     holeScale = 1;
     holeTheme = 0;
     setDiskTilt(0, 0);
-    options.hole.label.innerHTML = baseHoleHtml;
+    holeTextEl.textContent = baseHoleText;
     labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
     const theta = Math.atan2(camera.position.x, camera.position.z);
     spherical.set(THREE.MathUtils.clamp(targetDist, BASE_MIN_DIST, BASE_MAX_DIST), FREE_PHI, theta);
@@ -822,7 +826,7 @@ export function mountDoor(options: DoorOptions): () => void {
     holeTheme = node.holeTheme ?? 0;
     const [rx, rz] = node.diskTilt ?? [0, 0];
     setDiskTilt(rx, rz);
-    options.hole.label.innerHTML = `进入${node.targetLabel ?? node.name}<small>EVENT HORIZON</small>`;
+    holeTextEl.textContent = `进入${node.targetLabel ?? node.name}`;
     labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
     settleControls();
     controls.enabled = false;
@@ -1288,7 +1292,13 @@ export function mountDoor(options: DoorOptions): () => void {
       right.setFromMatrixColumn(camera.matrixWorld, 0);
       rim.copy(holeCenter).addScaledVector(right, 2.9 * holeScale).project(camera);
       const radiusPx = Math.abs((rim.x * 0.5 + 0.5) * canvas.clientWidth - s.x);
-      drawTag(options.hole, s.x + radiusPx * 0.72, s.y - radiusPx * 0.72, 46);
+      if (mode === 'galaxy') {
+        const dotX = THREE.MathUtils.clamp(s.x + radiusPx * 0.16, 56, canvas.clientWidth * 0.30);
+        const dotY = THREE.MathUtils.clamp(s.y - radiusPx * 0.08, 200, canvas.clientHeight * 0.50);
+        drawTag(options.hole, dotX, dotY, 24);
+      } else {
+        drawTag(options.hole, s.x + radiusPx * 0.72, Math.max(s.y - radiusPx * 0.72, 110), 46);
+      }
     }
     show(options.hole, on);
     return true;
@@ -1535,7 +1545,7 @@ export function mountDoor(options: DoorOptions): () => void {
         nucleusGlow = 0;
         holeTheme = 0;
         setDiskTilt(0, 0);
-        options.hole.label.innerHTML = baseHoleHtml;
+        holeTextEl.textContent = baseHoleText;
         labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
         mapOpacity = 1;
         cosmosMix = 1;
@@ -1801,7 +1811,7 @@ export function mountDoor(options: DoorOptions): () => void {
         if (!s) {
           show(item.tag, false);
         } else {
-          drawTag(item.tag, s.x, s.y, item.id === 'base' || item.id === 'gallery' || item.id === 'game' ? 22 : 14);
+          drawTag(item.tag, s.x, s.y, starNodeMap.get(item.id)?.kind === 'hub' ? 22 : 14);
           show(item.tag, true);
         }
       }

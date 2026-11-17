@@ -17,7 +17,7 @@ export interface StarNodeSpec {
   diskTilt?: [number, number];
 }
 
-// 三个可交互核心星系节点（画面简洁聚焦，不堆砌无关地标文字）
+// 五个可交互核心星系节点（中心基地 + 四个高度错落的外围星系枢纽，画面简洁聚焦）
 export const STAR_NODES: StarNodeSpec[] = [
   {
     id: 'base',
@@ -35,13 +35,28 @@ export const STAR_NODES: StarNodeSpec[] = [
     diskTilt: [0, 0],
   },
   {
+    id: 'tags',
+    kind: 'hub',
+    name: '标签',
+    code: 'SDSS-J1237 · 翡翠棱镜核',
+    sub: 'TAGS',
+    scaleLabel: '82 MPC · 环状星系奇点',
+    position: [46, 58, -76],
+    color: '#6ee7b7',
+    href: '/tags/',
+    targetLabel: '标签星图',
+    holeTheme: 3,
+    holeScale: 1.92,
+    diskTilt: [0.18, 0.22],
+  },
+  {
     id: 'gallery',
     kind: 'hub',
     name: '画廊',
     code: 'NGC-2026G · 玫瑰星云核心',
     sub: 'GALLERY',
     scaleLabel: '58 MPC · 旋涡星系奇点',
-    position: [-62, 54, -34],
+    position: [-68, 40, -40],
     color: '#ff9ec7',
     href: '/gallery/',
     targetLabel: '诺诺的画廊',
@@ -50,13 +65,28 @@ export const STAR_NODES: StarNodeSpec[] = [
     diskTilt: [0.24, -0.15],
   },
   {
+    id: 'about',
+    kind: 'hub',
+    name: '关于',
+    code: 'NGC-2402 · 暮色星烬档案核',
+    sub: 'ABOUT',
+    scaleLabel: '49 MPC · 透镜星系奇点',
+    position: [-60, -26, 22],
+    color: '#ff9d76',
+    href: '/about/',
+    targetLabel: '关于本站',
+    holeTheme: 4,
+    holeScale: 1.88,
+    diskTilt: [-0.22, -0.14],
+  },
+  {
     id: 'game',
     kind: 'hub',
     name: '游戏',
     code: 'M-4321A · 电离棒旋核心',
     sub: 'ARCADE',
     scaleLabel: '64 MPC · 棒旋星系奇点',
-    position: [68, -48, 34],
+    position: [64, -50, 30],
     color: '#7ce2ff',
     href: '/game/',
     targetLabel: '游戏大厅',
@@ -533,26 +563,33 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     return [x, y, z];
   };
 
-  // 拉尼亚凯亚三条主要星际引力流弧线
+  // 拉尼亚凯亚四条星际引力流弧线：串联中心基地与四个高度错落的核心星系枢纽
   const laniakeaStream = (branch: number, t: number): [number, number, number] => {
     if (branch === 0) {
       return [
-        THREE.MathUtils.lerp(-18, 92, t) + Math.sin(t * 4.2) * 8,
-        THREE.MathUtils.lerp(4, 34, t) + Math.cos(t * 3.1) * 7,
-        THREE.MathUtils.lerp(8, -56, t) - Math.sin(t * 2.6) * 10,
+        THREE.MathUtils.lerp(-8, 88, t) + Math.sin(t * 3.8) * 7,
+        THREE.MathUtils.lerp(4, 76, t) + Math.sin(t * Math.PI) * 14,
+        THREE.MathUtils.lerp(6, -114, t) - Math.sin(t * 2.4) * 9,
       ];
     }
     if (branch === 1) {
       return [
-        THREE.MathUtils.lerp(-104, 10, t) + Math.cos(t * 3.4) * 7,
-        THREE.MathUtils.lerp(-16, 48, t) + Math.sin(t * 3.2) * 6,
-        THREE.MathUtils.lerp(66, -24, t) + Math.sin(t * 2.5) * 9,
+        THREE.MathUtils.lerp(-112, 8, t) + Math.cos(t * 3.2) * 7,
+        THREE.MathUtils.lerp(12, 48, t) + Math.sin(t * 3.1) * 9,
+        THREE.MathUtils.lerp(42, -84, t) + Math.sin(t * 2.5) * 9,
+      ];
+    }
+    if (branch === 2) {
+      return [
+        THREE.MathUtils.lerp(10, 112, t) + Math.sin(t * 3.0) * 6,
+        THREE.MathUtils.lerp(-4, -68, t) - Math.sin(t * Math.PI) * 10,
+        THREE.MathUtils.lerp(-2, 64, t) - Math.sin(t * 2.4) * 8,
       ];
     }
     return [
-      THREE.MathUtils.lerp(18, 108, t) + Math.sin(t * 3.0) * 6,
-      THREE.MathUtils.lerp(-6, -48, t) + Math.cos(t * 2.8) * 5,
-      THREE.MathUtils.lerp(-4, 72, t) - Math.sin(t * 2.4) * 8,
+      THREE.MathUtils.lerp(-8, -114, t) + Math.cos(t * 2.8) * 6,
+      THREE.MathUtils.lerp(-2, -44, t) - Math.sin(t * Math.PI) * 6,
+      THREE.MathUtils.lerp(2, 58, t) + Math.sin(t * 2.4) * 7,
     ];
   };
 
@@ -596,8 +633,10 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     });
   }
 
-  const streamVeilPerBranch = lite ? 10 : 20;
-  for (let branch = 0; branch < 3; branch++) {
+  const streamVeilPerBranch = lite ? 8 : 15;
+  const streamWarm = ['#7ce8bd', '#e284bc', '#eb986c', '#ff9b78'];
+  const streamCool = ['#6cbdff', '#8a9eff', '#5dd6ff', '#8ea0ff'];
+  for (let branch = 0; branch < 4; branch++) {
     for (let i = 0; i < streamVeilPerBranch; i++) {
       const t = (i + 0.5) / streamVeilPerBranch;
       const p0 = new THREE.Vector3(...laniakeaStream(branch, Math.max(t - 0.025, 0)));
@@ -612,19 +651,21 @@ export function buildStarMap(lite: boolean): StarMapHandle {
         len: 22 + rand() * 14,
         wid: 11 + rand() * 8,
         roll: ((branch * 2 + i) * 1.15) % Math.PI,
-        warm: branch === 1 ? '#e284bc' : '#eb986c',
-        cool: branch === 2 ? '#5dd6ff' : '#6ca4ff',
+        warm: streamWarm[branch],
+        cool: streamCool[branch],
         seed: 40 + branch * 17 + i * 0.41,
-        gain: lite ? 0.25 : 0.21,
+        gain: lite ? 0.24 : 0.20,
       });
     }
   }
 
-  // 三座交互中心外围也点亮柔和深空星云晕（令核心星系与纤维丝自然焊接）
+  // 五座交互中心外围也点亮柔和深空星云晕（令核心星系与纤维丝自然焊接）
   const hubVeils: [StarNodeSpec, string, string][] = [
     [STAR_NODES[0], '#ffb46e', '#6ea4ff'],
-    [STAR_NODES[1], '#f078b0', '#7ca8ff'],
-    [STAR_NODES[2], '#ffd078', '#52dcff'],
+    [STAR_NODES[1], '#6ee7b7', '#7dd3fc'],
+    [STAR_NODES[2], '#f078b0', '#7ca8ff'],
+    [STAR_NODES[3], '#ff9671', '#8b9cf6'],
+    [STAR_NODES[4], '#ffd078', '#52dcff'],
   ];
   for (let i = 0; i < hubVeils.length; i++) {
     const [node, warm, cool] = hubVeils[i];
@@ -751,9 +792,15 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   pushTendril(sloanSpine, '#f0a69a', 2.4, 0.2);
   pushTendril(sloanSpine, '#88d4ff', 3.2, 2.1);
   pushTendril(sloanSpine, '#a6b8ff', 2.8, 4.0);
-  for (let b = 0; b < 3; b++) {
-    pushTendril((t) => laniakeaStream(b, t), b === 1 ? '#e49ad0' : '#7ecaff', 2.1, b * 1.7);
-    pushTendril((t) => laniakeaStream(b, t), '#ffd6a2', 1.8, b * 1.7 + 2.4);
+  const branchTendrilColors: [string, string][] = [
+    ['#6ee7b7', '#9ae2ff'],
+    ['#e49ad0', '#96c4ff'],
+    ['#7ecaff', '#ffd6a2'],
+    ['#ff9d76', '#a8b6ff'],
+  ];
+  for (let b = 0; b < 4; b++) {
+    pushTendril((t) => laniakeaStream(b, t), branchTendrilColors[b][0], 2.1, b * 1.7);
+    pushTendril((t) => laniakeaStream(b, t), branchTendrilColors[b][1], 1.8, b * 1.7 + 2.4);
   }
 
   const tendrilGeo = new THREE.BufferGeometry();
@@ -777,7 +824,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   tendrilLines.frustumCulled = false;
   group.add(tendrilLines);
 
-  // 4. 精选且尺度协调的 3D 程序化星系群（3 核心枢纽 + 11 伴星系）
+  // 4. 精选且尺度协调的 3D 程序化星系群（5 核心枢纽 + 12 伴星系）
   interface GalaxyDef {
     pos: [number, number, number];
     size: number;
@@ -802,6 +849,16 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     },
     {
       pos: STAR_NODES[1].position,
+      size: 15.0,
+      euler: [Math.PI * 0.32, -0.24, 0.32],
+      core: '#ecfff5',
+      arm: '#6ee7b7',
+      rim: '#93c5fd',
+      type: 2,
+      seed: 0.31,
+    },
+    {
+      pos: STAR_NODES[2].position,
       size: 14.5,
       euler: [Math.PI * 0.34, 0.3, -0.22],
       core: '#fff2f8',
@@ -811,7 +868,17 @@ export function buildStarMap(lite: boolean): StarMapHandle {
       seed: 0.47,
     },
     {
-      pos: STAR_NODES[2].position,
+      pos: STAR_NODES[3].position,
+      size: 13.8,
+      euler: [Math.PI * 0.40, -0.28, -0.18],
+      core: '#fff2e4',
+      arm: '#ff9671',
+      rim: '#a5b4fc',
+      type: 0,
+      seed: 0.65,
+    },
+    {
+      pos: STAR_NODES[4].position,
       size: 14.5,
       euler: [-Math.PI * 0.36, -0.34, 0.25],
       core: '#fff7de',
@@ -843,9 +910,9 @@ export function buildStarMap(lite: boolean): StarMapHandle {
       seed: 1.5 + i * 0.85,
     });
   }
-  for (let i = 0; i < 5; i++) {
-    const branch = i % 3;
-    const t = 0.25 + (i / 5) * 0.62;
+  for (let i = 0; i < 6; i++) {
+    const branch = i % 4;
+    const t = 0.25 + (i / 6) * 0.62;
     const [lx, ly, lz] = laniakeaStream(branch, t);
     const pal = palettes[(i + 1) % palettes.length];
     galaxyDefs.push({
@@ -987,7 +1054,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   // B. 拉尼亚凯亚星流中的星点（34%）
   const streamCount = Math.floor(total * 0.34);
   for (let i = 0; i < streamCount; i++) {
-    const branch = i % 3;
+    const branch = i % 4;
     const t = rand();
     const [lx, ly, lz] = laniakeaStream(branch, t);
     const spread = 2.6 + Math.sin(t * Math.PI) * 3.0;
@@ -1094,7 +1161,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
       y = sy + (rand() - 0.5) * 5;
       z = sz + (rand() - 0.5) * 5;
     } else {
-      const branch = i % 3;
+      const branch = i % 4;
       const t = 0.28 + ((i - Math.floor(pillarCount * 0.45)) / (pillarCount * 0.55)) * 0.62;
       const [lx, ly, lz] = laniakeaStream(branch, t);
       x = lx;

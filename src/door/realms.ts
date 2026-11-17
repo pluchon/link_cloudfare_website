@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { warpBeta, warpCenter, warpGlsl, warpImage, warpMaterial, warpScale } from './warp';
 
-// 各星域核内的轻量化 3D 轨道景物（基地中继浮标阵 / 画廊晶体星碑 / 游戏能量航标塔）：
+// 各星域核内的轻量化 3D 轨道景物（基地中继浮标阵 / 画廊晶体星碑 / 游戏能量航标塔 / 标签光谱棱板 / 关于浑仪星环）：
 // 纯代码数学生成低面数几何体（零外部模型下载、零加载等待、< 1ms 初始化），
 // 每个星域仅用 1 次 InstancedMesh 绘制调用 + 2 组虚线导引环，自动服从引力透镜与深度遮挡。
 
@@ -33,6 +33,7 @@ const realmFragment = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vColor;
   varying vec3 vWarpTint;
+  uniform vec3 uWarpCenter;
   uniform vec3 uLightCol;
   uniform vec3 uRimCol;
   uniform float uGlowGain;
@@ -106,6 +107,27 @@ function pylonGeometry(): THREE.BufferGeometry {
     const flare = y > 0.6 ? 0.55 : 1.0;
     pos.setXYZ(i, x * flare, y, z * flare);
   }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// 六角光谱索引棱板（标签：切面索引石板）
+function prismGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.CylinderGeometry(0.56, 0.44, 1.8, 6, 1);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    pos.setXYZ(i, x * 1.15, y, z * 0.34);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// 切面天文浑仪星环（关于：档案天文仪环）
+function astrolabeGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.TorusGeometry(0.92, 0.14, 4, 10);
   geo.computeVertexNormals();
   return geo;
 }
@@ -307,7 +329,63 @@ export function buildRealmProps(lite: boolean): RealmPropsHandle {
     { bobAmp: 0.35, bobRate: 0.8, spinRate: [0, 0.32, 0] },
   );
 
-  const sets = [baseSet, galSet, gameSet];
+  // ---- 3. 标签星系：翡翠光谱索引棱板 + 青碧/星蓝轨线 ----
+  const rTags = rng(1237);
+  const tagsCount = lite ? 14 : 24;
+  const tagsSpecs: OrbitalItem[] = Array.from({ length: tagsCount }, (_, i) => {
+    const nearScale = i < 6;
+    const a = (i / tagsCount) * Math.PI * 2 + (rTags() - 0.5) * 0.24;
+    const rad = nearScale ? 11.4 + rTags() * 4.4 : 20 + rTags() * 24;
+    const y = (rTags() - 0.5) * (nearScale ? 2.4 : 7.0);
+    const sc = nearScale ? 0.15 + rTags() * 0.12 : 0.42 + rTags() * 0.54;
+    const speed = 0.048 * Math.pow(20 / rad, 1.4);
+    const spin: [number, number, number] = [rTags() * 0.5 - 0.25, rTags() * 6, rTags() * 0.5 - 0.25];
+    return { a, rad, y, sc, speed, spin };
+  });
+  const tagsSet = makeSet(
+    prismGeometry(),
+    [0.55, 1.15, 0.88],
+    0x52f2b8,
+    1.15,
+    0xcffce8,
+    tagsSpecs,
+    (i) => (i % 3 === 0 ? new THREE.Color(0xaad8ff) : new THREE.Color(0x82f4c4)),
+    [
+      { radius: 22, tilt: [0.22, 0.14], hex: 0x6ee7b7, alpha: 0.24 },
+      { radius: 36, tilt: [-0.18, -0.22], hex: 0x93c5fd, alpha: 0.17 },
+    ],
+    { bobAmp: 0.42, bobRate: 0.72, spinRate: [0.08, 0.26, 0.05] },
+  );
+
+  // ---- 4. 关于星系：暮色天文浑仪环 + 珊瑚/月靛轨线 ----
+  const rAbout = rng(2402);
+  const aboutCount = lite ? 12 : 22;
+  const aboutSpecs: OrbitalItem[] = Array.from({ length: aboutCount }, (_, i) => {
+    const nearScale = i < 6;
+    const a = (i / aboutCount) * Math.PI * 2 + (rAbout() - 0.5) * 0.26;
+    const rad = nearScale ? 11.2 + rAbout() * 4.0 : 19 + rAbout() * 23;
+    const y = (rAbout() - 0.5) * (nearScale ? 2.2 : 6.4);
+    const sc = nearScale ? 0.15 + rAbout() * 0.13 : 0.44 + rAbout() * 0.52;
+    const speed = 0.040 * Math.pow(20 / rad, 1.4);
+    const spin: [number, number, number] = [rAbout() * 6, rAbout() * 6, rAbout() * 6];
+    return { a, rad, y, sc, speed, spin };
+  });
+  const aboutSet = makeSet(
+    astrolabeGeometry(),
+    [1.16, 0.72, 0.56],
+    0xff8a65,
+    1.1,
+    0xf7d8cc,
+    aboutSpecs,
+    (i) => (i % 3 === 0 ? new THREE.Color(0xb4c2ff) : new THREE.Color(0xffb08e)),
+    [
+      { radius: 21, tilt: [-0.20, -0.14], hex: 0xff9d76, alpha: 0.23 },
+      { radius: 35, tilt: [0.24, 0.16], hex: 0xa5b4fc, alpha: 0.17 },
+    ],
+    { bobAmp: 0.36, bobRate: 0.54, spinRate: [0.16, 0.18, 0.12] },
+  );
+
+  const sets = [baseSet, galSet, gameSet, tagsSet, aboutSet];
   for (const set of sets) group.add(set.container);
 
   const dummy = new THREE.Object3D();
@@ -320,7 +398,7 @@ export function buildRealmProps(lite: boolean): RealmPropsHandle {
     group.position.copy(center);
     group.scale.setScalar(scale);
 
-    const activeIdx = theme < 0.5 ? 0 : theme < 1.5 ? 1 : 2;
+    const activeIdx = Math.min(sets.length - 1, Math.max(0, Math.round(theme)));
     for (let k = 0; k < sets.length; k++) {
       sets[k].container.visible = k === activeIdx;
     }
