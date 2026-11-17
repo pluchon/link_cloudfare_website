@@ -853,9 +853,39 @@ export function mountDoor(options: DoorOptions): () => void {
 
   function returnToStarMap() {
     if (mode !== 'galaxy' && mode !== 'flyingGalaxy') return;
+    enterMapGoal.copy(MAP_OVERVIEW_POS);
+    if (camera.aspect < 1) {
+      enterMapGoal.multiplyScalar(1.22);
+    }
     settleControls();
     controls.enabled = false;
     canvas.style.cursor = '';
+    if (still) {
+      activeGalaxy = null;
+      holeCenter.copy(ORIGIN);
+      holeScale = 1;
+      holeAlpha = 0;
+      dustAlpha = 0;
+      nucleusGlow = 0;
+      holeTheme = 0;
+      setDiskTilt(0, 0);
+      holeTextEl.textContent = baseHoleText;
+      labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
+      mapOpacity = 1;
+      cosmosMix = 1;
+      camera.position.copy(enterMapGoal);
+      controls.target.copy(ORIGIN);
+      camera.fov = baseFov();
+      camera.updateProjectionMatrix();
+      controls.enableZoom = true;
+      controls.enablePan = true;
+      controls.minDistance = MAP_MIN_DIST;
+      controls.maxDistance = MAP_MAX_DIST;
+      controls.enabled = true;
+      controls.update();
+      setMode('starmap');
+      return;
+    }
     setMode('enteringMap');
   }
 
@@ -1702,12 +1732,14 @@ export function mountDoor(options: DoorOptions): () => void {
       }
     }
 
-    // 基地局域物体：仅在基地近景或返回途中更新和显示；深空星图和星系核心时隐藏
+    // 基地局域物体：仅在基地近景或从基地退回星图、基地黑洞尚未消退时显示；
+    // 在斯隆长城、其他星系或从其他星系返回斯隆长城全览的整段航行中全程隐藏
     const inCosmos =
       mode === 'starmap' ||
       mode === 'galaxy' ||
       mode === 'flyingGalaxy' ||
       mapOpacity > 0.55 ||
+      (mode === 'enteringMap' && (activeGalaxy !== null || holeAlpha < 0.25)) ||
       (mode === 'diving' && activeGalaxy !== null);
 
     if (!inCosmos) {
@@ -1778,12 +1810,19 @@ export function mountDoor(options: DoorOptions): () => void {
       copy.style.opacity = co;
     }
 
-    // 轨迹线：甲板上很淡，离开甲板就清楚一些；对接或星图模式下收起
+    // 轨迹线：甲板上很淡，离开甲板就清楚一些；对接、星图或离开基地向深空退回时收起
     const away = mode === 'free' || mode === 'leaving' ? 1 : 0;
     const nearProbe = mode === 'docked' || mode === 'docking' || mode === 'warping';
-    const trackGoal = inCosmos || mode === 'diving' ? 0 : away ? 0.18 : nearProbe ? 0.02 : 0.06;
-    trackMaterial.opacity += (trackGoal - trackMaterial.opacity) * Math.min(dt * 3, 1);
-    stationTrackMaterial.opacity += ((inCosmos ? 0 : away * 0.2) - stationTrackMaterial.opacity) * Math.min(dt * 3, 1);
+    const baseFade = inCosmos || mode === 'diving' ? 0 : mode === 'enteringMap' ? holeAlpha : 1;
+    const trackGoal = (away ? 0.18 : nearProbe ? 0.02 : 0.06) * baseFade;
+    if (inCosmos && (activeGalaxy !== null || mode === 'starmap' || mode === 'galaxy' || mode === 'flyingGalaxy')) {
+      trackMaterial.opacity = 0;
+      stationTrackMaterial.opacity = 0;
+    } else {
+      const rate = Math.min(dt * (mode === 'enteringMap' ? 8 : 3), 1);
+      trackMaterial.opacity += (trackGoal - trackMaterial.opacity) * rate;
+      stationTrackMaterial.opacity += (away * 0.2 * baseFade - stationTrackMaterial.opacity) * rate;
+    }
 
     hover += ((hovering && !scripted() ? 1 : 0) - hover) * Math.min(dt * 6, 1);
     holeUniforms.uHover.value = hover;
