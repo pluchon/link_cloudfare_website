@@ -14,6 +14,10 @@ const IMAGE_LAYER = 1;
 const SHIP_SCALE = 0.36;
 const BASE_SPEED = 24.0;
 const BASE_FOV = 68;
+// 曲速耗尽后要回充到这么多才能再开
+const WARP_RESUME = 0.2;
+// 遥测面板上一直在变的数字（航速、距离、曲速百分比）每隔这么多毫秒才刷一次，每帧刷在手机上像在闪
+const HUD_TEXT_INTERVAL = 160;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const DISK_N = new THREE.Vector3(0, 1, 0);
 const DISK_U = new THREE.Vector3(1, 0, 0);
@@ -123,8 +127,10 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
   // ---- WebGL 场景与渲染器 ----
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  const maxRatio = Math.min(devicePixelRatio || 1, lite ? 0.95 : 1.2);
-  let ratio = Math.min(maxRatio, lite ? 0.7 : 0.85);
+  // 手机是 2~3 倍屏，原来最高只给 0.95、起步 0.7：一个渲染像素被放大成三四格，黑洞影子边缘一级级的像方块。
+  // 现在起步 0.95、最高 1.3，帧时间扛不住时下面的自动降档会往回收
+  const maxRatio = Math.min(devicePixelRatio || 1, lite ? 1.3 : 1.2);
+  let ratio = Math.min(maxRatio, lite ? 0.95 : 0.85);
   renderer.setPixelRatio(ratio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
@@ -246,8 +252,12 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
   // ---- 顶部航程路程条的五大星系节点标注 ----
   const routeStops = new Map<string, HTMLElement>();
+  const hudStopReached = new Map<string, boolean>();
+  const hudStopLit = new Map<string, boolean>();
   function syncRouteStops() {
     routeStops.clear();
+    hudStopReached.clear();
+    hudStopLit.clear();
     routeStopsEl.innerHTML = '';
     for (const ms of track.milestones) {
       const stop = document.createElement('div');
@@ -286,6 +296,8 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   let pitchTilt = 0;
   let trackSpeed = BASE_SPEED;
   let warpEnergy = 1;
+  // 曲速耗尽后锁住，松开再按、且回到 WARP_RESUME 才能再开：否则按住曲速时能量在 0.02 上下每帧来回，模式和速度一闪一闪
+  let warpDrained = false;
   let slingshotCount = 0;
   let slingshotTimer = 0;
   let escapeCarry = 0;
@@ -704,6 +716,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     pitchTilt = 0;
     trackSpeed = BASE_SPEED;
     warpEnergy = 1;
+    warpDrained = false;
     slingshotCount = 0;
     slingshotTimer = 0;
     escapeCarry = 0;
@@ -736,7 +749,8 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     camera.updateProjectionMatrix();
 
     applyAccent(selectedShip.accent);
-    updateHUD();
+    resetTouchInput();
+    updateHUD(true);
   }
 
   function startRun() {
@@ -763,6 +777,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
     if (state === 'playing') {
       state = 'paused';
+      resetTouchInput();
       audio.setPaused(true);
       syncOverlay();
     } else if (state === 'paused') {
@@ -780,6 +795,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     outroPeakSpeed = Math.max(trackSpeed, 58);
     trackSpeed = outroPeakSpeed;
     finalElapsed = elapsed;
+    resetTouchInput();
     isWarpHeld = true;
     slingshotTimer = 0;
     track.triggerFinishGate(simTime);
@@ -892,34 +908,65 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
   };
 
-  const onPointerDown = (e: PointerEvent) => {
-    if (state !== 'playing' || !touch) return;
-    const rect = stage.getBoundingClientRect();
-    const relX = e.clientX - rect.left;
-    if (relX > rect.width * 0.56 || stickId !== null) return;
-    if ((e.target as HTMLElement).closest('button, a')) return;
-    stickId = e.pointerId;
-    stickOriginX = e.clientX;
-    stickOriginY = e.clientY;
-    stickEl.style.left = `${relX}px`;
-    stickEl.style.top = `${e.clientY - rect.top}px`;
-    stickEl.setAttribute('data-on', '1');
-    knobEl.style.transform = 'translate(-50%, -50%)';
-    stage.setPointerCapture(e.pointerId);
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== stickId) return;
-    const dx = e.clientX - stickOriginX;
-    const dy = e.clientY - stickOriginY;
-    const maxR = 46;
+  const updateStickFromPoint = (clientX: number, clientY: number) => {
+    const dx = clientX - stickOriginX;
+    const dy = clientY - stickOriginY;
+    const maxR = 44;
     const len = Math.hypot(dx, dy);
     const scale = len > maxR ? maxR / len : 1;
     const cx = dx * scale;
     const cy = dy * scale;
-    knobEl.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
+    knobEl.style.transform = `translate3d(${cx.toFixed(1)}px, ${cy.toFixed(1)}px, 0)`;
     stickSteerX = Math.abs(cx) < 5 ? 0 : cx / maxR;
     stickSteerY = Math.abs(cy) < 5 ? 0 : -cy / maxR;
+  };
+
+  const resetTouchInput = () => {
+    if (stickId !== null) {
+      try {
+        stage.releasePointerCapture(stickId);
+      } catch {
+        /* ignore */
+      }
+    }
+    stickId = null;
+    stickSteerX = 0;
+    stickSteerY = 0;
+    touchBoost = false;
+    stickEl.removeAttribute('data-on');
+    knobEl.style.transform = '';
+    turboBtn.classList.remove('is-on');
+    updateKeyVisuals();
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    if (state !== 'playing' || !touch || e.pointerType === 'mouse') return;
+    const rect = stage.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    if (relX > rect.width * 0.56 || stickId !== null) return;
+    if ((e.target as HTMLElement).closest('button, a')) return;
+
+    // 摇杆固定在左下遥测面板上方；在圆环附近按住即围绕固定圆心操控，避免底盘乱跳并遮挡左下角面板
+    const stickRect = stickEl.getBoundingClientRect();
+    const scx = stickRect.left + stickRect.width * 0.5;
+    const scy = stickRect.top + stickRect.height * 0.5;
+    const nearFixedStick = stickRect.width > 0 && Math.hypot(e.clientX - scx, e.clientY - scy) <= 78;
+
+    stickId = e.pointerId;
+    stickOriginX = nearFixedStick ? scx : e.clientX;
+    stickOriginY = nearFixedStick ? scy : e.clientY;
+    stickEl.setAttribute('data-on', '1');
+    stage.setPointerCapture(e.pointerId);
+    if (nearFixedStick) {
+      updateStickFromPoint(e.clientX, e.clientY);
+    } else {
+      knobEl.style.transform = '';
+    }
+  };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (e.pointerId !== stickId) return;
+    updateStickFromPoint(e.clientX, e.clientY);
   };
 
   const clearStick = (e: PointerEvent) => {
@@ -928,6 +975,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     stickSteerX = 0;
     stickSteerY = 0;
     stickEl.removeAttribute('data-on');
+    knobEl.style.transform = '';
     try {
       stage.releasePointerCapture(e.pointerId);
     } catch {
@@ -1021,42 +1069,95 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     rushCtx.fillRect(0, 0, w, h);
   }
 
-  function updateHUD() {
-    const progress = clamp01(trackS / track.totalLength);
-    progressBar.style.transform = `scaleX(${Math.max(0.01, progress)})`;
-    for (const ms of track.milestones) {
-      const el = routeStops.get(ms.node.id);
-      if (!el) continue;
-      if (trackS >= ms.s - 185) el.setAttribute('data-reached', '1');
-      else el.removeAttribute('data-reached');
-      if (litGalaxies.has(ms.node.id)) el.setAttribute('data-lit', '1');
-      else el.removeAttribute('data-lit');
+  let hudProgressStr = '';
+  let hudRelicsStr = '';
+  let hudSectorStr = '';
+  let hudNextStr = '';
+  let hudWarpScaleStr = '';
+  let hudWarpPctStr = '';
+  let hudTeleModeAttr = '';
+  let hudTeleModeText = '';
+  let hudSpeedStr = '';
+  let hudTextAt = -Infinity;
+
+  function updateHUD(force = false) {
+    const now = performance.now();
+    const textDue = force || now - hudTextAt >= HUD_TEXT_INTERVAL;
+    if (textDue) hudTextAt = now;
+
+    const progressStr = Math.max(0.01, clamp01(trackS / track.totalLength)).toFixed(4);
+    if (progressStr !== hudProgressStr) {
+      hudProgressStr = progressStr;
+      progressBar.style.transform = `scaleX(${progressStr})`;
     }
 
-    relicsEl.textContent = `${collectedIds.size}/${totalAtlas}`;
+    for (const ms of track.milestones) {
+      const id = ms.node.id;
+      const el = routeStops.get(id);
+      if (!el) continue;
+      const reached = trackS >= ms.s - 185;
+      if (hudStopReached.get(id) !== reached) {
+        hudStopReached.set(id, reached);
+        if (reached) el.setAttribute('data-reached', '1');
+        else el.removeAttribute('data-reached');
+      }
+      const lit = litGalaxies.has(id);
+      if (hudStopLit.get(id) !== lit) {
+        hudStopLit.set(id, lit);
+        if (lit) el.setAttribute('data-lit', '1');
+        else el.removeAttribute('data-lit');
+      }
+    }
+
+    const relicsStr = `${collectedIds.size}/${totalAtlas}`;
+    if (relicsStr !== hudRelicsStr) {
+      hudRelicsStr = relicsStr;
+      relicsEl.textContent = relicsStr;
+    }
 
     const prox = track.evaluateHub(shipPos);
-    if (prox.alpha > 0.25) {
-      sectorEl.textContent = `${prox.node.name}星域`;
-    } else {
-      sectorEl.textContent = '斯隆长城';
+    const sectorStr = prox.alpha > 0.25 ? `${prox.node.name}星域` : '斯隆长城';
+    if (sectorStr !== hudSectorStr) {
+      hudSectorStr = sectorStr;
+      sectorEl.textContent = sectorStr;
     }
 
     const nextMs = track.milestones.find((m) => m.s > trackS);
-    if (nextMs) {
-      const rem = Math.max(0, nextMs.s - trackS);
-      teleNext.textContent = `${nextMs.node.name} · ${(rem / COSMOS_SCALE).toFixed(0)} Mpc`;
-    } else {
-      const rem = Math.max(0, track.totalLength - trackS);
-      teleNext.textContent = `终点 · ${(rem / COSMOS_SCALE).toFixed(0)} Mpc`;
+    const nextStr = nextMs
+      ? `${nextMs.node.name} · ${(Math.max(0, nextMs.s - trackS) / COSMOS_SCALE).toFixed(0)} Mpc`
+      : `终点 · ${(Math.max(0, track.totalLength - trackS) / COSMOS_SCALE).toFixed(0)} Mpc`;
+    if (textDue && nextStr !== hudNextStr) {
+      hudNextStr = nextStr;
+      teleNext.textContent = nextStr;
     }
 
-    warpBar.style.transform = `scaleX(${clamp01(warpEnergy)})`;
-    warpNum.textContent = `${Math.round(warpEnergy * 100)}%`;
+    const warpScaleStr = clamp01(warpEnergy).toFixed(3);
+    if (warpScaleStr !== hudWarpScaleStr) {
+      hudWarpScaleStr = warpScaleStr;
+      warpBar.style.transform = `scaleX(${warpScaleStr})`;
+    }
+    const warpPctStr = `${Math.round(warpEnergy * 100)}%`;
+    if (textDue && warpPctStr !== hudWarpPctStr) {
+      hudWarpPctStr = warpPctStr;
+      warpNum.textContent = warpPctStr;
+    }
+
     const isSling = slingshotTimer > 0;
-    teleBox.dataset.mode = isSling ? 'sling' : 'cruise';
-    teleModeEl.textContent = isSling ? 'GRAV-ASSIST' : isWarpHeld ? 'WARP' : 'CRUISE';
-    teleSpeed.textContent = `${(trackSpeed * 1.1).toFixed(1)} c`;
+    const modeAttr = isSling ? 'sling' : 'cruise';
+    if (modeAttr !== hudTeleModeAttr) {
+      hudTeleModeAttr = modeAttr;
+      teleBox.dataset.mode = modeAttr;
+    }
+    const modeText = isSling ? 'GRAV-ASSIST' : isWarpHeld ? 'WARP' : 'CRUISE';
+    if (modeText !== hudTeleModeText) {
+      hudTeleModeText = modeText;
+      teleModeEl.textContent = modeText;
+    }
+    const speedStr = `${(trackSpeed * 1.1).toFixed(1)} c`;
+    if (textDue && speedStr !== hudSpeedStr) {
+      hudSpeedStr = speedStr;
+      teleSpeed.textContent = speedStr;
+    }
   }
 
   function syncSize() {
@@ -1075,11 +1176,40 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   let readyToPlay = false;
   let pendingStart = false;
   let loadPct = 0.18;
+  // 加载条同时等场景和音频（配乐两首加音效，第一次约 3.5 MB，之后从 Cache Storage 秒读）：场景占五成五、音频占四成五
+  let scenePct = 0.18;
+  let audioPct = 0;
+  let sceneDone = false;
+  let audioDone = false;
 
-  function setLoadProgress(p: number) {
-    loadPct = Math.max(loadPct, clamp01(p));
+  function showLoadProgress() {
+    loadPct = Math.max(loadPct, clamp01(scenePct * 0.55 + audioPct * 0.45));
     loaderBarEl.style.transform = `scaleX(${loadPct.toFixed(3)})`;
     loaderPctEl.textContent = `${Math.round(loadPct * 100)}%`;
+  }
+
+  function setLoadProgress(p: number) {
+    scenePct = Math.max(scenePct, clamp01(p));
+    showLoadProgress();
+  }
+
+  // 音频最多等这么久，网络实在不行就先开玩，没下完的没有声音
+  const AUDIO_LOAD_LIMIT = 30000;
+  const audioWait = window.setTimeout(() => finishAudio(), AUDIO_LOAD_LIMIT);
+  void audio
+    .preload((part) => {
+      audioPct = Math.max(audioPct, part);
+      showLoadProgress();
+    })
+    .then(() => finishAudio());
+
+  function finishAudio() {
+    if (audioDone) return;
+    audioDone = true;
+    window.clearTimeout(audioWait);
+    audioPct = 1;
+    showLoadProgress();
+    tryReady();
   }
 
   renderShipPicks();
@@ -1100,7 +1230,13 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
   const finishWarmup = () => {
     if (disposed) return;
+    sceneDone = true;
     setLoadProgress(1);
+    tryReady();
+  };
+
+  function tryReady() {
+    if (disposed || readyToPlay || !sceneDone || !audioDone) return;
     readyToPlay = true;
     loaderEl.setAttribute('data-done', '1');
     window.setTimeout(() => {
@@ -1110,7 +1246,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       pendingStart = false;
       startRun();
     }
-  };
+  }
 
   // 先等首屏核心着色器异步编译完成再开动画循环，避免首帧同步编译锁死页面；
   // 重型星域地标则在首屏亮出后后台分批挂载与预编译
@@ -1147,7 +1283,11 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     const finishLock = dsEnd < 180 ? clamp01((180 - dsEnd) / 115) : 0;
 
     const wantBoost = keys.has('Space') || keys.has('ShiftLeft') || keys.has('ShiftRight') || touchBoost;
-    const isBoosting = (wantBoost && warpEnergy > 0.02) || finalT > 0.25;
+    // 耗尽后要松开曲速键、并且回充到 WARP_RESUME 才解锁；一直按着就一直巡航，不会一冲一停
+    if (warpEnergy <= 0.02) warpDrained = true;
+    else if (warpEnergy >= WARP_RESUME && !wantBoost) warpDrained = false;
+    const canWarp = !warpDrained;
+    const isBoosting = (wantBoost && canWarp) || finalT > 0.25;
     isWarpHeld = isBoosting;
 
     // 真实开普勒引力弹弓 + 奥伯特近心机动（随宏大斯隆尺度同步放大引力阱区间）
@@ -1188,7 +1328,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       if (escapeCarry < 0.08) escapeCarry = 0;
     }
 
-    if (wantBoost && warpEnergy > 0.02 && !inGravWell && finalT <= 0.01) {
+    if (wantBoost && canWarp && !inGravWell && finalT <= 0.01) {
       warpEnergy = Math.max(0, warpEnergy - 0.22 * dt);
     } else {
       warpEnergy = Math.min(1, warpEnergy + (inGravWell || finalT > 0.01 ? 0.34 : 0.14) * dt);
@@ -1488,14 +1628,15 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     renderer.render(scene, camera);
 
     if (now - frameStart > 100) longFrame = true;
-    if (++frames === 40) {
+    if (++frames === 90) {
       const avg = spent / frames;
       if (!longFrame) {
         let next = ratio;
-        if (avg > 24.5) {
+        if (avg > 27.5) {
           ceiling = ratio - 0.05;
           next = ratio - 0.14;
-        } else if (avg < 17.8) {
+        } else if (avg < 18) {
+          // 升档门槛不能低于 16.7ms：60Hz 屏幕的帧间隔最快就是它，写成 16.5 永远升不上去（门户页踩过同一个坑）
           next = Math.min(ratio + 0.08, ceiling);
         }
         const clamped = Math.min(Math.max(next, lite ? 0.5 : 0.65), maxRatio);
@@ -1599,7 +1740,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
           holeUniforms.uCamWorld.value.copy(camera.matrixWorld);
           track.setTime(simTime);
           world.update(simTime, 1 / 60, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio);
-          updateHUD();
+          updateHUD(true);
           renderer.render(scene, camera);
         },
         capture(w = 1280, h = 800) {
@@ -1631,6 +1772,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   return () => {
     disposed = true;
     clearTimeout(warmupTimer);
+    clearTimeout(audioWait);
     clearStow();
     routeStops.clear();
     routeStopsEl.innerHTML = '';

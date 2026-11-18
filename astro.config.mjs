@@ -15,6 +15,22 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 4321,
   },
+  // 本地 dev 按页面懒发现 three/addons 子模块时会触发 Vite 重新预构建并返回 504 Outdated Optimize Dep，
+  // 把全站用到的 three 与 addons 提前放进预构建清单，避免切到 /door/ 或游戏页时脚本中断黑屏
+  vite: {
+    optimizeDeps: {
+      include: [
+        'three',
+        'three/addons/controls/OrbitControls.js',
+        'three/addons/postprocessing/EffectComposer.js',
+        'three/addons/postprocessing/OutputPass.js',
+        'three/addons/postprocessing/RenderPass.js',
+        'three/addons/postprocessing/ShaderPass.js',
+        'three/addons/postprocessing/UnrealBloomPass.js',
+        'three/addons/utils/BufferGeometryUtils.js',
+      ],
+    },
+  },
   markdown: {
     // mermaid 代码块要在 Shiki 之前被换掉，否则源码会被拆成着色 span
     remarkPlugins: [remarkMermaid, remarkEmbed, remarkFigure],

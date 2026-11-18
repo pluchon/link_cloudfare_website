@@ -184,12 +184,16 @@ const summary = entry?.data.summary ?? '';
           <span class="roam__high">HIGH</span>
           <span>图鉴 <b data-record-val>0 / 25</b></span>
         </p>
-        <p class="roam__keys">
-          <span><kbd>WASD</kbd><kbd>↑↓←→</kbd> 转向</span>
+        <p class="roam__keys roam__keys--desktop">
+          <span><kbd class="roam__kbd-alt">WASD</kbd><kbd>↑↓←→</kbd> 转向</span>
           <span><kbd>空格</kbd> 曲速</span>
           <span><kbd>G</kbd> 图鉴</span>
           <span><kbd>P</kbd> 暂停</span>
-          <span><kbd>M</kbd> 静音</span>
+          <span class="roam__keyhint--alt"><kbd>M</kbd> 静音</span>
+        </p>
+        <p class="roam__keys roam__keys--touch">
+          <span>左摇杆 转向</span>
+          <span>右下键 曲速</span>
         </p>
         <svg class="roam__ab" viewBox="0 0 50 44" aria-hidden="true">
           <circle class="roam__key roam__key--b" cx="13" cy="29" r="9.5" />
@@ -348,7 +352,11 @@ const summary = entry?.data.summary ?? '';
     border: var(--hair) solid var(--line);
     background: #03050c;
     overflow: hidden;
+    isolation: isolate;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
     touch-action: none;
   }
 
@@ -672,7 +680,7 @@ const summary = entry?.data.summary ?? '';
     left: 0.9rem;
     bottom: 0.9rem;
     z-index: 4;
-    min-width: 14.2rem;
+    width: 14.5rem;
     padding: 0.45rem 0.68rem 0.48rem;
     border-left: 2px solid var(--hud-accent);
     display: flex;
@@ -680,6 +688,10 @@ const summary = entry?.data.summary ?? '';
     gap: 0.42rem;
     pointer-events: none;
     font-family: var(--font-mono);
+    contain: layout style paint;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-tap-highlight-color: transparent;
     transition:
       opacity var(--dur-2) var(--ease-out),
       border-color var(--dur-2) var(--ease-out);
@@ -724,6 +736,7 @@ const summary = entry?.data.summary ?? '';
     gap: 0.34rem;
     font-size: 0.5625rem;
     letter-spacing: 0.14em;
+    white-space: nowrap;
     color: rgba(226, 238, 255, 0.56);
   }
 
@@ -739,6 +752,7 @@ const summary = entry?.data.summary ?? '';
     border: var(--hair) solid color-mix(in srgb, var(--hud-accent) 65%, transparent);
     font-size: 0.5625rem;
     letter-spacing: 0.12em;
+    white-space: nowrap;
     color: var(--hud-accent);
   }
 
@@ -872,34 +886,46 @@ const summary = entry?.data.summary ?? '';
     height: 72px;
   }
 
-  /* 移动端虚拟摇杆与曲速键 */
+  /* 移动端固定虚拟摇杆与曲速键（固定停在左下遥测面板上方，不随指尖乱跳也不重叠遥测区） */
   .roam__stick {
     position: absolute;
-    z-index: 4;
-    width: 6.5rem;
-    height: 6.5rem;
-    border: var(--hair) solid rgba(255, 255, 255, 0.38);
+    left: 4.1rem;
+    top: calc(100% - 12.2rem);
+    z-index: 5;
+    display: none;
+    width: 6.2rem;
+    height: 6.2rem;
+    margin: -3.1rem 0 0 -3.1rem;
+    border: var(--hair) solid rgba(255, 255, 255, 0.36);
     border-radius: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0;
+    background: color-mix(in srgb, var(--hud-paper) 34%, transparent);
+    opacity: 0.56;
     pointer-events: none;
-    transition: opacity var(--dur-1) var(--ease-out);
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      border-color var(--dur-2) var(--ease-out);
   }
 
   .roam__stick[data-on='1'] {
     opacity: 1;
+    border-color: color-mix(in srgb, var(--hud-accent) 72%, rgba(255, 255, 255, 0.42));
   }
 
   .roam__knob {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 2.2rem;
-    height: 2.2rem;
+    width: 2.3rem;
+    height: 2.3rem;
+    margin: -1.15rem 0 0 -1.15rem;
     border: var(--hair) solid var(--hud-accent);
-    background: color-mix(in srgb, var(--hud-accent) 26%, transparent);
+    background: color-mix(in srgb, var(--hud-accent) 28%, rgba(7, 11, 20, 0.82));
     border-radius: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate3d(0, 0, 0);
+    pointer-events: none;
   }
 
   .roam__boost {
@@ -907,36 +933,21 @@ const summary = entry?.data.summary ?? '';
     position: absolute;
     right: 0.9rem;
     bottom: 0.9rem;
-    z-index: 4;
+    z-index: 5;
     width: 4.2rem;
     height: 4.2rem;
     border-radius: 50%;
     padding: 0;
     font-size: 0.8125rem;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
   }
 
   .roam__boost.is-on {
     border-color: var(--hud-accent);
     background: color-mix(in srgb, var(--hud-accent) 28%, transparent);
-  }
-
-  @media (pointer: coarse) {
-    .roam__boost {
-      display: grid;
-      place-items: center;
-    }
-
-    /* 触屏右下留给加速大圆键，星图雷达挪到右上按键正下方 */
-    .roam__radar {
-      bottom: auto;
-      top: 4.95rem;
-      right: 0.7rem;
-    }
-
-    .roam__mini {
-      width: 92px;
-      height: 54px;
-    }
   }
 
   /* 开局底部：选船 + 3A 轻量悬停字样（顶部与中央全空留给飞船） */
@@ -1470,15 +1481,17 @@ const summary = entry?.data.summary ?? '';
 
   .roam__foot {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem 1.2rem;
+    gap: 0.45rem 0.9rem;
     margin-top: 0.55rem;
+    white-space: nowrap;
   }
 
   .roam__dpad,
   .roam__ab {
+    flex: none;
     width: 2.3rem;
     height: 2.3rem;
     fill: none;
@@ -1531,15 +1544,21 @@ const summary = entry?.data.summary ?? '';
 
   .roam__keys {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.38rem 0.95rem;
+    gap: 0.35rem 0.8rem;
     margin: 0 0 0 auto;
+    min-width: 0;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: var(--fg-faint);
+    white-space: nowrap;
+  }
+
+  .roam__keys--touch {
+    display: none;
   }
 
   .roam__keys kbd {
@@ -1597,8 +1616,18 @@ const summary = entry?.data.summary ?? '';
     .roam__tele {
       left: 0.7rem;
       bottom: 0.7rem;
-      min-width: 11.5rem;
+      width: 12.6rem;
       padding: 0.38rem 0.52rem;
+    }
+
+    .roam__tele-sys {
+      font-size: 0.5rem;
+      letter-spacing: 0.07em;
+    }
+
+    .roam__tele-mode {
+      font-size: 0.5rem;
+      letter-spacing: 0.08em;
     }
 
     .roam__tele-row {
@@ -1636,11 +1665,146 @@ const summary = entry?.data.summary ?? '';
       grid-template-columns: 1fr;
     }
 
-    .roam__keys {
-      justify-content: flex-start;
-      margin-left: 0;
-      gap: 0.3rem 0.75rem;
+    .roam__foot {
+      gap: 0.35rem;
+      margin-top: 0.45rem;
+    }
+
+    .roam__record {
+      gap: 0.32rem;
       font-size: 0.625rem;
+      letter-spacing: 0.03em;
+    }
+
+    .roam__high {
+      padding: 0.03rem 0.25rem;
+      font-size: 0.5625rem;
+    }
+
+    .roam__kbd-alt,
+    .roam__keyhint--alt {
+      display: none;
+    }
+
+    .roam__keys {
+      justify-content: flex-end;
+      gap: 0.45rem;
+      font-size: 0.5625rem;
+      letter-spacing: 0.02em;
+    }
+
+    .roam__keys kbd {
+      min-width: 1.05rem;
+      margin-right: 0.14rem;
+      padding: 0.02rem 0.2rem;
+    }
+  }
+
+  /* 放在窄屏规则之后。触屏：遥测仍在左下（用户要求，挪到顶上会挡视野、和雷达与提示框挤在一起），
+     摇杆浮在遥测正上方，曲速键在右下，雷达在右上，提示框让到雷达下面 */
+  @media (pointer: coarse) {
+    .roam[data-state='playing'] .roam__stick {
+      display: block;
+    }
+
+    .roam[data-state='playing'] .roam__boost {
+      display: grid;
+      place-items: center;
+    }
+
+    .roam__tele {
+      top: auto;
+      bottom: 0.7rem;
+      left: 0.7rem;
+      width: min(11.6rem, calc(100% - 6.6rem));
+      padding: 0.34rem 0.5rem 0.38rem;
+      gap: 0.3rem;
+    }
+
+    .roam__tele-head {
+      padding-bottom: 0.22rem;
+    }
+
+    .roam__tele-sys,
+    .roam__tele-mode {
+      font-size: 0.5rem;
+      letter-spacing: 0.06em;
+    }
+
+    .roam__tele-row {
+      grid-template-columns: 1.9rem 1fr 2.1rem;
+    }
+
+    .roam__tele-grid {
+      grid-template-columns: 3.6rem minmax(0, 1fr);
+      padding-top: 0.22rem;
+    }
+
+    .roam__stick {
+      top: auto;
+      bottom: 7.9rem;
+      left: 4.05rem;
+      margin: 0 0 0 -3.1rem;
+    }
+
+    .roam__boost {
+      right: 0.75rem;
+      bottom: 0.7rem;
+    }
+
+    .roam__radar {
+      bottom: auto;
+      top: 4.95rem;
+      right: 0.7rem;
+    }
+
+    .roam__toasts {
+      top: 9.1rem;
+    }
+
+    .roam__mini {
+      width: 92px;
+      height: 54px;
+    }
+
+    .roam__dpad,
+    .roam__ab,
+    .roam__keys--desktop {
+      display: none;
+    }
+
+    .roam__keys--touch {
+      display: flex;
+    }
+  }
+
+  /* 320 一档：顶栏按钮换到第二行，雷达和提示框跟着往下让；遥测标题放不下时截断装饰字，保住右边的模式标记 */
+  @media (pointer: coarse) and (max-width: 22.5rem) {
+    .roam__radar {
+      top: 7.6rem;
+    }
+
+    .roam__toasts {
+      top: 11.9rem;
+    }
+
+    .roam__tele {
+      width: calc(100% - 6.2rem);
+    }
+
+    .roam__tele-head {
+      gap: 0.3rem;
+    }
+
+    .roam__tele-sys {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.02em;
+    }
+
+    .roam__tele-mode {
+      flex-shrink: 0;
     }
   }
 </style>

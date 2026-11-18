@@ -4,6 +4,7 @@
 // 所以音频环境要等玩家点过「开始」才建，建好再解码
 
 import marks from './audio/audio.json';
+import { createAudioCache } from '../audio-cache';
 
 const OSS_DIR = 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_other/game/pelican-ride';
 // 重新生成音频以后 OSS 上是同名覆盖，地址后面的 ?v= 跟着变，所以可以永久缓存，也不会拿旧文件去配新的时间点。
@@ -144,77 +145,10 @@ export interface Sound {
   dispose(): void;
 }
 
-// 下载过的音频存进浏览器的 Cache Storage（2026-11-14 用户要「下载好的资源刷新后也留存，避免重复下」），按这一版音频的 version 分一格，
-// 换了一版音频旧的那一格整个删掉。浏览器自己的 HTTP 缓存也能留，但它说清就清，这里是明明白白存一份
-const CACHE_NAME = `pelican-audio-${marks.version}`;
-const CACHE_PREFIX = 'pelican-audio-';
-
-async function openCache(): Promise<Cache | null> {
-  try {
-    if (!('caches' in window)) return null;
-    return await caches.open(CACHE_NAME);
-  } catch {
-    // 无痕模式、存储被禁用时打不开，就只走网络
-    return null;
-  }
-}
-
-// 把旧版本的音频缓存清掉
-async function dropOldCaches(): Promise<void> {
-  try {
-    if (!('caches' in window)) return;
-    for (const key of await caches.keys()) if (key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME) await caches.delete(key);
-  } catch {
-    // 清不掉也不影响玩
-  }
-}
-
-// 下载一个文件：缓存里有就直接拿，没有就边下边报进度（0 到 1），下完存进缓存
-async function download(url: string, progress?: (part: number) => void): Promise<ArrayBuffer | null> {
-  try {
-    const cache = await openCache();
-    const hit = await cache?.match(url);
-    if (hit) {
-      progress?.(1);
-      return await hit.arrayBuffer();
-    }
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const total = Number(response.headers.get('content-length')) || 0;
-    let data: ArrayBuffer;
-    if (response.body && total > 0 && progress) {
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let got = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        got += value.length;
-        progress(Math.min(1, got / total));
-      }
-      const joined = new Uint8Array(got);
-      let at = 0;
-      for (const chunk of chunks) {
-        joined.set(chunk, at);
-        at += chunk.length;
-      }
-      data = joined.buffer;
-    } else {
-      data = await response.arrayBuffer();
-    }
-    progress?.(1);
-    try {
-      await cache?.put(url, new Response(data.slice(0), { headers: { 'content-type': 'audio/mpeg' } }));
-    } catch {
-      // 存不进去（空间不够之类）就下次再下
-    }
-    return data;
-  } catch {
-    // 读不到（图床连不上、断网）就没有声音，不影响玩
-    return null;
-  }
-}
+// 下载和 Cache Storage 缓存是两款游戏共用的（../audio-cache.ts），这里按鹈鹕自己的前缀和这一版的 version 分格
+const audioCache = createAudioCache('pelican-audio-', marks.version);
+const download = audioCache.download;
+const dropOldCaches = audioCache.dropOld;
 
 function loadMuted(): boolean {
   try {

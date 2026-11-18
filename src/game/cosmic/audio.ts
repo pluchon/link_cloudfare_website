@@ -1,12 +1,41 @@
-// 轻量宇宙音效系统（全手写 Web Audio 柔和过滤波形，零外部下载，无刺耳高频）
+// 星海漫游的声音：两首循环配乐（星际航行一首、靠近黑洞一首，交叉淡过去）加一条拼起来的音效。
+// 都是 scripts/game-audio/cosmic.py 用真实乐器采样（钢琴、竖琴、弦乐、大提琴）渲染的，不用手算波形（用户在鹈鹕骑车就嫌过机械），
+// 只放在 OSS 的 personal_website_other/game/cosmic-roam/ 下面（scripts/game-audio/upload.py --game cosmic 传上去的），仓库里只有 audio.json。
+// 页面一打开就下载（开场加载条等它，见 game.ts），浏览器不让页面自己出声，音频环境等玩家点「开始」才建，建好再解码
 
-const PENTATONIC = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99];
+import marks from './audio/audio.json';
+import { createAudioCache } from '../audio-cache';
+
+const OSS_DIR = 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_other/game/cosmic-roam';
+// 重新生成音频以后 OSS 上是同名覆盖，地址后面的 ?v= 跟着变，可以永久缓存，也不会拿旧文件去配新的时间点
+const fileUrl = (name: string) => `${OSS_DIR}/${name}_${marks.stamp}.mp3?v=${marks.version}`;
+
+// 音量（2026-11-18 用户要的「音效小一点、不影响音乐，音乐也不要太大」）：两首配乐渲染出来平均约 -26 dB，比鹈鹕的再轻一点；
+// 音效比音乐小八九分贝，还走一条削高频、轻压缩的总线
+const MUSIC_VOLUME = 0.36;
+const EFFECT_VOLUME = 0.12;
+const EFFECT_LOWPASS = 3200;
+// 换曲时新旧两首交叉淡多久（秒）
+const CROSSFADE = 4;
+// 进出星系要稳定这么久才换曲，免得在边界上来回切
+const SWITCH_HOLD = 1.5;
+// 同一种音效离上一下太近就不响（秒）
+const MIN_GAP = 0.06;
+
+const cache = createAudioCache('cosmic-audio-', marks.version);
+// 每个音效：从第几秒开始、多长
+const sfxMarks: Record<string, number[]> = marks.sfx;
+const songs = marks.songs as Record<string, { loopStart: number; loopEnd: number }>;
+type Song = 'cosmos' | 'galaxy';
 
 export interface CosmicAudio {
+  // 开始下载全部音频，progress 报 0 到 1；下完（或者下不了）就 resolve
+  preload: (progress: (part: number) => void) => Promise<void>;
   unlock: () => void;
   setMuted: (muted: boolean) => void;
   isMuted: () => boolean;
   setPaused: (paused: boolean) => void;
+  // 在不在星系里决定放哪首配乐；boostFactor 没有声音（加速不出声，鹈鹕骑车用户嫌过加速的沙沙声）
   updatePad: (inGalaxy: boolean, boostFactor: number) => void;
   ring: (combo: number) => void;
   relic: (collected: number, galaxyDone: boolean) => void;
@@ -20,190 +49,205 @@ export interface CosmicAudio {
 export function createCosmicAudio(): CosmicAudio {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
-  let padGain: GainNode | null = null;
-  let padFilter: BiquadFilterNode | null = null;
+  let musicBus: GainNode | null = null;
+  let effectBus: GainNode | null = null;
+  let effects: AudioBuffer | null = null;
   let muted = false;
   let paused = false;
-  let padStarted = false;
+  let disposed = false;
 
-  function ensureContext() {
-    if (ctx) return ctx;
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return null;
-    ctx = new AC();
-    master = ctx.createGain();
-    master.gain.value = muted || paused ? 0 : 0.24;
-    master.connect(ctx.destination);
-    return ctx;
-  }
+  const files = new Map<string, Promise<ArrayBuffer | null>>();
+  const buffers = new Map<string, Promise<AudioBuffer | null>>();
+  const lastPlayed = new Map<string, number>();
 
-  function startPad(ac: AudioContext) {
-    if (padStarted || !master) return;
-    padStarted = true;
-    padFilter = ac.createBiquadFilter();
-    padFilter.type = 'lowpass';
-    padFilter.frequency.value = 340;
-    padFilter.Q.value = 0.7;
+  let wanted: Song = 'cosmos';
+  let pending: Song = 'cosmos';
+  let pendingSince = 0;
+  let playing: { song: Song; source: AudioBufferSourceNode; gain: GainNode } | null = null;
+  let switching = 0;
 
-    padGain = ac.createGain();
-    padGain.gain.value = 0.08;
-    padFilter.connect(padGain);
-    padGain.connect(master);
-
-    for (const [freq, type, detune] of [
-      [65.41, 'sine', 0],
-      [98.0, 'triangle', 4],
-      [130.81, 'sine', -5],
-    ] as const) {
-      const osc = ac.createOscillator();
-      osc.type = type;
-      osc.frequency.value = freq;
-      osc.detune.value = detune;
-      osc.connect(padFilter);
-      osc.start();
+  const fetchFile = (name: string, progress?: (part: number) => void) => {
+    let file = files.get(name);
+    if (!file) {
+      file = cache.download(fileUrl(name), progress);
+      files.set(name, file);
+    } else {
+      void file.then(() => progress?.(1));
     }
-  }
+    return file;
+  };
 
-  function unlock() {
-    const ac = ensureContext();
-    if (!ac) return;
-    if (ac.state === 'suspended') {
-      void ac.resume();
+  const decode = (name: string): Promise<AudioBuffer | null> => {
+    let buffer = buffers.get(name);
+    if (!buffer) {
+      buffer = (async () => {
+        try {
+          const data = await fetchFile(name);
+          if (!data || !ctx || disposed) return null;
+          // 解码会把交进去的数据拿走，交一份复制的，原件留着
+          return await ctx.decodeAudioData(data.slice(0));
+        } catch {
+          // 解不了码就没有声音，不影响玩
+          return null;
+        }
+      })();
+      buffers.set(name, buffer);
     }
-    startPad(ac);
-  }
+    return buffer;
+  };
 
   function applyMasterGain() {
     if (!ctx || !master) return;
-    const target = muted || paused ? 0 : 0.24;
-    master.gain.setTargetAtTime(target, ctx.currentTime, 0.06);
+    master.gain.setTargetAtTime(muted || paused ? 0 : 1, ctx.currentTime, 0.08);
   }
 
-  function setMuted(next: boolean) {
-    muted = next;
-    applyMasterGain();
-  }
-
-  function isMuted() {
-    return muted;
-  }
-
-  function setPaused(next: boolean) {
-    paused = next;
-    applyMasterGain();
-  }
-
-  function updatePad(inGalaxy: boolean, boostFactor: number) {
-    if (!ctx || !padFilter || !padGain || muted || paused) return;
-    const cutoff = (inGalaxy ? 280 : 380) + Math.min(boostFactor, 1.5) * 420;
-    padFilter.frequency.setTargetAtTime(cutoff, ctx.currentTime, 0.12);
-    padGain.gain.setTargetAtTime(0.065 + Math.min(boostFactor, 1.2) * 0.055, ctx.currentTime, 0.12);
-  }
-
-  function playNote(freq: number, dur: number, vol: number, type: OscillatorType = 'sine', cutoff = 1800) {
-    if (!ctx || !master || muted || paused) return;
+  // 让正在放的那首和 wanted 对上：没在放就淡入，放的是另一首就交叉淡过去
+  async function follow() {
+    if (!ctx || !musicBus || disposed) return;
+    const song = wanted;
+    if (playing?.song === song) return;
+    const ticket = ++switching;
+    const buffer = await decode(`bgm_${song}`);
+    if (!buffer || !ctx || !musicBus || disposed || ticket !== switching || wanted !== song) return;
     const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const filter = ctx.createBiquadFilter();
-    const g = ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, now);
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(cutoff, now);
-    g.gain.setValueAtTime(0.0001, now);
-    g.gain.exponentialRampToValueAtTime(vol, now + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-    osc.connect(filter);
-    filter.connect(g);
-    g.connect(master);
-    osc.start(now);
-    osc.stop(now + dur + 0.03);
-  }
-
-  function ring(combo: number) {
-    if (!ctx || muted || paused) return;
-    const idx = Math.min(Math.max(combo - 1, 0), PENTATONIC.length - 1);
-    const f = PENTATONIC[idx];
-    playNote(f, 0.26, 0.18, 'triangle', 1700);
-    playNote(f * 1.5, 0.34, 0.08, 'sine', 2100);
-  }
-
-  function relic(collected: number, galaxyDone: boolean) {
-    if (!ctx || muted || paused) return;
-    const base = PENTATONIC[Math.min(collected, PENTATONIC.length - 1)];
-    playNote(base, 0.32, 0.22, 'sine', 2200);
-    window.setTimeout(() => playNote(base * 1.25, 0.4, 0.16, 'triangle', 2200), 65);
-    if (galaxyDone) {
-      window.setTimeout(() => playNote(523.25, 0.55, 0.22, 'sine', 2400), 140);
-      window.setTimeout(() => playNote(659.25, 0.65, 0.2, 'sine', 2400), 240);
-      window.setTimeout(() => playNote(783.99, 0.8, 0.18, 'sine', 2400), 340);
+    const old = playing;
+    if (old) {
+      old.gain.gain.cancelScheduledValues(now);
+      old.gain.gain.setValueAtTime(old.gain.gain.value, now);
+      old.gain.gain.linearRampToValueAtTime(0, now + CROSSFADE);
+      old.source.stop(now + CROSSFADE + 0.05);
     }
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(1, now + (old ? CROSSFADE : 2.5));
+    gain.connect(musicBus);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const loop = songs[song];
+    source.loopStart = loop.loopStart;
+    source.loopEnd = loop.loopEnd;
+    source.connect(gain);
+    source.start(now, loop.loopStart);
+    playing = { song, source, gain };
   }
 
-  // 真空航天器舱内磁共振与引擎低频谐波扫频（无大气风噪声）
-  function warpResonance(f0: number, f1: number, dur: number, vol: number) {
-    if (!ctx || !master || muted || paused) return;
-    const ac = ctx;
-    const now = ac.currentTime;
-    const filter = ac.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(f0 * 2.2, now);
-    filter.frequency.exponentialRampToValueAtTime(f1 * 1.8, now + dur);
-
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0.0008, now);
-    g.gain.exponentialRampToValueAtTime(vol, now + dur * 0.25);
-    g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
-
-    filter.connect(g);
-    g.connect(master);
-
-    for (const ratio of [1, 1.5]) {
-      const osc = ac.createOscillator();
-      osc.type = ratio === 1 ? 'sine' : 'triangle';
-      osc.frequency.setValueAtTime(f0 * ratio, now);
-      osc.frequency.exponentialRampToValueAtTime(f1 * ratio, now + dur);
-      osc.connect(filter);
-      osc.start(now);
-      osc.stop(now + dur + 0.03);
-    }
+  function play(name: string, volume = 1, delay = 0) {
+    if (!ctx || !effectBus || !effects || muted || paused) return;
+    const mark = sfxMarks[name];
+    if (!mark) return;
+    const now = ctx.currentTime;
+    if (now - (lastPlayed.get(name) ?? -Infinity) < MIN_GAP) return;
+    lastPlayed.set(name, now);
+    const source = ctx.createBufferSource();
+    source.buffer = effects;
+    const gain = ctx.createGain();
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(effectBus);
+    source.start(now + delay, mark[0], mark[1]);
   }
 
-  function slingshot() {
-    warpResonance(82, 220, 0.72, 0.16);
-    playNote(329.63, 0.45, 0.12, 'sine', 1600);
-  }
-
-  function warp() {
-    warpResonance(74, 165, 0.52, 0.14);
-  }
-
-  function hurt() {
-    playNote(110, 0.28, 0.26, 'triangle', 480);
-    playNote(82.41, 0.34, 0.22, 'sine', 360);
-  }
-
-  function finish(won: boolean) {
-    if (won) {
-      [261.63, 329.63, 392.0, 523.25, 659.25].forEach((f, i) => {
-        window.setTimeout(() => playNote(f, 0.7, 0.18, 'sine', 2400), i * 90);
+  return {
+    async preload(progress) {
+      if (disposed) return;
+      void cache.dropOld();
+      const names = ['sfx', ...Object.keys(songs).map((slug) => `bgm_${slug}`)];
+      const parts = names.map(() => 0);
+      const report = (index: number) => (part: number) => {
+        parts[index] = part;
+        progress(parts.reduce((sum, value) => sum + value, 0) / parts.length);
+      };
+      await Promise.all(names.map((name, i) => fetchFile(name, report(i))));
+      progress(1);
+    },
+    unlock() {
+      if (disposed) return;
+      if (ctx) {
+        if (ctx.state === 'suspended') void ctx.resume();
+        return;
+      }
+      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      ctx = new Ctor();
+      master = ctx.createGain();
+      master.gain.value = muted || paused ? 0 : 1;
+      master.connect(ctx.destination);
+      musicBus = ctx.createGain();
+      musicBus.gain.value = MUSIC_VOLUME;
+      musicBus.connect(master);
+      // 音效总线：音量、削高频、轻轻压一下
+      effectBus = ctx.createGain();
+      effectBus.gain.value = EFFECT_VOLUME;
+      const soften = ctx.createBiquadFilter();
+      soften.type = 'lowpass';
+      soften.frequency.value = EFFECT_LOWPASS;
+      soften.Q.value = 0.5;
+      const squeeze = ctx.createDynamicsCompressor();
+      squeeze.threshold.value = -20;
+      squeeze.knee.value = 12;
+      squeeze.ratio.value = 4;
+      squeeze.attack.value = 0.004;
+      squeeze.release.value = 0.25;
+      effectBus.connect(soften);
+      soften.connect(squeeze);
+      squeeze.connect(master);
+      void decode('sfx').then((buffer) => {
+        effects = buffer;
       });
-    } else {
-      playNote(220, 0.4, 0.18, 'sine', 900);
-      window.setTimeout(() => playNote(164.81, 0.55, 0.16, 'sine', 700), 140);
-    }
-  }
-
-  function dispose() {
-    if (ctx) {
-      void ctx.close();
+      void follow();
+    },
+    setMuted(next) {
+      muted = next;
+      applyMasterGain();
+    },
+    isMuted() {
+      return muted;
+    },
+    setPaused(next) {
+      paused = next;
+      applyMasterGain();
+    },
+    updatePad(inGalaxy) {
+      if (!ctx) return;
+      const song: Song = inGalaxy ? 'galaxy' : 'cosmos';
+      const now = ctx.currentTime;
+      if (song !== pending) {
+        pending = song;
+        pendingSince = now;
+      }
+      if (pending !== wanted && now - pendingSince >= SWITCH_HOLD) {
+        wanted = pending;
+        void follow();
+      }
+    },
+    ring(combo) {
+      const index = Math.min(Math.max(combo - 1, 0), 6);
+      play(`ring${index}`, 0.85);
+    },
+    relic(collected, galaxyDone) {
+      const index = Math.min(Math.max(collected - 1, 0), 5);
+      play(`relic${index}`);
+      if (galaxyDone) play('hub', 1, 0.35);
+    },
+    slingshot() {
+      play('slingshot', 0.9);
+    },
+    // 加速和受击不出声：加速在鹈鹕骑车里被用户嫌过「沙沙声」；这个游戏里没有受击
+    warp() {},
+    hurt() {},
+    finish() {
+      play('finish');
+    },
+    dispose() {
+      disposed = true;
+      if (ctx) void ctx.close();
       ctx = null;
       master = null;
-      padGain = null;
-      padFilter = null;
-      padStarted = false;
-    }
-  }
-
-  return { unlock, setMuted, isMuted, setPaused, updatePad, ring, relic, slingshot, warp, hurt, finish, dispose };
+      musicBus = null;
+      effectBus = null;
+      effects = null;
+      playing = null;
+    },
+  };
 }

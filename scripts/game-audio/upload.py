@@ -1,7 +1,8 @@
-"""把鹈鹕骑车的音效和背景音乐传到 OSS 的 personal_website_other/ 下面。
+"""把游戏的音效和背景音乐传到 OSS 的 personal_website_other/ 下面。
 
-    python scripts/game-audio/upload.py          上传 scripts/game-audio/out/ 里的音效和每个场景的配乐
-    python scripts/game-audio/upload.py --check  只看：桶里有没有这些文件、桶的跨域规则配了没有
+    python scripts/game-audio/upload.py                 上传鹈鹕骑车的（scripts/game-audio/out/ 里的音效和每个场景的配乐）
+    python scripts/game-audio/upload.py --game cosmic   上传星海漫游的（scripts/game-audio/out/cosmic/）
+    python scripts/game-audio/upload.py --check         只看：桶里有没有这些文件、桶的跨域规则配了没有
 
 文件名用 audio.json 里的 stamp，重新生成音频以后名字不变，直接覆盖桶里的同名文件（用户要求同名替换；桶开了版本控制，旧的找得回来）。
 网页请求时地址后面带 ?v=生成时刻，所以浏览器可以永久缓存，换了音频也不会用到旧的。
@@ -29,12 +30,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = Path(__file__).resolve().parent / "out"
-MARKS = ROOT / "src" / "game" / "pelican" / "audio" / "audio.json"
+OUT = Path(__file__).resolve().parent / "out"
 BUCKET = "zlhimage"
 ENDPOINT = "oss-cn-guangzhou.aliyuncs.com"
 HOST = f"{BUCKET}.{ENDPOINT}"
-PREFIX = "personal_website_other/game/pelican-ride"
+# 每个游戏：本地 mp3 在哪、audio.json 在哪、传到桶里哪个目录
+GAMES = {
+    "pelican": (OUT, ROOT / "src" / "game" / "pelican" / "audio" / "audio.json", "personal_website_other/game/pelican-ride"),
+    "cosmic": (OUT / "cosmic", ROOT / "src" / "game" / "cosmic" / "audio" / "audio.json", "personal_website_other/game/cosmic-roam"),
+}
+SOURCE, MARKS, PREFIX = GAMES["pelican"]
 
 
 def credentials() -> tuple[str, str]:
@@ -119,9 +124,13 @@ def upload() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    parser = argparse.ArgumentParser(description="把鹈鹕骑车的音频传到 OSS")
+    global SOURCE, MARKS, PREFIX
+    parser = argparse.ArgumentParser(description="把游戏的音频传到 OSS")
     parser.add_argument("--check", action="store_true", help="只检查，不上传")
-    if parser.parse_args().check:
+    parser.add_argument("--game", choices=sorted(GAMES), default="pelican", help="哪个游戏的音频")
+    args = parser.parse_args()
+    SOURCE, MARKS, PREFIX = GAMES[args.game]
+    if args.check:
         check()
     else:
         upload()

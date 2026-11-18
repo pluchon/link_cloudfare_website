@@ -264,15 +264,27 @@ const cosmosStarVertex = /* glsl */ `
   varying float vAlpha;
   varying float vKind;
   varying float vSeed;
+  varying float vSoft;
+  varying float vPx;
+
+  // 星点最小画多大（像素）。2026-11-18 用户两次说星空「一闪一闪」：
+  // 一两个像素宽的星，飞船一动它盖住的像素在 1 格和 4 格之间来回跳；改成 2.5 像素还是闪，因为不是整数，
+  // 显卡有时画 2×2、有时画 3×3，光斑中心落在格子中央是满亮、落在格子边上只剩四分之一。
+  // 所以最小画到 5 像素，片元里再保证光斑最细的地方也有将近一个像素宽（见下面的 SHARPEST）
+  const float MIN_POINT = 5.0;
 
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
     float dist = max(-mv.z, 22.0);
     float px = aSize * uPixelRatio * (310.0 / dist);
-    gl_PointSize = clamp(px, 1.0, aKind > 1.5 ? 24.0 : 18.0);
+    gl_PointSize = clamp(px, MIN_POINT, aKind > 1.5 ? 24.0 : 18.0);
     float shimmer = aKind > 1.5 ? 1.0 : (0.9 + 0.1 * sin(uTime * 1.1 + aSeed * 62.83));
     float nearFade = smoothstep(14.0, 44.0, dist);
+    // 小星一律按 5 像素的样子画：5 像素那颗星的总亮度（约 1.5）正好和原来缩成 1 个像素时差不多
+    vPx = gl_PointSize;
+    // 远处的小星系（第三类）太小时换成一团圆的柔光，它本来是一个压扁的椭圆，压扁的那一边比一个像素还细
+    vSoft = aKind > 1.5 ? 1.0 - smoothstep(MIN_POINT, 12.0, px) : 0.0;
     vColor = aColor;
     vAlpha = shimmer * nearFade * aLum;
     vKind = aKind;
@@ -286,6 +298,17 @@ const cosmosStarFragment = /* glsl */ `
   varying float vAlpha;
   varying float vKind;
   varying float vSeed;
+  varying float vSoft;
+  varying float vPx;
+
+  // 光斑最细的地方（高斯的标准差）不能小于这么多像素，否则落在像素的不同位置亮度差很多，一动就闪
+  const float SHARPEST = 0.8;
+
+  // 一个以像素计宽度为 sigma 的高斯；比 SHARPEST 还细时铺宽到 SHARPEST，按面积把亮度压回去（总亮度不变）
+  float softGauss(float dpx, float sigma) {
+    float s = max(sigma, SHARPEST);
+    return exp(-dpx * dpx / (2.0 * s * s)) * (sigma * sigma) / (s * s);
+  }
 
   void main() {
     if (vAlpha <= 0.005) discard;
@@ -293,6 +316,9 @@ const cosmosStarFragment = /* glsl */ `
     float d2 = dot(p, p);
     if (d2 > 0.25) discard;
     float r = sqrt(d2) * 2.0;
+    // 离光斑中心几个像素
+    float rad = vPx * 0.5;
+    float dpx = r * rad;
     float shape = 0.0;
     vec3 tint = vColor;
 
@@ -307,10 +333,12 @@ const cosmosStarFragment = /* glsl */ `
       float halo = exp(-er * er * 4.2) * 0.44 + exp(-er * 2.8) * 0.16;
       shape = halo * smoothstep(1.0, 0.36, r);
       tint = mix(vColor, vec3(1.0, 0.93, 0.85), exp(-er * er * 8.0) * 0.42);
+      shape = mix(shape, softGauss(dpx, rad * 0.38) * 0.5, vSoft);
     } else {
-      // 光球核心 + 内外柔和日冕晕，呈真天文实拍高斯光斑感
-      float core = exp(-r * r * 42.0);
-      float corona = exp(-r * r * 10.0) * 0.40 + exp(-r * 3.8) * 0.11;
+      // 光球核心 + 内外柔和日冕晕，呈真天文实拍高斯光斑感。
+      // 核心 exp(-r²·42) 的标准差是半径的 0.109，日冕 exp(-r²·10) 是 0.224；小星上它们比一个像素还细，用 softGauss 铺宽
+      float core = softGauss(dpx, rad * 0.109);
+      float corona = softGauss(dpx, rad * 0.224) * 0.40 + exp(-r * 3.8) * 0.11;
       shape = (core + corona) * smoothstep(1.0, 0.32, r);
       if (vKind > 0.5) {
         // 极少数亮巨星：绘出软边四瓣光晕花瓣（宽幅高斯晕染，彻底去除生硬直线）
@@ -319,7 +347,7 @@ const cosmosStarFragment = /* glsl */ `
         float aureole = exp(-r * 3.3) * (0.24 + 0.32 * petals) + exp(-r * r * 4.8) * 0.38;
         shape += aureole * smoothstep(1.0, 0.22, r);
       }
-      tint = mix(vColor, vec3(1.0), smoothstep(0.32, 0.98, core));
+      tint = mix(vColor, vec3(1.0), smoothstep(0.32, 0.98, exp(-r * r * 42.0)));
     }
 
     float a = clamp(shape * vAlpha, 0.0, 1.0);

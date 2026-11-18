@@ -106,7 +106,12 @@ export const holeFragment = /* glsl */ `
   }
 
   // ---- 深空 ----
-  // 一层星点：每个格子最多一颗，大部分很暗、少数很亮，颜色按黑体色温分冷暖，亮星带柔和星冕
+  // 一个像素对着多大的角度（弧度），main 一开头在分支外面用 fwidth 量好；星点按它限制最小的大小
+  float gPixAng;
+
+  // 一层星点：每个格子最多一颗，大部分很暗、少数很亮，颜色按黑体色温分冷暖，亮星带柔和星冕。
+  // 星点本身比一个像素还小（细的那层只有十分之一像素），镜头一动像素有时采到星、有时擦过去，星空就一闪一闪（2026-11-18 用户在星海漫游里看到的）。
+  // 所以星点至少铺开到一个多像素宽，同时按面积把亮度压回去，总亮度不变
   vec3 starLayer(vec3 d, float scale, float chance, float size) {
     vec3 p = d * scale;
     vec3 id = floor(p);
@@ -114,13 +119,15 @@ export const holeFragment = /* glsl */ `
     vec3 c = hash33(id + 7.1) * 0.6 + 0.2;
     vec3 f = fract(p) - c;
     float d2 = dot(f, f);
-    float s2 = size * size;
+    // exp(-d²/spread²) 的标准差是 spread / √2，乘 1.15 让它约有 0.8 个像素：再细的话落在像素不同位置亮度差一倍，照样闪
+    float spread = max(size, gPixAng * scale * 1.15);
+    float s2 = spread * spread;
     if (d2 > 9.0 * s2) return vec3(0.0);
     float invS2 = 1.0 / s2;
     float mag = pow(hash13(id + 3.3), 6.5);
     float core = exp(-d2 * invS2);
     float halo = exp(-d2 * invS2 * 0.22) * 0.34 * mag;
-    float s = (core + halo) * (0.09 + 4.4 * mag);
+    float s = (core + halo) * (0.09 + 4.4 * mag) * (size * size * invS2);
     float t = hash13(id + 11.7);
     vec3 tint = t < 0.16
       ? vec3(1.0, 0.68, 0.45)
@@ -505,6 +512,8 @@ export const holeFragment = /* glsl */ `
     vec4 view = uInvProj * vec4(vNdc, 1.0, 1.0);
     vec3 viewDir = normalize(view.xyz / view.w);
     vec3 rd = normalize((uCamWorld * vec4(viewDir, 0.0)).xyz);
+    // 必须在任何分支之前量：fwidth 在分支里结果不确定
+    gPixAng = max(length(fwidth(rd)), 1e-5);
 
     // 光行差：把看到的方向换回静止系里的方向，再拿去追光线
     float boostLum = 1.0;
