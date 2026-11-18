@@ -1,13 +1,10 @@
 import * as THREE from 'three';
 import { STAR_NODES, type StarNodeSpec } from '../../door/starmap';
-import { buildRealmProps, type RealmPropsHandle } from '../../door/realms';
 import { buildRocks, type Rocks } from '../../door/rocks';
 import { buildStation } from '../../door/station';
 import { warpBeta, warpCenter, warpGlsl, warpImage, warpObject, warpScale } from '../../door/warp';
 import {
   buildCollectibleCatalogGeos,
-  buildGalleryFrameGeo,
-  buildGameBeaconGeo,
   buildPolarJetGeo,
   buildPulsarBeaconPair,
   buildStargatePair,
@@ -266,11 +263,9 @@ const cosmosStarVertex = /* glsl */ `
   varying float vSeed;
   varying float vSoft;
   varying float vPx;
+  varying float vTruePx;
 
-  // 星点最小画多大（像素）。2026-11-18 用户两次说星空「一闪一闪」：
-  // 一两个像素宽的星，飞船一动它盖住的像素在 1 格和 4 格之间来回跳；改成 2.5 像素还是闪，因为不是整数，
-  // 显卡有时画 2×2、有时画 3×3，光斑中心落在格子中央是满亮、落在格子边上只剩四分之一。
-  // 所以最小画到 5 像素，片元里再保证光斑最细的地方也有将近一个像素宽（见下面的 SHARPEST）
+  // 最小画布保持 5px 给高斯抗锯齿留足边距；远星不画日冕仅绘 ~0.62px 锐利核心，兼顾针尖微星、零频闪与低填充率
   const float MIN_POINT = 5.0;
 
   void main() {
@@ -278,15 +273,15 @@ const cosmosStarVertex = /* glsl */ `
     gl_Position = projectionMatrix * mv;
     float dist = max(-mv.z, 22.0);
     float px = aSize * uPixelRatio * (310.0 / dist);
-    gl_PointSize = clamp(px, MIN_POINT, aKind > 1.5 ? 24.0 : 18.0);
-    float shimmer = aKind > 1.5 ? 1.0 : (0.9 + 0.1 * sin(uTime * 1.1 + aSeed * 62.83));
+    gl_PointSize = clamp(px, MIN_POINT, aKind > 1.5 ? 26.0 : 20.0);
+    float subPx = clamp(px / 1.55, 0.20, 1.0);
+    float distFade = pow(subPx, 0.95) * smoothstep(4000.0, 320.0, dist);
     float nearFade = smoothstep(14.0, 44.0, dist);
-    // 小星一律按 5 像素的样子画：5 像素那颗星的总亮度（约 1.5）正好和原来缩成 1 个像素时差不多
     vPx = gl_PointSize;
-    // 远处的小星系（第三类）太小时换成一团圆的柔光，它本来是一个压扁的椭圆，压扁的那一边比一个像素还细
-    vSoft = aKind > 1.5 ? 1.0 - smoothstep(MIN_POINT, 12.0, px) : 0.0;
+    vTruePx = px;
+    vSoft = aKind > 1.5 ? 1.0 - smoothstep(MIN_POINT, 11.0, px) : 0.0;
     vColor = aColor;
-    vAlpha = shimmer * nearFade * aLum;
+    vAlpha = nearFade * distFade * aLum;
     vKind = aKind;
     vSeed = aSeed;
   }
@@ -300,15 +295,7 @@ const cosmosStarFragment = /* glsl */ `
   varying float vSeed;
   varying float vSoft;
   varying float vPx;
-
-  // 光斑最细的地方（高斯的标准差）不能小于这么多像素，否则落在像素的不同位置亮度差很多，一动就闪
-  const float SHARPEST = 0.8;
-
-  // 一个以像素计宽度为 sigma 的高斯；比 SHARPEST 还细时铺宽到 SHARPEST，按面积把亮度压回去（总亮度不变）
-  float softGauss(float dpx, float sigma) {
-    float s = max(sigma, SHARPEST);
-    return exp(-dpx * dpx / (2.0 * s * s)) * (sigma * sigma) / (s * s);
-  }
+  varying float vTruePx;
 
   void main() {
     if (vAlpha <= 0.005) discard;
@@ -316,7 +303,6 @@ const cosmosStarFragment = /* glsl */ `
     float d2 = dot(p, p);
     if (d2 > 0.25) discard;
     float r = sqrt(d2) * 2.0;
-    // 离光斑中心几个像素
     float rad = vPx * 0.5;
     float dpx = r * rad;
     float shape = 0.0;
@@ -333,25 +319,32 @@ const cosmosStarFragment = /* glsl */ `
       float halo = exp(-er * er * 4.2) * 0.44 + exp(-er * 2.8) * 0.16;
       shape = halo * smoothstep(1.0, 0.36, r);
       tint = mix(vColor, vec3(1.0, 0.93, 0.85), exp(-er * er * 8.0) * 0.42);
-      shape = mix(shape, softGauss(dpx, rad * 0.38) * 0.5, vSoft);
+      float softSigma = max(rad * 0.38, 0.72);
+      float softGlow = exp(-dpx * dpx / (2.0 * softSigma * softSigma)) * 0.42 * smoothstep(1.0, 0.25, r);
+      shape = mix(shape, softGlow, vSoft);
     } else {
-      // 光球核心 + 内外柔和日冕晕，呈真天文实拍高斯光斑感。
-      // 核心 exp(-r²·42) 的标准差是半径的 0.109，日冕 exp(-r²·10) 是 0.224；小星上它们比一个像素还细，用 softGauss 铺宽
-      float core = softGauss(dpx, rad * 0.109);
-      float corona = softGauss(dpx, rad * 0.224) * 0.40 + exp(-r * 3.8) * 0.11;
-      shape = (core + corona) * smoothstep(1.0, 0.32, r);
+      // 白热针尖核心（峰值保持 1.0 且至少 0.62px 稳定采样）+ 仅亮星展开真实比例日冕，远星零纸盘底晕
+      float trueRad = max(vTruePx * 0.5, 0.55);
+      float coreSigma = max(trueRad * 0.16, 0.62);
+      float core = exp(-dpx * dpx / (2.0 * coreSigma * coreSigma));
+      float trueR = dpx / max(trueRad, 1.0);
+      float haloMask = smoothstep(1.6, 4.5, vTruePx);
+      float corona = (exp(-trueR * trueR * 14.0) * 0.26 + exp(-trueR * 4.6) * 0.06) * haloMask;
+      shape = (core + corona) * smoothstep(1.0, 0.68, r);
       if (vKind > 0.5) {
-        // 极少数亮巨星：绘出软边四瓣光晕花瓣（宽幅高斯晕染，彻底去除生硬直线）
+        // 极少数亮巨星：天文柔和十字衍射星芒与宽幅日冕
         float ang = atan(p.y, p.x) + vSeed * 6.28318;
-        float petals = pow(0.5 + 0.5 * cos(4.0 * ang), 3.4);
-        float aureole = exp(-r * 3.3) * (0.24 + 0.32 * petals) + exp(-r * r * 4.8) * 0.38;
-        shape += aureole * smoothstep(1.0, 0.22, r);
+        float c2 = abs(cos(2.0 * ang));
+        float rays = pow(c2, 11.0) * exp(-r * 2.5) * 0.58 + pow(c2, 3.0) * exp(-r * 3.4) * 0.22;
+        float aureole = exp(-r * r * 5.2) * 0.36 + rays;
+        shape += aureole * haloMask * smoothstep(1.0, 0.55, r);
       }
-      tint = mix(vColor, vec3(1.0), smoothstep(0.32, 0.98, exp(-r * r * 42.0)));
+      tint = mix(vColor, vec3(1.0), smoothstep(0.20, 0.78, core));
     }
 
+    // THREE.AdditiveBlending（SRC_ALPHA, ONE）已乘一次 alpha，输出线性 rgb + alpha 避免平方杀光软外晕
     float a = clamp(shape * vAlpha, 0.0, 1.0);
-    gl_FragColor = vec4(tint * a, a);
+    gl_FragColor = vec4(tint, a);
   }
 `;
 
@@ -471,7 +464,6 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
 
   let station: THREE.Group | null = null;
   let rocks: Rocks | null = null;
-  let realmProps: RealmPropsHandle | null = null;
 
   const origin = new THREE.Vector3(0, 0, 0);
   const centerVec = new THREE.Vector3();
@@ -580,8 +572,8 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
 
   // ---- 层 3：真实宇宙尺度宿主星系群（五大星系 60..265 单位恒星旋臂盘 + 斯隆长城深空星流，控制星点数与真实星等层次） ----
   const rand = mulberry32(20261118);
-  const perGalaxyStars = lite ? 340 : 680;
-  const cosmosStarCount = lite ? 2000 : 4000;
+  const perGalaxyStars = lite ? 220 : 420;
+  const cosmosStarCount = lite ? 1100 : 2100;
   const totalFieldStars = STAR_NODES.length * perGalaxyStars + cosmosStarCount;
 
   const starPos = new Float32Array(totalFieldStars * 3);
@@ -1011,67 +1003,9 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     rocks.group.scale.setScalar(3.4);
     rocks.group.traverse((obj) => obj.layers.enable(imageLayer));
     group.add(rocks.group);
-
-    realmProps = buildRealmProps(lite);
-    group.add(realmProps.group);
   }
 
   const zAxis = new THREE.Vector3(0, 0, 1);
-
-  // ---- 精细化画廊立体画框雕塑与游戏电离灯塔雕像 ----
-  const extras: THREE.Object3D[] = [];
-  const galFrameGeo = trackGeo(buildGalleryFrameGeo());
-  const gameBeaconGeo = trackGeo(buildGameBeaconGeo());
-
-  const galNode = STAR_NODES.find((n) => n.id === 'gallery');
-  if (galNode) {
-    const frameMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xf4c8df,
-        emissive: 0x62244a,
-        emissiveIntensity: 0.45,
-        roughness: 0.3,
-        metalness: 0.65,
-      }),
-    );
-    const gx = galNode.position[0] * COSMOS_SCALE;
-    const gy = galNode.position[1] * COSMOS_SCALE;
-    const gz = galNode.position[2] * COSMOS_SCALE;
-    for (let f = 0; f < 4; f++) {
-      const holder = new THREE.Mesh(galFrameGeo, frameMat);
-      const a = (f / 4) * Math.PI * 2 + 0.5;
-      holder.position.set(gx + Math.cos(a) * 165, gy + (f % 2 === 0 ? 24 : -24), gz + Math.sin(a) * 165);
-      holder.scale.setScalar(4.2);
-      holder.lookAt(gx, gy, gz);
-      group.add(holder);
-      extras.push(holder);
-    }
-  }
-
-  const gameNode = STAR_NODES.find((n) => n.id === 'game');
-  if (gameNode) {
-    const jx = gameNode.position[0] * COSMOS_SCALE;
-    const jy = gameNode.position[1] * COSMOS_SCALE;
-    const jz = gameNode.position[2] * COSMOS_SCALE;
-    const jellyColors = [0x7ce2ff, 0xffd27a, 0xff9ec7];
-    for (let j = 0; j < 3; j++) {
-      const jMat = trackMat(
-        new THREE.MeshStandardMaterial({
-          color: jellyColors[j],
-          emissive: jellyColors[j],
-          emissiveIntensity: 0.42,
-          roughness: 0.25,
-          metalness: 0.35,
-        }),
-      );
-      const beacon = new THREE.Mesh(gameBeaconGeo, jMat);
-      const a = (j / 3) * Math.PI * 2 + 0.8;
-      beacon.position.set(jx + Math.cos(a) * 162, jy + (j - 1) * 24, jz + Math.sin(a) * 162);
-      beacon.scale.setScalar(4.2);
-      group.add(beacon);
-      extras.push(beacon);
-    }
-  }
 
   // ---- 18 座远距星际文明巨构星门（支持随随机新航线零分配重排） ----
   const gates: BoostGate[] = [];
@@ -1377,10 +1311,6 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     const sc = (nearNode.holeScale ?? 1.85) * HOLE_SCALE_MULT;
     gatePortalMat.uniforms.uTime.value = simTime;
 
-    if (realmProps) {
-      realmProps.update(nearNode.holeTheme ?? 0, holeAlpha * 0.72, simTime, centerVec, sc, diskQuat, true);
-    }
-
     const showAccretion = holeAlpha > 0.03;
     torusMesh.visible = showAccretion;
     polarJetMesh.visible = showAccretion;
@@ -1442,12 +1372,6 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
       rel.frame.position.y = bob;
       rel.core.position.y = bob;
     }
-
-    if (dt > 0) {
-      for (let i = 0; i < extras.length; i++) {
-        extras[i].rotation.y += dt * 0.35;
-      }
-    }
   }
 
   function resetProgress() {
@@ -1470,7 +1394,6 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
 
   function dispose() {
     rocks?.dispose();
-    realmProps?.dispose();
     for (const g of geometries) g.dispose();
     for (const m of materials) m.dispose();
   }

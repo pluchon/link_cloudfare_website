@@ -377,36 +377,6 @@ export function buildGateGeo(): THREE.BufferGeometry {
   return buildStargatePair(1.0).hull;
 }
 
-/** 画廊星系纪念立体画框（厚重倒角外框 + 四角晶体榫卯，不再使用薄纸片方盒） */
-export function buildGalleryFrameGeo(): THREE.BufferGeometry {
-  const w = 2.8;
-  const h = 2.0;
-  const bar = 0.18;
-  const parts: THREE.BufferGeometry[] = [
-    tf(new THREE.BoxGeometry(w, bar, bar), 0, 0, 0, 0, h * 0.5, 0),
-    tf(new THREE.BoxGeometry(w, bar, bar), 0, 0, 0, 0, -h * 0.5, 0),
-    tf(new THREE.BoxGeometry(bar, h, bar), 0, 0, 0, -w * 0.5, 0, 0),
-    tf(new THREE.BoxGeometry(bar, h, bar), 0, 0, 0, w * 0.5, 0, 0),
-    tf(new THREE.OctahedronGeometry(0.24, 0), 0, 0, 0, -w * 0.5, h * 0.5, 0),
-    tf(new THREE.OctahedronGeometry(0.24, 0), 0, 0, 0, w * 0.5, h * 0.5, 0),
-    tf(new THREE.OctahedronGeometry(0.24, 0), 0, 0, 0, -w * 0.5, -h * 0.5, 0),
-    tf(new THREE.OctahedronGeometry(0.24, 0), 0, 0, 0, w * 0.5, -h * 0.5, 0),
-    tf(new THREE.TorusGeometry(0.62, 0.08, 6, 16), 0.2, 0.3, 0),
-  ];
-  return mergeBuffers(parts);
-}
-
-/** 游戏星系电离灯塔雕像（叠层棱塔 + 厚重双环） */
-export function buildGameBeaconGeo(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [
-    new THREE.OctahedronGeometry(0.85, 0),
-    tf(new THREE.CylinderGeometry(0.42, 0.72, 0.55, 6), 0, 0, 0, 0, -0.95, 0),
-    tf(new THREE.ConeGeometry(0.32, 0.75, 6), 0, 0, 0, 0, 1.05, 0),
-    tf(new THREE.TorusGeometry(1.18, 0.08, 6, 18), Math.PI * 0.38, 0.25, 0),
-  ];
-  return mergeBuffers(parts);
-}
-
 /** 活动星系核外围尘埃环面与旋涡进气云扇区网格（严格平铺 XZ 赤道面，留完整 uv 供片元噪声羽化为星云） */
 export function buildTorusSectorGeo(): THREE.BufferGeometry {
   const segU = 14;

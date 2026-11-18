@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { warpBeta, warpCenter, warpGlsl, warpImage, warpMaterial, warpScale } from './warp';
 
-// 各星域核内的轻量化 3D 轨道景物（基地中继浮标阵 / 画廊晶体星碑 / 游戏能量航标塔 / 标签光谱棱板 / 关于浑仪星环）：
+// 各星域核内的轻量化 3D 轨道景物（科学观测浮标 / 不规则碎岩团 / 双环测绘传感器 / 光谱棱环 / 浑仪星环）：
 // 纯代码数学生成低面数几何体（零外部模型下载、零加载等待、< 1ms 初始化），
 // 每个星域仅用 1 次 InstancedMesh 绘制调用 + 2 组虚线导引环，自动服从引力透镜与深度遮挡。
 
@@ -113,23 +113,23 @@ function relayGeometry(): THREE.BufferGeometry {
   ]);
 }
 
-// 立体石英晶簇雕塑（画廊：三柱错位六棱晶柱 + 底座托环）
+// 不规则多面体陨石碎岩团（画廊星系外轨天然小天体碎片，不用奇幻石碑造型）
 function crystalGeometry(): THREE.BufferGeometry {
   return joinParts([
-    tfPart(new THREE.CylinderGeometry(0.54, 0.62, 0.24, 6), 0, 0, 0, 0, -0.55, 0),
-    tfPart(new THREE.CylinderGeometry(0.08, 0.26, 1.45, 6), 0.05, 0.2, -0.05, 0, 0.14, 0),
-    tfPart(new THREE.CylinderGeometry(0.06, 0.2, 1.08, 6), -0.3, 0.4, 0.28, 0.24, -0.04, 0.16),
-    tfPart(new THREE.CylinderGeometry(0.05, 0.19, 0.96, 6), 0.28, -0.3, -0.32, -0.22, -0.08, -0.14),
+    tfPart(new THREE.DodecahedronGeometry(0.46, 0), 0.25, 0.4, -0.18, 0, 0, 0),
+    tfPart(new THREE.DodecahedronGeometry(0.28, 0), -0.45, 0.2, 0.35, 0.34, 0.12, -0.18),
+    tfPart(new THREE.IcosahedronGeometry(0.22, 0), 0.15, -0.35, 0.22, -0.32, -0.14, 0.24),
   ]);
 }
 
-// 立体航天信标棱塔（游戏：阶梯八角底座 + 锥形塔身 + 悬空冠环）
+// 环稳定深空测绘浮标（游戏星系：球形仪器舱 + 双正交扫描环 + 四翼太阳能板，替代尖塔石碑）
 function pylonGeometry(): THREE.BufferGeometry {
   return joinParts([
-    tfPart(new THREE.CylinderGeometry(0.46, 0.58, 0.32, 8), 0, 0, 0, 0, -0.78, 0),
-    new THREE.CylinderGeometry(0.18, 0.44, 1.65, 6),
-    tfPart(new THREE.TorusGeometry(0.56, 0.055, 6, 16), Math.PI * 0.5, 0, 0, 0, 0.48, 0),
-    tfPart(new THREE.OctahedronGeometry(0.24, 0), 0, 0, 0, 0, 1.05, 0),
+    new THREE.IcosahedronGeometry(0.32, 0),
+    tfPart(new THREE.TorusGeometry(0.68, 0.055, 6, 18), Math.PI * 0.5, 0, 0),
+    tfPart(new THREE.TorusGeometry(0.52, 0.045, 6, 16), 0.42, 0.35, 0),
+    tfPart(new THREE.BoxGeometry(1.48, 0.04, 0.26), 0.12, 0, 0),
+    tfPart(new THREE.BoxGeometry(0.26, 0.04, 1.48), 0, 0.15, 0),
   ]);
 }
 

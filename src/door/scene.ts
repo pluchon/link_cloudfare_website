@@ -230,7 +230,7 @@ export function mountDoor(options: DoorOptions): () => void {
     uCosmosMix: { value: 0 },
     uNucleusGlow: { value: 0 },
   };
-  const defines: Record<string, number | string> = { STEPS: lite ? 100 : 170 };
+  const defines: Record<string, number | string> = { STEPS: lite ? 84 : 136 };
   if (lite) defines.LITE = '';
   const hole = new THREE.Mesh(
     new THREE.PlaneGeometry(2, 2),

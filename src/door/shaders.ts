@@ -109,30 +109,48 @@ export const holeFragment = /* glsl */ `
   // 一个像素对着多大的角度（弧度），main 一开头在分支外面用 fwidth 量好；星点按它限制最小的大小
   float gPixAng;
 
-  // 一层星点：每个格子最多一颗，大部分很暗、少数很亮，颜色按黑体色温分冷暖，亮星带柔和星冕。
-  // 星点本身比一个像素还小（细的那层只有十分之一像素），镜头一动像素有时采到星、有时擦过去，星空就一闪一闪（2026-11-18 用户在星海漫游里看到的）。
-  // 所以星点至少铺开到一个多像素宽，同时按面积把亮度压回去，总亮度不变
+  // 一层星点：在立方体 6 个等角展开面上建均匀 2D 晶格（彻底消除 3D 立方网格斜切半星与无核灰斑），
+  // 核心按 Nyquist 采样率守恒（σ ≈ 0.62px），暗星零光晕保留锐利针尖，亮星展开白芯＋黑体彩晕
   vec3 starLayer(vec3 d, float scale, float chance, float size) {
-    vec3 p = d * scale;
-    vec3 id = floor(p);
+    vec3 ad = abs(d);
+    vec2 uv;
+    float face;
+    if (ad.x >= ad.y && ad.x >= ad.z) {
+      uv = d.yz / ad.x;
+      face = d.x > 0.0 ? 0.0 : 1.0;
+    } else if (ad.y >= ad.x && ad.y >= ad.z) {
+      uv = d.xz / ad.y;
+      face = d.y > 0.0 ? 2.0 : 3.0;
+    } else {
+      uv = d.xy / ad.z;
+      face = d.z > 0.0 ? 4.0 : 5.0;
+    }
+    uv = uv * (1.34 - 0.34 * uv * uv);
+    vec2 p = uv * scale;
+    vec2 id2 = floor(p);
+    vec3 id = vec3(id2, face * 17.0 + scale * 0.13);
     if (hash13(id) > chance) return vec3(0.0);
-    vec3 c = hash33(id + 7.1) * 0.6 + 0.2;
-    vec3 f = fract(p) - c;
+    vec2 c = vec2(hash13(id + 7.1), hash13(id + 13.7)) * 0.44 + 0.28;
+    vec2 f = fract(p) - c;
     float d2 = dot(f, f);
-    // exp(-d²/spread²) 的标准差是 spread / √2，乘 1.15 让它约有 0.8 个像素：再细的话落在像素不同位置亮度差一倍，照样闪
-    float spread = max(size, gPixAng * scale * 1.15);
-    float s2 = spread * spread;
-    if (d2 > 9.0 * s2) return vec3(0.0);
-    float invS2 = 1.0 / s2;
-    float mag = pow(hash13(id + 3.3), 6.5);
-    float core = exp(-d2 * invS2);
-    float halo = exp(-d2 * invS2 * 0.22) * 0.34 * mag;
-    float s = (core + halo) * (0.09 + 4.4 * mag) * (size * size * invS2);
+    if (d2 > 0.078) return vec3(0.0);
+    float px = min(gPixAng * 1.2732395 * scale, 0.18);
+    float coreW = max(size, px * 0.76);
+    float coreS2 = coreW * coreW;
+    float haloW = min(max(size * 2.2, px * 1.35), 0.12);
+    float haloS2 = haloW * haloW;
+    float cellFade = smoothstep(0.078, 0.032, d2);
+    float aaGain = pow(clamp(size / coreW, 0.36, 1.0), 0.72);
+    float mag = pow(hash13(id + 3.3), 6.0);
+    float core = exp(-d2 / coreS2);
+    float halo = exp(-d2 / haloS2) * 0.34 * mag * smoothstep(0.05, 0.26, mag);
+    float s = (core + halo) * (0.12 + 4.2 * mag) * aaGain * cellFade;
     float t = hash13(id + 11.7);
     vec3 tint = t < 0.16
       ? vec3(1.0, 0.68, 0.45)
       : (t < 0.48 ? vec3(1.0, 0.94, 0.86) : (t < 0.78 ? vec3(0.76, 0.86, 1.0) : vec3(0.62, 0.76, 1.0)));
-    return tint * s;
+    vec3 col = mix(tint, vec3(1.0), core * smoothstep(0.04, 0.50, mag) * 0.80);
+    return col * s;
   }
 
   // 发射星云：域扭曲噪声，只在 dir 附近一片天区里算，其他方向直接跳过省开销
@@ -223,9 +241,8 @@ export const holeFragment = /* glsl */ `
     if (c < 1.0 - size * size * 8.0) return vec3(0.0);
     float ang2 = max(2.0 * (1.0 - c), 0.0) / (size * size);
     float profile = 1.0 / pow(1.0 + ang2 * 2.2, 1.8);
-    float fine = hash13(floor(d * 620.0));
-    float sparkle = smoothstep(0.72, 0.995, fine) * exp(-ang2 * 0.65) * 2.4;
-    return (vec3(1.0, 0.88, 0.72) * profile * 0.42 + vec3(0.88, 0.92, 1.0) * sparkle) * gain;
+    vec3 sparkle = starLayer(d, 190.0, 0.18, 0.048) * exp(-ang2 * 0.75) * 0.85;
+    return (vec3(1.0, 0.88, 0.72) * profile * 0.42 + sparkle) * gain;
   }
 
   // 整片天上极淡的两团色光（一团偏品红、一团偏青），给大片空白的深空一点冷暖起伏。
@@ -238,14 +255,16 @@ export const holeFragment = /* glsl */ `
 
   // 河外深场（斯隆长城背景下极遥远的高红移微小星系暗点，单次栅格散列几乎零开销）
   vec3 deepField(vec3 d) {
-    vec3 p = d * 78.0;
+    vec3 p = d * 46.0;
     vec3 cell = floor(p);
     vec3 f = fract(p) - 0.5;
     float h = hash13(cell + 17.3);
-    if (h < 0.88) return vec3(0.0);
+    if (h < 0.93) return vec3(0.0);
     vec3 off = vec3(hash13(cell + 1.1), hash13(cell + 2.3), hash13(cell + 3.7)) - 0.5;
-    float r2 = dot(f - off * 0.45, f - off * 0.45);
-    float spot = exp(-r2 * 44.0) * smoothstep(0.88, 1.0, h);
+    vec3 delta = f - off * 0.30;
+    float r2 = dot(delta, delta);
+    if (r2 > 0.12) return vec3(0.0);
+    float spot = exp(-r2 * 26.0) * smoothstep(0.12, 0.04, r2) * smoothstep(0.93, 1.0, h);
     vec3 tint = fract(h * 19.7) > 0.45 ? vec3(0.95, 0.68, 0.48) : vec3(0.55, 0.78, 1.0);
     return tint * spot * 0.22;
   }
@@ -286,7 +305,7 @@ export const holeFragment = /* glsl */ `
       + t4 * vec3(0.0024, 0.0012, 0.0028);
     vec3 col = mix(bgBase, vec3(0.0007, 0.0012, 0.0028), uCosmosMix);
 
-    if (band > 0.008 && galacticMask > 0.02) {
+    if (band > 0.008 && galacticMask > 0.32) {
       float clouds = fbm3(d * 3.4);
       float grain = fbm3lo(d * 15.0 + 3.0);
       float dust = smoothstep(0.38, 0.66, fbm3lo(d * 6.8 + 9.0)) * exp(-lat * lat * 210.0);
@@ -298,7 +317,7 @@ export const holeFragment = /* glsl */ `
       col += mix(bandEdge, bandCore, coreGlow) * milky * (t0 * 0.18 + (1.0 - t0) * 0.19) * galacticMask;
     }
 
-    if (galacticMask > 0.02) {
+    if (galacticMask > 0.32) {
       vec3 nebD1 = normalize(
         t0 * vec3(-0.7035, 0.3518, -0.6172)
         + t1 * vec3(0.58, 0.36, 0.73)
@@ -371,13 +390,12 @@ export const holeFragment = /* glsl */ `
       col += deepField(d) * uCosmosMix;
     }
 
-    // 星点：星系际深空模式下适度收敛背景星尘亮度，保持宇宙纵深
-    float boost = 1.0 + band * 2.6 * (1.0 - uCosmosMix);
-    float starGain = mix(1.0, 0.45, uCosmosMix);
-    col += starLayer(d, 90.0, 0.07 * boost, 0.09) * starGain;
-    col += starLayer(d, 210.0, 0.09 * boost, 0.08) * 0.82 * starGain;
+    // 星点：两层低密度等角天球晶格（68 / 148），既留深空呼吸感又让 96%+ 像素在星点判定前早退省算力
+    float boost = 1.0 + band * 1.45 * (1.0 - uCosmosMix);
+    float starGain = mix(1.0, 0.46, uCosmosMix);
+    col += starLayer(d, 68.0, 0.022 * boost, 0.050) * starGain;
     #ifndef LITE
-    col += starLayer(d, 480.0, 0.12 * boost, 0.07) * 0.62 * starGain;
+    col += starLayer(d, 148.0, 0.028 * boost, 0.044) * 0.80 * starGain;
     #endif
     return col;
   }
@@ -512,8 +530,7 @@ export const holeFragment = /* glsl */ `
     vec4 view = uInvProj * vec4(vNdc, 1.0, 1.0);
     vec3 viewDir = normalize(view.xyz / view.w);
     vec3 rd = normalize((uCamWorld * vec4(viewDir, 0.0)).xyz);
-    // 必须在任何分支之前量：fwidth 在分支里结果不确定
-    gPixAng = max(length(fwidth(rd)), 1e-5);
+    // 透镜弯折前的相机视向（像素角宽 gPixAng 在下文分支外依据 skyRd 计算）
 
     // 光行差：把看到的方向换回静止系里的方向，再拿去追光线
     float boostLum = 1.0;
@@ -633,10 +650,11 @@ export const holeFragment = /* glsl */ `
       col += jet * jetTint * 0.115 * keep * (1.0 + uDive * 2.0);
     }
 
-    // 整个片元着色器只保留单一处 sky(...) 调用，避免多分支内联膨胀导致显卡编译久卡
+    // 整个片元着色器只保留单一处 sky(...) 调用，避免多分支内联膨胀导致显卡编译久卡；fwidth 必须在 needSky 分支外计算
     bool needSky = hideHole || !swallowed || uHoleAlpha < 0.999;
     vec3 finalRd = normalize(rd);
     vec3 skyRd = (hideHole || swallowed) ? origRd : finalRd;
+    gPixAng = clamp(length(fwidth(skyRd)) * 0.7071, 0.0005, 0.0028);
     vec3 rawSky = needSky ? sky(skyRd) : vec3(0.0);
 
     if (hideHole) {

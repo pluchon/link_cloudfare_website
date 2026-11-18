@@ -173,7 +173,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       vertexShader: holeVertex,
       fragmentShader: holeFragment,
       uniforms: holeUniforms,
-      defines: lite ? { STEPS: 56, LITE: '' } : { STEPS: 76 },
+      defines: lite ? { STEPS: 44, LITE: '' } : { STEPS: 64 },
       depthFunc: THREE.AlwaysDepth,
     }),
   );

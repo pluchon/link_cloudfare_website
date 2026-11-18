@@ -111,8 +111,8 @@
   },
   {
     "id": "17",
-    "title": "半夜调 Bug 四格：从破防到绿灯",
-    "summary": "诺诺从盯着报错发愁，到看懂便签上的示意图。测试亮起绿勾，她抱着金鱼玩偶在桌上睡着了。",
+    "title": "半夜调 Bug 记 (ﾉ>ω<)ﾉ",
+    "summary": "从抓耳挠腮盯报错到测试全绿，抱着金鱼玩偶趴桌秒睡 ♪",
     "category": "漫画",
     "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/midnight-debug-4koma.webp",
     "publishedAt": "2026-11-13"
@@ -132,5 +132,37 @@
     "category": "海报",
     "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/arcade-weekend-poster.webp",
     "publishedAt": "2026-11-13"
+  },
+  {
+    "id": "21",
+    "title": "周末赖床 (´-ω-`)zzz",
+    "summary": "闭眼盲按闹钟却拍中猫爪抱枕，洗漱完捧起热牛奶满血复活 ♪",
+    "category": "漫画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/morning-alarm-4koma.webp",
+    "publishedAt": "2026-11-18"
+  },
+  {
+    "id": "22",
+    "title": "第一口草莓给妹妹 (´∀`)♡",
+    "summary": "蛋糕上只有一颗大草莓，诺诺叉起来先喂给嘴馋的妹妹小萌 ♪",
+    "category": "漫画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/strawberry-cake-4koma.webp",
+    "publishedAt": "2026-11-18"
+  },
+  {
+    "id": "23",
+    "title": "手冲黑咖啡大危机 (＞﹏＜)",
+    "summary": "一本正经手冲黑咖啡却苦成飞机耳，赶紧倒进热牛奶救场 ♪",
+    "category": "漫画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/pour-over-coffee-4koma.webp",
+    "publishedAt": "2026-11-18"
+  },
+  {
+    "id": "24",
+    "title": "和太阳捉迷藏 (・∀・)☂",
+    "summary": "刚晒好毛巾和金鱼玩偶就飘雨，火速抱回屋窗外又挂起彩虹 ♪",
+    "category": "漫画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/rainy-laundry-4koma.webp",
+    "publishedAt": "2026-11-18"
   }
 ]
