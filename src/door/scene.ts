@@ -58,7 +58,9 @@ interface DoorOptions {
   starmap?: StarMapUI;
   // 穿过视界之后的加载画面
   loader: LoaderUI;
-  // 着色器编译完、第一帧画出来时调用（开场加载画面据此收起）
+  // 开场加载进度汇报（floor 与 cap 均在 [0, 0.95] 区间，就绪后再走 done）
+  onProgress?: (floor: number, cap: number) => void;
+  // 着色器编译完、首轮完整画面合成提交后调用（开场加载画面据此走完 100% 并收起）
   onReady?: () => void;
   // 四周的读数和刻度带
   hud: {
@@ -350,8 +352,9 @@ export function mountDoor(options: DoorOptions): () => void {
   dust.frustumCulled = false;
   scene.add(dust);
 
-  // ---- 深空星图与斯隆长城（开场渲染就绪后再挂入场景后台预编译，避免阻塞首屏加载） ----
+  // ---- 深空星图与斯隆长城（随主场景一同挂载并预编译，确保首帧即呈完整画面） ----
   const starMap = buildStarMap(lite);
+  scene.add(starMap.group);
 
   // ---- 速度线：挂在相机上，只在俯冲和跃迁时出现，从前方迎面掠过 ----
   const streakCount = lite ? 140 : 360;
@@ -430,16 +433,9 @@ export function mountDoor(options: DoorOptions): () => void {
   // ---- 外围的小行星带和两颗岩质行星：按开场时空间站的方向摆，从甲板一眼就能看见 ----
   const rocks = buildRocks(lite, stationPos.clone().normalize());
   scene.add(rocks.group);
-  // ---- 画廊/游戏星系与基地外围轻量化三维景物（首屏就绪后再后台预热，零首屏卡顿） ----
+  // ---- 画廊/游戏星系与基地外围轻量化三维景物（随主场景一同挂载，首帧即就位） ----
   const realmProps = buildRealmProps(lite);
-  let extrasReadyAt = 0;
-  const attachExtras = () => {
-    if (!starMap.group.parent) scene.add(starMap.group);
-    if (!realmProps.group.parent) {
-      scene.add(realmProps.group);
-      extrasReadyAt = performance.now();
-    }
-  };
+  scene.add(realmProps.group);
   for (const root of [station, rocks.group, ...probes.map((p) => p.group)]) {
     root.traverse((object) => object.layers.enable(IMAGE_LAYER));
   }
@@ -729,7 +725,6 @@ export function mountDoor(options: DoorOptions): () => void {
 
   function openStarMap(goalPos = MAP_OVERVIEW_POS) {
     if (!sm || mode === 'starmap' || mode === 'enteringMap' || mode === 'diving' || mode === 'warping') return;
-    attachExtras();
     closeTerminal();
     docked = null;
     activeGalaxy = null;
@@ -817,7 +812,6 @@ export function mountDoor(options: DoorOptions): () => void {
 
   function flyToGalaxy(node: StarNodeSpec) {
     if (!node.href) return;
-    attachExtras();
     activeGalaxy = node;
     selectedStar = node;
     mapFocus = null;
@@ -1061,7 +1055,6 @@ export function mountDoor(options: DoorOptions): () => void {
 
   const applyLiveScale = (u: number) => {
     if (!sm) return;
-    attachExtras();
     dragScaleU = u;
     scaleU = u;
     mapFocus = null;
@@ -1373,20 +1366,16 @@ export function mountDoor(options: DoorOptions): () => void {
   const goalPos = new THREE.Vector3();
   const goalLook = new THREE.Vector3();
 
-  // 俯冲时的抖动：转镜头而不是挪位置，离得再远也看得出来。
-  // 强度来自引力梯度（1/r³，越近涨得越猛）和速度，平方之后小的时候几乎不抖、快到视界才真正剧烈。
-  // 用几个正弦叠出来的连续噪声，每帧纯随机看着是电视雪花式的高频闪动，不像被甩动
-  function shakeCamera(beta: number, dt: number) {
-    // 尺度取 12 * holeScale 是看画面定的：r 不到 5 时黑场已经盖上来了，峰值要赶在那之前
-    const distRs = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4), 1.01);
-    const tide = Math.min((12 / distRs) ** 3, 1);
-    const trauma = Math.min(0.45 * (beta / 0.82) + 0.9 * tide, 1);
-    shakePhase += dt * Math.PI * 2 * (3 + 6 * trauma);
-    const noise = (t: number) => (Math.sin(t) + 0.6 * Math.sin(2.17 * t + 1.3) + 0.35 * Math.sin(4.31 * t + 2.7)) / 1.95;
-    const amount = trauma * trauma;
-    camera.rotateX(noise(shakePhase) * amount * 0.022);
-    camera.rotateY(noise(shakePhase + 37) * amount * 0.022);
-    camera.rotateZ(noise(shakePhase + 91) * amount * 0.035);
+  // 广义相对论等效原理：自由落体穿过视界局部惯性系平顺滑行；
+  // 仅在深入内光子球层（rush > 0.4）后保留极低频（~0.85 Hz）、微幅的参考系拖曳微倾，消除近距高频机械震动带来的眩晕
+  function shakeCamera(rush: number, beta: number, dt: number) {
+    const drag = smooth(clamp01((rush - 0.4) / 0.55));
+    if (drag <= 0.001) return;
+    const drift = drag * (0.45 + 0.55 * clamp01(beta / 0.82));
+    shakePhase += dt * Math.PI * 2 * 0.85;
+    camera.rotateX(Math.sin(shakePhase) * drift * 0.0012);
+    camera.rotateY(Math.sin(shakePhase * 0.79 + 1.4) * drift * 0.0012);
+    camera.rotateZ(Math.sin(shakePhase * 0.63 + 2.7) * drift * 0.002);
   }
 
   // 第二遍只画几何体，走透镜方程的另一个解（次像）。材质、矩阵、灯光都和第一遍共用，不用维护一份克隆。
@@ -1396,9 +1385,9 @@ export function mountDoor(options: DoorOptions): () => void {
   const probesShown = new Array<boolean>(probes.length);
   let lastDistText = '';
   let lastHeadText = '';
-  let lastVeilOpacity = '';
+  let lastVeilOpacity = '0';
   let lastCopyOpacity = '';
-  let miniAt = 0;
+  let miniAt = -1000;
   function isBehind(p: THREE.Vector3) {
     return p.dot(offset.copy(camera.position)) < 0;
   }
@@ -1446,6 +1435,7 @@ export function mountDoor(options: DoorOptions): () => void {
     stationBeacon.color.setRGB(blink, blink * 0.14, blink * 0.1);
 
     let beta = 0;
+    let diveRush = 0;
 
     placeStation();
     stationQuat.copy(station.quaternion);
@@ -1688,10 +1678,11 @@ export function mountDoor(options: DoorOptions): () => void {
       cosmosMix = 0;
       nucleusGlow = 0;
     } else if (mode === 'diving') {
-      // 先转过去对准当前黑洞中心，再一路加速冲进视界；后半段速度接近光速，星空往前方收拢成隧道
+      // 先平滑转正对准当前黑洞中心，再沿测地线加速冲进视界；后半段速度接近光速，星空往前方收拢成隧道
       const k = clamp01(t / DIVE_MS);
-      const turn = smooth(clamp01(k / 0.2));
+      const turn = smoother(clamp01(k / 0.36));
       const rush = clamp01((k - 0.15) / 0.8);
+      diveRush = rush;
       const e = Math.pow(rush, 2.2);
       goalPos.copy(from.pos).sub(holeCenter).setLength(1.05 * holeScale).add(holeCenter);
       camera.position.lerpVectors(from.pos, goalPos, e);
@@ -1707,7 +1698,9 @@ export function mountDoor(options: DoorOptions): () => void {
       mapOpacity = from.mapOpacity * (1 - smooth(clamp01(k / 0.35)));
       // 最后越过视界：一黑，接着是加载画面
       veil.style.background = '#000';
-      veil.style.opacity = String(smooth(clamp01((k - 0.88) / 0.12)));
+      const diveVeil = String(smooth(clamp01((k - 0.88) / 0.12)));
+      lastVeilOpacity = diveVeil;
+      veil.style.opacity = diveVeil;
       const r = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4), 1.0001);
       hud.distance.textContent = `距视界 ${(r - 1).toFixed(2)} Rs · 时间流速 ×${Math.sqrt(1 - 1 / r).toFixed(2)}`;
       if (k >= 1) {
@@ -1775,24 +1768,20 @@ export function mountDoor(options: DoorOptions): () => void {
     dustUniforms.uSize.value = holeScale > 1.25 ? 14 : 18;
     dust.visible = dustAlpha > 0.005;
     starMap.setOpacity(mapOpacity, simTime, ratio);
-    const realmFade = extrasReadyAt > 0 ? smooth(clamp01((now - extrasReadyAt) / 900)) : 0;
-    const propsAlpha = holeAlpha * (1 - mapOpacity) * realmFade;
+    const propsAlpha = holeAlpha * (1 - mapOpacity);
     realmProps.update(holeTheme, propsAlpha, simTime, holeCenter, holeScale);
     updateStreaks(beta, dt);
 
     if (scripted() || scaleDampingActive) camera.lookAt(controls.target);
     else controls.update();
-    if (mode === 'diving') shakeCamera(beta, dt);
+    if (mode === 'diving') shakeCamera(diveRush, beta, dt);
     camera.updateMatrixWorld();
     lastQuat.copy(stationQuat);
 
-    // 开场从黑里亮起来
-    if (mode !== 'diving') {
-      const vo = String(still ? 0 : 1 - smooth(clamp01((now - startAt) / 1600)));
-      if (vo !== lastVeilOpacity) {
-        lastVeilOpacity = vo;
-        veil.style.opacity = vo;
-      }
+    // 平时保持完全透明（开场由加载层直接渐隐揭开），仅在坠入视界末尾置黑转场
+    if (mode !== 'diving' && lastVeilOpacity !== '0') {
+      lastVeilOpacity = '0';
+      veil.style.opacity = '0';
     }
 
     // 标题只在甲板上显示，按时间算
@@ -1981,30 +1970,48 @@ export function mountDoor(options: DoorOptions): () => void {
   };
   document.addEventListener('visibilitychange', onVisible);
 
-  // 开场：黑场盖着，先把所有着色器异步编译好再开始画。
-  // 同步编译黑洞那个大着色器要卡主线程几百毫秒，开场那一下顿挫主要来自它
-  veil.style.opacity = '1';
+  // 开场：所有景物与星图已提前挂载，等待所有着色器异步编译与字体就绪，完成首轮完整渲染合成后再交棒收起加载画面
+  veil.style.opacity = '0';
+  copy.style.opacity = '1';
+  lastCopyOpacity = '1';
   setMode('deck');
   let disposed = false;
-  let warmupTimer = 0;
+  let readyRaf1 = 0;
+  let readyRaf2 = 0;
+  const snapTags = (noTransition: boolean) => {
+    const val = noTransition ? 'none' : '';
+    for (const tag of allTags) {
+      tag.line.style.transition = val;
+      tag.dot.style.transition = val;
+      tag.label.style.transition = val;
+    }
+  };
   const begin = () => {
     if (disposed) return;
+    options.onProgress?.(0.88, 0.95);
+    measureLabels();
     startAt = performance.now();
     last = startAt;
     modeAt = startAt;
+    snapTags(true);
     frame();
-    options.onReady?.();
-    warmupTimer = window.setTimeout(() => {
+    readyRaf1 = requestAnimationFrame(() => {
       if (disposed) return;
-      attachExtras();
-      renderer.compileAsync(scene, camera);
-    }, 450);
+      snapTags(false);
+      readyRaf2 = requestAnimationFrame(() => {
+        if (disposed) return;
+        options.onReady?.();
+      });
+    });
   };
-  renderer.compileAsync(scene, camera).then(begin, begin);
+  options.onProgress?.(0.68, 0.86);
+  const fontsReady = document.fonts ? document.fonts.ready.catch(() => {}) : Promise.resolve();
+  Promise.all([renderer.compileAsync(scene, camera), fontsReady]).then(begin, begin);
 
   return () => {
     disposed = true;
-    clearTimeout(warmupTimer);
+    cancelAnimationFrame(readyRaf1);
+    cancelAnimationFrame(readyRaf2);
     cancelAnimationFrame(raf);
     observer.disconnect();
     controls.dispose();

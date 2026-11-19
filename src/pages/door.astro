@@ -47,6 +47,265 @@ const tags = [
   { id: 'base', text: '基地', href: '', sub: 'BASE' },
   ...branches.map((b) => ({ id: b.key, text: b.label, href: b.href, sub: b.key.toUpperCase() })),
 ];
+
+// 开场天球星图背景（构建期确定性生成，运行期零重绘开销）
+const bootRng = ((seed: number) => {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+})(20261119);
+const bootSpectra = ['#f4f1ea', '#b9deff', '#ffd59e'];
+const bootBgStars = Array.from({ length: 128 }, (_, i) => {
+  const x = 28 + bootRng() * 1544;
+  const bandY = 450 + (x - 800) * -0.249;
+  const inBand = i % 10 < 6;
+  let y = inBand ? bandY + (bootRng() + bootRng() - 1) * 260 : 28 + bootRng() * 844;
+  if (Math.hypot(x - 800, y - 450) < 185) {
+    y = y < 450 ? y - 190 : y + 190;
+  }
+  const mag = bootRng();
+  const r = Number((0.6 + Math.pow(mag, 2.2) * 1.15).toFixed(2));
+  const o = Number((0.2 + mag * 0.56).toFixed(2));
+  const c = bootSpectra[Math.floor(bootRng() * bootSpectra.length)];
+  return { x: Math.round(x), y: Math.round(Math.min(Math.max(y, 24), 876)), r, o, c };
+});
+
+// 全屏极坐标天球坐标网：6 圈赤纬同心圆 + 24 条赤经辐射线（中心 r < 186 留空给主星盘）
+const bootDecRadii = [210, 310, 420, 540, 670, 810];
+const bootDecLabels = [
+  { deg: '−15°', r: 210 },
+  { deg: '−30°', r: 310 },
+  { deg: '−45°', r: 420 },
+  { deg: '−60°', r: 540 },
+].map((item) => {
+  const rad = (42 * Math.PI) / 180;
+  return {
+    deg: item.deg,
+    x: Number((800 + Math.cos(rad) * (item.r + 8)).toFixed(1)),
+    y: Number((450 + Math.sin(rad) * (item.r + 8)).toFixed(1)),
+  };
+});
+
+const bootRaLines = Array.from({ length: 24 }, (_, i) => {
+  const deg = i * 15;
+  const rad = ((deg - 90) * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  const hour = String(i).padStart(2, '0') + 'h';
+  return {
+    x1: Number((800 + c * 186).toFixed(1)),
+    y1: Number((450 + s * 186).toFixed(1)),
+    x2: Number((800 + c * 920).toFixed(1)),
+    y2: Number((450 + s * 920).toFixed(1)),
+    major: i % 2 === 0,
+    lx: Number((800 + c * 324).toFixed(1)),
+    ly: Number((450 + s * 324 + 3).toFixed(1)),
+    hour: i % 2 === 0 ? hour : '',
+  };
+});
+
+// 四周八大真实星座几何连线图谱与主星拜耳编号
+interface BootConstellationStar {
+  x: number;
+  y: number;
+  r: number;
+  bayer?: string;
+  c?: string;
+  ring?: boolean;
+}
+interface BootConstellation {
+  name: string;
+  lx: number;
+  ly: number;
+  stars: BootConstellationStar[];
+  lines: [number, number][];
+}
+
+const bootConstellations: BootConstellation[] = [
+  {
+    name: 'SAGITTARIUS · 人马',
+    lx: 162,
+    ly: 142,
+    stars: [
+      { x: 205, y: 210, r: 2.0 },
+      { x: 252, y: 174, r: 2.5, bayer: 'α', ring: true, c: '#ffd59e' },
+      { x: 300, y: 168, r: 2.1 },
+      { x: 312, y: 218, r: 2.0 },
+      { x: 254, y: 246, r: 1.9 },
+      { x: 166, y: 248, r: 1.8 },
+      { x: 356, y: 204, r: 1.8 },
+      { x: 350, y: 252, r: 2.1, bayer: 'β', c: '#b9deff' },
+    ],
+    lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0], [0, 5], [5, 4], [2, 6], [6, 7], [7, 3]],
+  },
+  {
+    name: 'CYGNUS · 天鹅',
+    lx: 132,
+    ly: 342,
+    stars: [
+      { x: 224, y: 364, r: 2.8, bayer: 'α', ring: true, c: '#f4f1ea' },
+      { x: 242, y: 434, r: 2.1 },
+      { x: 262, y: 514, r: 2.2, bayer: 'β', c: '#ffd59e' },
+      { x: 138, y: 466, r: 1.9 },
+      { x: 344, y: 396, r: 2.0 },
+    ],
+    lines: [[0, 1], [1, 2], [3, 1], [1, 4]],
+  },
+  {
+    name: 'SCORPIUS · 天蝎',
+    lx: 160,
+    ly: 584,
+    stars: [
+      { x: 174, y: 608, r: 1.9 },
+      { x: 160, y: 650, r: 1.8 },
+      { x: 186, y: 690, r: 1.9 },
+      { x: 244, y: 652, r: 2.9, bayer: 'α', ring: true, c: '#ffd59e' },
+      { x: 294, y: 690, r: 1.9 },
+      { x: 340, y: 742, r: 1.8 },
+      { x: 390, y: 754, r: 1.9 },
+      { x: 408, y: 716, r: 2.2, bayer: 'λ', c: '#b9deff' },
+    ],
+    lines: [[0, 3], [1, 3], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7]],
+  },
+  {
+    name: 'CENTAURUS · 半人马',
+    lx: 480,
+    ly: 702,
+    stars: [
+      { x: 506, y: 736, r: 1.9 },
+      { x: 556, y: 720, r: 2.0 },
+      { x: 590, y: 766, r: 2.3, bayer: 'β', c: '#b9deff' },
+      { x: 624, y: 796, r: 2.8, bayer: 'α', ring: true, c: '#ffd59e' },
+      { x: 486, y: 794, r: 1.8 },
+    ],
+    lines: [[0, 1], [1, 2], [2, 3], [0, 4]],
+  },
+  {
+    name: 'CASSIOPEIA · 仙后',
+    lx: 1206,
+    ly: 138,
+    stars: [
+      { x: 1210, y: 174, r: 2.0 },
+      { x: 1265, y: 222, r: 2.6, bayer: 'α', ring: true, c: '#ffd59e' },
+      { x: 1324, y: 168, r: 2.2, bayer: 'γ', c: '#b9deff' },
+      { x: 1378, y: 226, r: 2.0 },
+      { x: 1434, y: 158, r: 2.1 },
+    ],
+    lines: [[0, 1], [1, 2], [2, 3], [3, 4]],
+  },
+  {
+    name: 'LYRA · 天琴',
+    lx: 1164,
+    ly: 304,
+    stars: [
+      { x: 1166, y: 326, r: 2.9, bayer: 'α', ring: true, c: '#b9deff' },
+      { x: 1202, y: 356, r: 1.8 },
+      { x: 1242, y: 344, r: 1.9 },
+      { x: 1236, y: 396, r: 1.9 },
+      { x: 1196, y: 408, r: 2.0 },
+    ],
+    lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 1]],
+  },
+  {
+    name: 'AQUILA · 天鹰',
+    lx: 1346,
+    ly: 364,
+    stars: [
+      { x: 1416, y: 428, r: 2.8, bayer: 'α', ring: true, c: '#f4f1ea' },
+      { x: 1412, y: 396, r: 2.0, bayer: 'γ', c: '#ffd59e' },
+      { x: 1418, y: 458, r: 1.9 },
+      { x: 1348, y: 412, r: 1.8 },
+      { x: 1484, y: 472, r: 1.9 },
+      { x: 1380, y: 512, r: 1.8 },
+    ],
+    lines: [[1, 0], [0, 2], [3, 0], [0, 4], [2, 5]],
+  },
+  {
+    name: 'ORION · 猎户',
+    lx: 1228,
+    ly: 594,
+    stars: [
+      { x: 1234, y: 620, r: 2.8, bayer: 'α', ring: true, c: '#ffd59e' },
+      { x: 1360, y: 614, r: 2.2, bayer: 'γ', c: '#b9deff' },
+      { x: 1276, y: 702, r: 2.0 },
+      { x: 1302, y: 694, r: 2.1 },
+      { x: 1328, y: 686, r: 2.0 },
+      { x: 1244, y: 780, r: 1.9 },
+      { x: 1382, y: 772, r: 2.9, bayer: 'β', ring: true, c: '#b9deff' },
+    ],
+    lines: [[0, 1], [0, 2], [1, 4], [2, 3], [3, 4], [2, 5], [4, 6], [5, 6]],
+  },
+];
+
+// 中心同心正交星盘（Planisphere）：5 颗站点分类轨道信标，按顺时针校准弧依次扫过点亮
+const bootOrbitRingRadii = [82, 108, 134];
+const bootOrbits = [
+  { deg: 42, r: 82, label: '01 · PROJECT', tint: probeMeta.project.tint, threshold: 0.12, anchor: 'start', dx: 11, dy: -8 },
+  { deg: 116, r: 108, label: '02 · TOOL', tint: probeMeta.tool.tint, threshold: 0.32, anchor: 'start', dx: 11, dy: 4 },
+  { deg: 198, r: 134, label: '03 · EXPLORE', tint: probeMeta.explore.tint, threshold: 0.55, anchor: 'end', dx: -11, dy: 9 },
+  { deg: 262, r: 108, label: '04 · DAILY', tint: probeMeta.daily.tint, threshold: 0.73, anchor: 'end', dx: -11, dy: 3 },
+  { deg: 318, r: 82, label: '05 · XIAOMENG', tint: probeMeta.xiaomeng.tint, threshold: 0.88, anchor: 'end', dx: -11, dy: -8 },
+].map((item) => {
+  const rad = ((item.deg - 90) * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    ...item,
+    x: Number((cos * item.r).toFixed(1)),
+    y: Number((sin * item.r).toFixed(1)),
+    ix: Number((cos * 64).toFixed(1)),
+    iy: Number((sin * 64).toFixed(1)),
+  };
+});
+const bootOrbitPolygon = [...bootOrbits, bootOrbits[0]].map((o) => `${o.x},${o.y}`).join(' ');
+
+// 穿过视界后的跃迁深空背景数据（构建期静态 SVG 生成，零外部请求、运行期零重绘）
+const warpRng = ((seed: number) => {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+})(19151125);
+
+const warpStars = Array.from({ length: 185 }, (_, i) => {
+  const x = 24 + warpRng() * 1552;
+  const bandY = 450 + (x - 800) * -0.22;
+  const inBand = i % 10 < 7;
+  let y = inBand ? bandY + (warpRng() + warpRng() - 1) * 225 : 24 + warpRng() * 852;
+  // 给正中央水平进度条与上下标题栏让出一块干净留白
+  if (Math.abs(x - 800) < 235 && Math.abs(y - 450) < 58) {
+    y = y < 450 ? 450 - 72 - warpRng() * 80 : 450 + 72 + warpRng() * 80;
+  }
+  const mag = warpRng();
+  const r = Number((0.55 + Math.pow(mag, 2.3) * 1.2).toFixed(2));
+  const o = Number((0.22 + mag * 0.62).toFixed(2));
+  const c = bootSpectra[Math.floor(warpRng() * bootSpectra.length)];
+  return { x: Math.round(x), y: Math.round(Math.min(Math.max(y, 18), 882)), r, o, c };
+});
+
+// 10 颗带 1px 四芒星衍射十字丝的深空亮星（避开中央区域）
+const warpBrightStars = [
+  { x: 240, y: 310, r: 2.3, arm: 10, c: '#b9deff' },
+  { x: 430, y: 170, r: 2.0, arm: 9, c: '#f6f3fb' },
+  { x: 520, y: 690, r: 2.2, arm: 10, c: '#ffd59e' },
+  { x: 310, y: 620, r: 1.9, arm: 8, c: '#b9deff' },
+  { x: 740, y: 185, r: 2.1, arm: 9, c: '#f6f3fb' },
+  { x: 930, y: 740, r: 2.0, arm: 9, c: '#ffd59e' },
+  { x: 1120, y: 195, r: 2.2, arm: 10, c: '#b9deff' },
+  { x: 1365, y: 390, r: 2.4, arm: 11, c: '#ffd59e' },
+  { x: 1330, y: 585, r: 2.0, arm: 8, c: '#f6f3fb' },
+  { x: 640, y: 295, r: 1.9, arm: 8, c: '#b9deff' },
+];
+
+// 3 处远景微缩星系核球（纯多层透明椭圆叠画，无滤镜模糊开销）
+const warpGalaxies = [
+  { x: 290, y: 215, rx: 26, ry: 7, rot: -28, c: '#ffd59e' },
+  { x: 1270, y: 250, rx: 22, ry: 6, rot: 22, c: '#8fd4ff' },
+  { x: 1190, y: 695, rx: 20, ry: 5.5, rot: -36, c: '#ffc5b5' },
+];
 ---
 <!doctype html>
 <html lang={site.lang}>
@@ -68,9 +327,81 @@ const tags = [
   </head>
   <body>
     <!-- 开场加载画面「校准星图」：写在 HTML 里，页面一打开就有，不等脚本。
-         视界 + 一圈刻度表盘，进度是沿表盘点亮的弧线；七颗星随进度依次亮起、连成星座。
-         进度按真实里程碑走（见下面的内联脚本和场景脚本里的 __boot 调用） -->
+         外围为构建期静态天球赤经/赤纬坐标网与八大真实星座图谱，中心为正交同心五轨星盘；
+         待 3D 黑洞、轨道探测器、引线标注与 HUD 全部编译渲染完成后才允许推进至 100% 并揭开 -->
     <div class="boot" data-boot role="progressbar" aria-label="正在校准星图" aria-valuemin="0" aria-valuemax="100">
+      <!-- 全屏极坐标天球星图（赤经辐射线、赤纬圈、偏心黄道/银道弧与八大真实星座） -->
+      <svg class="boot__cosmos" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        {
+          bootDecRadii.map((r, i) => (
+            <circle
+              class:list={['boot__dec', i % 2 === 1 && 'boot__dec--dash']}
+              cx="800"
+              cy="450"
+              r={r}
+            />
+          ))
+        }
+        {
+          bootRaLines.map((line) => (
+            <g>
+              <line
+                class:list={['boot__ra', line.major && 'boot__ra--major']}
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+              />
+              {line.hour && (
+                <text class="boot__ra-label" x={line.lx} y={line.ly}>
+                  {line.hour}
+                </text>
+              )}
+            </g>
+          ))
+        }
+        {
+          bootDecLabels.map((d) => (
+            <text class="boot__dec-label" x={d.x} y={d.y}>
+              {d.deg}
+            </text>
+          ))
+        }
+        <g transform="rotate(-14 800 450)">
+          <ellipse class="boot__ecliptic" cx="800" cy="450" rx="760" ry="185" />
+          <ellipse class="boot__ecliptic boot__ecliptic--ticks" cx="800" cy="450" rx="766" ry="191" />
+        </g>
+        {bootBgStars.map((s) => <circle cx={s.x} cy={s.y} r={s.r} fill={s.c} opacity={s.o} />)}
+        {
+          bootConstellations.map((c) => (
+            <g class="boot__constellation">
+              <text class="boot__const-name" x={c.lx} y={c.ly}>
+                {c.name}
+              </text>
+              {c.lines.map(([a, b]) => (
+                <line
+                  class="boot__const-line"
+                  x1={c.stars[a].x}
+                  y1={c.stars[a].y}
+                  x2={c.stars[b].x}
+                  y2={c.stars[b].y}
+                />
+              ))}
+              {c.stars.map((st) => (
+                <g transform={`translate(${st.x} ${st.y})`} style={st.c ? `color: ${st.c}` : undefined}>
+                  {st.ring && <circle class="boot__const-ring" r="6" />}
+                  <circle class="boot__const-star" r={st.r} fill={st.c ?? '#e9e6f0'} />
+                  {st.bayer && (
+                    <text class="boot__const-bayer" x="6" y="-4">
+                      {st.bayer}
+                    </text>
+                  )}
+                </g>
+              ))}
+            </g>
+          ))
+        }
+      </svg>
       <!-- 四周装饰：和门户 HUD 同一套语言，像观测站开机时的仪表 -->
       <div class="boot__frame" aria-hidden="true">
         <span class="boot__corner boot__corner--tl"></span>
@@ -82,72 +413,113 @@ const tags = [
         <span class="boot__tag boot__tag--tl">OBS-01 · 观测甲板</span>
         <span class="boot__tag boot__tag--tr">SYS · BOOT</span>
         <span class="boot__tag boot__tag--bl">RA 17h 45m 40s · DEC −29° 00′ 28″</span>
-        <span class="boot__tag boot__tag--br">LINK · STANDBY</span>
+        <span class="boot__tag boot__tag--br" data-boot-link>LINK · STANDBY</span>
       </div>
-      <svg class="boot__chart" viewBox="-200 -190 400 300" aria-hidden="true">
-        <polyline class="boot__lines" data-boot-lines points="-150,-92 -96,-138 -18,-160 58,-128 128,-150 160,-60 118,40"></polyline>
+      <!-- 中心同心正交星盘（Planisphere）：SGR A* 视界 + 60 格刻度校准环 + 五轨分类星盘 -->
+      <svg class="boot__chart" viewBox="-220 -175 440 350" aria-hidden="true">
+        <path class="boot__cross" d="M -152 0 H -68 M 68 0 H 152 M 0 -152 V -68 M 0 68 V 152"></path>
+        {bootOrbitRingRadii.map((r) => <circle class="boot__ring" r={r} />)}
+        <polyline class="boot__lines" data-boot-lines points={bootOrbitPolygon}></polyline>
         {
-          [
-            [-150, -92],
-            [-96, -138],
-            [-18, -160],
-            [58, -128],
-            [128, -150],
-            [160, -60],
-            [118, 40],
-          ].map(([x, y], i) => <circle class="boot__star" data-boot-star={i} cx={x} cy={y} r={i % 3 === 0 ? 3.2 : 2.2} />)
+          bootOrbits.map((o, i) => (
+            <g class="boot__orbit-node" data-boot-star={i} style={`--probe-tint: ${o.tint}`}>
+              <line class="boot__sightline" x1={o.ix} y1={o.iy} x2={o.x} y2={o.y} />
+              <g transform={`translate(${o.x} ${o.y})`}>
+                <circle class="boot__node-ring" r="6" />
+                <circle class="boot__star" r="2.6" />
+                <text class="boot__node-code" x={o.dx} y={o.dy} text-anchor={o.anchor}>
+                  {o.label}
+                </text>
+              </g>
+            </g>
+          ))
         }
-        <circle class="boot__dial" r="74"></circle>
-        <circle class="boot__ticks" r="82"></circle>
-        <circle class="boot__arc" data-boot-arc r="74" transform="rotate(-90)"></circle>
-        <circle class="boot__glow" r="40"></circle>
-        <circle class="boot__horizon" r="34"></circle>
+        <circle class="boot__ticks" r="60"></circle>
+        <circle class="boot__dial" r="52"></circle>
+        <circle class="boot__arc" data-boot-arc r="52" transform="rotate(-90)"></circle>
+        <circle class="boot__glow" r="32"></circle>
+        <circle class="boot__horizon" r="28"></circle>
       </svg>
       <p class="boot__label">正在校准星图 · <span data-boot-pct>0%</span></p>
       <p class="boot__sub">STAR CHART CALIBRATION</p>
+      <p class="boot__stage" data-boot-stage>01/05 · 锁定人马座 A* 历表</p>
     </div>
     <script is:inline>
-      // 开场加载的进度：分几个真实里程碑，每段之间缓慢逼近这一段的上限，不会停在一个数上不动。
-      //   页面解析完 0.2 → 场景脚本开始执行 0.5 → 场景搭好 0.8 → 着色器编译完 1
-      // 走到 1 之后渐隐收起。场景脚本没跑起来（不支持 WebGL2、脚本出错）也最多等 12 秒
+      // 开场加载的进度：严格锁定在 95% 以内，直到 3D 场景着色器编译、字体测量并完成首轮完整画面渲染合成后，
+      // 才会通过 window.__boot.done() 走完 100% 并渐隐收起。
       (function () {
         var root = document.querySelector('[data-boot]');
         if (!root) return;
         var arc = root.querySelector('[data-boot-arc]');
         var lines = root.querySelector('[data-boot-lines]');
         var stars = root.querySelectorAll('[data-boot-star]');
+        var stageEl = root.querySelector('[data-boot-stage]');
+        var linkTag = root.querySelector('[data-boot-link]');
         var pct = root.querySelector('[data-boot-pct]');
-        var CIRC = 2 * Math.PI * 74;
-        var LINE = lines.getTotalLength ? lines.getTotalLength() : 600;
+        var CIRC = 2 * Math.PI * 52;
+        var LINE = lines && lines.getTotalLength ? lines.getTotalLength() : 620;
+        var THRESHOLDS = [0.12, 0.32, 0.55, 0.73, 0.88];
         arc.style.strokeDasharray = CIRC;
-        lines.style.strokeDasharray = LINE;
+        if (lines) lines.style.strokeDasharray = LINE;
+        var stages = [
+          [0, '01/05 · 锁定人马座 A* 历表'],
+          [0.32, '02/05 · 编译引力透镜着色器'],
+          [0.58, '03/05 · 同步五轨探测器信标'],
+          [0.82, '04/05 · 校准斯隆长城深空星图'],
+          [0.985, '05/05 · 观测甲板就绪'],
+        ];
         var shown = 0;
         var floor = 0;
-        var cap = 0.18;
+        var cap = 0.22;
         var done = false;
+        var finishing = false;
+        var lastStage = '';
+        var lastPct = -1;
         var last = performance.now();
         function paint() {
-          arc.style.strokeDashoffset = CIRC * (1 - shown);
-          lines.style.strokeDashoffset = LINE * (1 - shown);
-          for (var i = 0; i < stars.length; i++) stars[i].classList.toggle('on', shown >= (i + 0.5) / stars.length);
-          var p = Math.round(shown * 100);
-          pct.textContent = p + '%';
-          root.setAttribute('aria-valuenow', p);
+          var ratio = done ? shown : Math.min(shown, 0.95);
+          arc.style.strokeDashoffset = CIRC * (1 - ratio);
+          if (lines) {
+            var polyRatio = Math.max(0, Math.min((ratio - 0.12) / 0.88, 1));
+            lines.style.strokeDashoffset = LINE * (1 - polyRatio);
+          }
+          for (var i = 0; i < stars.length; i++) stars[i].classList.toggle('on', ratio >= THRESHOLDS[i]);
+          var stageText = stages[0][1];
+          for (var k = 0; k < stages.length; k++) {
+            if (ratio >= stages[k][0]) stageText = stages[k][1];
+          }
+          if (stageEl && stageText !== lastStage) {
+            lastStage = stageText;
+            stageEl.textContent = stageText;
+          }
+          var p = done && ratio >= 0.996 ? 100 : Math.min(Math.round(ratio * 100), 95);
+          if (p !== lastPct) {
+            lastPct = p;
+            pct.textContent = p + '%';
+            root.setAttribute('aria-valuenow', p);
+          }
         }
         function tick() {
           var now = performance.now();
           var dt = Math.min((now - last) / 1000, 0.25);
           last = now;
-          // 先追到已确认的进度，再往这一段的上限慢慢爬；都按时间算，后台降帧也照样走
-          var goal = Math.max(floor, shown + (cap - shown) * Math.min(dt * 0.6, 1));
-          shown += (goal - shown) * Math.min(dt * 5, 1);
+          var ceiling = done ? 1 : Math.min(cap, 0.95);
+          var goal = Math.max(floor, shown + (ceiling - shown) * Math.min(dt * (done ? 1.8 : 0.6), 1));
+          shown += (goal - shown) * Math.min(dt * (done ? 11 : 5), 1);
+          if (!done) shown = Math.min(shown, 0.95);
           if (done && 1 - shown < 0.004) {
             shown = 1;
             paint();
-            root.dataset.state = 'done';
-            setTimeout(function () {
-              root.hidden = true;
-            }, 700);
+            if (!finishing) {
+              finishing = true;
+              if (linkTag) linkTag.textContent = 'LINK · ONLINE';
+              setTimeout(function () {
+                root.dataset.state = 'done';
+                setTimeout(function () {
+                  root.hidden = true;
+                }, 700);
+              }, 120);
+            }
             return;
           }
           paint();
@@ -155,19 +527,20 @@ const tags = [
         }
         window.__boot = {
           reach: function (value, nextCap) {
-            floor = Math.max(floor, value);
-            cap = Math.max(cap, nextCap || value);
+            floor = Math.max(floor, Math.min(value, 0.95));
+            cap = Math.max(cap, Math.min(nextCap || value, 0.95));
           },
           done: function () {
+            if (done) return;
             floor = 1;
             cap = 1;
             done = true;
           },
         };
         document.addEventListener('DOMContentLoaded', function () {
-          window.__boot.reach(0.2, 0.45);
+          window.__boot.reach(0.18, 0.42);
         });
-        setTimeout(window.__boot.done, 12000);
+        setTimeout(window.__boot.done, 15000);
         requestAnimationFrame(tick);
       })();
     </script>
@@ -436,13 +809,62 @@ const tags = [
 
     <div class="veil" data-veil aria-hidden="true"></div>
 
-    <!-- 穿过视界之后的加载画面（样式在 warp.css，和目标页第一帧共用） -->
-    <div class="warp" data-warp hidden aria-live="polite">
+    <!-- 穿过视界之后的跃迁加载画面：深空银道繁星场景 + 居中 1px 精密水平导轨（底图与导轨线在 warp.css 中和目标页首帧共用） -->
+    <div class="warp" data-warp hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-live="polite">
       <div class="warp__base"></div>
-      <div class="warp__floor" data-warp-floor></div>
-      <span class="warp__fill" data-warp-fill></span>
-      <span class="warp__label" data-warp-label></span>
-      <span class="warp__pct" data-warp-pct>0%</span>
+      <div class="warp__floor"></div>
+      <svg class="warp__cosmos" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        {
+          warpGalaxies.map((g) => (
+            <g transform={`translate(${g.x} ${g.y}) rotate(${g.rot})`} style={`color: ${g.c}`}>
+              <ellipse rx={g.rx} ry={g.ry} fill="currentColor" opacity="0.06" />
+              <ellipse rx={g.rx * 0.52} ry={g.ry * 0.56} fill="currentColor" opacity="0.14" />
+              <ellipse rx={g.rx * 0.18} ry={g.ry * 0.28} fill="currentColor" opacity="0.38" />
+              <circle r="1.2" fill="#f6f3fb" opacity="0.88" />
+            </g>
+          ))
+        }
+        {warpStars.map((s) => <circle cx={s.x} cy={s.y} r={s.r} fill={s.c} opacity={s.o} />)}
+        {
+          warpBrightStars.map((s) => (
+            <g transform={`translate(${s.x} ${s.y})`} style={`color: ${s.c}`}>
+              <circle r="5.5" fill="currentColor" opacity="0.12" />
+              <path
+                d={`M -${s.arm} 0 H ${s.arm} M 0 -${s.arm} V ${s.arm}`}
+                fill="none"
+                stroke="currentColor"
+                stroke-width="0.65"
+                opacity="0.46"
+              />
+              <circle r={s.r} fill="#f6f3fb" opacity="0.92" />
+            </g>
+          ))
+        }
+      </svg>
+      <div class="warp__frame" aria-hidden="true">
+        <span class="boot__tag boot__tag--tl">TRANSIT · 视界跃迁</span>
+        <span class="boot__tag boot__tag--tr">GEODESIC · LOCK</span>
+        <span class="boot__tag boot__tag--bl" data-warp-telemetry>R = 1.50 Rs · γ = 1.05</span>
+        <span class="boot__tag boot__tag--br" data-warp-status>GEODESIC · SYNC</span>
+      </div>
+      <div class="warp__panel">
+        <div class="warp__head">
+          <span class="warp__label" data-warp-label></span>
+          <span class="warp__pct" data-warp-pct>0%</span>
+        </div>
+        <div class="warp__track">
+          <span class="warp__stop warp__stop--l" aria-hidden="true"></span>
+          <span class="warp__tick warp__tick--q1" aria-hidden="true"></span>
+          <span class="warp__tick warp__tick--q2" aria-hidden="true"></span>
+          <span class="warp__tick warp__tick--q3" aria-hidden="true"></span>
+          <span class="warp__stop warp__stop--r" aria-hidden="true"></span>
+          <span class="warp__fill" data-warp-fill></span>
+        </div>
+        <div class="warp__foot">
+          <span class="warp__sub">HORIZON TRANSIT</span>
+          <span class="warp__stage" data-warp-stage>锁定测地线航道</span>
+        </div>
+      </div>
     </div>
 
     <style is:global>
@@ -936,7 +1358,7 @@ const tags = [
         color: rgba(233, 230, 240, 0.6);
       }
 
-      /* 标题：冷白到淡金的渐变字，一层很淡的辉光；开场逐字从模糊里浮出来，只放一次 */
+      /* 标题：冷白到淡金的渐变字，一层很淡的辉光；就绪揭开时即完全清晰到位 */
       .copy__title {
         margin: 1.1rem 0 0;
         white-space: nowrap;
@@ -954,16 +1376,6 @@ const tags = [
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
-        animation: door-glyph 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-        animation-delay: calc(500ms + var(--i) * 70ms);
-      }
-
-      @keyframes door-glyph {
-        from {
-          opacity: 0;
-          filter: blur(8px);
-          transform: translateY(0.25em);
-        }
       }
 
       /* 分割线里的标语：长线 · 字 · 短线 */
@@ -1005,13 +1417,6 @@ const tags = [
         font-size: 0.6rem;
         letter-spacing: 0.16em;
         color: rgba(255, 196, 120, 0.6);
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .copy__title span {
-          animation-duration: 1ms;
-          animation-delay: 0ms;
-        }
       }
 
       /* 引线 */
@@ -1082,8 +1487,7 @@ const tags = [
         outline: none;
       }
 
-      /* 开场加载画面「校准星图」：和跃迁后的网格加载画面是两种主题，
-         这边是观测站开机校准，那边是穿越之后的数据流 */
+      /* 开场加载画面「校准星图」：构建期静态深空星野 + 天体测量网格 + 双弧黑洞校准仪 */
       .boot {
         position: fixed;
         inset: 0;
@@ -1092,17 +1496,113 @@ const tags = [
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 0.9rem;
-        /* 几圈很淡的同心圆，像射电望远镜的扫描环 */
+        gap: 0.68rem;
+        /* 与真场景色调呼应的银道星云微光（静态渐变，零 GPU 额外开销） */
         background:
-          repeating-radial-gradient(circle at center, transparent 0 119px, rgba(143, 212, 255, 0.05) 119px 120px),
-          radial-gradient(ellipse at center, #0a0f20 0%, #020308 70%);
+          radial-gradient(62% 52% at 14% 76%, rgba(92, 34, 56, 0.22), transparent 68%),
+          radial-gradient(46% 24% at 50% 48%, rgba(176, 108, 48, 0.14), transparent 72%),
+          radial-gradient(54% 48% at 84% 24%, rgba(34, 78, 128, 0.20), transparent 70%),
+          radial-gradient(ellipse at center, #080d1b 0%, #020308 76%);
         transition: opacity 700ms ease;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot {
+          transition-duration: 120ms;
+        }
+      }
+
+      .boot__cosmos {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .boot__dec {
+        fill: none;
+        stroke: rgba(143, 212, 255, 0.11);
+        stroke-width: 0.75;
+      }
+
+      .boot__dec--dash {
+        stroke: rgba(143, 212, 255, 0.08);
+        stroke-dasharray: 3 6;
+      }
+
+      .boot__ra {
+        stroke: rgba(143, 212, 255, 0.065);
+        stroke-width: 0.65;
+      }
+
+      .boot__ra--major {
+        stroke: rgba(143, 212, 255, 0.115);
+        stroke-dasharray: 4 7;
+      }
+
+      .boot__ra-label,
+      .boot__dec-label {
+        font-family: var(--door-mono);
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        fill: rgba(143, 212, 255, 0.4);
+      }
+
+      .boot__ra-label {
+        text-anchor: middle;
+      }
+
+      .boot__dec-label {
+        fill: rgba(255, 196, 120, 0.42);
+      }
+
+      .boot__ecliptic {
+        fill: none;
+        stroke: rgba(255, 196, 120, 0.18);
+        stroke-width: 0.85;
+        stroke-dasharray: 8 6;
+      }
+
+      .boot__ecliptic--ticks {
+        stroke: rgba(255, 196, 120, 0.14);
+        stroke-width: 3.5;
+        stroke-dasharray: 0.8 14;
+      }
+
+      .boot__const-name {
+        font-family: var(--door-din);
+        font-size: 9.5px;
+        letter-spacing: 0.2em;
+        fill: rgba(143, 212, 255, 0.48);
+      }
+
+      .boot__const-line {
+        stroke: rgba(143, 212, 255, 0.24);
+        stroke-width: 0.85;
+      }
+
+      .boot__const-ring {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 0.65;
+        opacity: 0.42;
+      }
+
+      .boot__const-star {
+        opacity: 0.88;
+      }
+
+      .boot__const-bayer {
+        font-family: var(--door-serif);
+        font-size: 8.5px;
+        fill: rgba(255, 224, 178, 0.56);
       }
 
       .boot__frame {
         position: absolute;
         inset: 0;
+        z-index: 1;
         pointer-events: none;
         font-family: var(--door-din);
         font-size: 0.6rem;
@@ -1170,12 +1670,16 @@ const tags = [
       .boot__tag--tl { left: 3.25rem; top: 1.45rem; color: rgba(143, 212, 255, 0.7); }
       .boot__tag--tr { right: 3.25rem; top: 1.45rem; }
       .boot__tag--bl { left: 3.25rem; bottom: 1.4rem; font-family: var(--door-mono); letter-spacing: 0.12em; color: rgba(255, 196, 120, 0.55); }
-      .boot__tag--br { right: 3.25rem; bottom: 1.4rem; }
+      .boot__tag--br { right: 3.25rem; bottom: 1.4rem; color: rgba(143, 212, 255, 0.65); }
 
       @media (max-width: 40rem) {
         .boot__tape--top,
         .boot__tape--left,
-        .boot__tag--bl {
+        .boot__tag--bl,
+        .boot__const-name,
+        .boot__const-bayer,
+        .boot__dec-label,
+        .boot__ra-label {
           display: none;
         }
 
@@ -1190,72 +1694,125 @@ const tags = [
       }
 
       .boot p {
+        position: relative;
+        z-index: 1;
         margin: 0;
       }
 
       .boot__chart {
-        width: min(24rem, 78vw);
+        position: relative;
+        z-index: 1;
+        width: min(30rem, 90vw);
         height: auto;
         overflow: visible;
       }
 
+      .boot__cross {
+        fill: none;
+        stroke: rgba(143, 212, 255, 0.22);
+        stroke-width: 0.75;
+      }
+
+      .boot__ring {
+        fill: none;
+        stroke: rgba(143, 212, 255, 0.16);
+        stroke-width: 0.75;
+      }
+
       .boot__lines {
         fill: none;
-        stroke: rgba(143, 212, 255, 0.35);
-        stroke-width: 1;
+        stroke: rgba(143, 212, 255, 0.42);
+        stroke-width: 0.9;
+        stroke-dasharray: 3 4;
+      }
+
+      .boot__sightline {
+        stroke: var(--probe-tint);
+        stroke-width: 0.65;
+        opacity: 0.16;
+        transition: opacity 320ms ease;
+      }
+
+      .boot__node-ring {
+        fill: none;
+        stroke: var(--probe-tint);
+        stroke-width: 0.75;
+        opacity: 0.24;
+        transition: opacity 320ms ease;
       }
 
       .boot__star {
-        fill: rgba(233, 230, 240, 0.18);
+        fill: var(--probe-tint);
+        opacity: 0.34;
         transition:
-          fill 400ms ease,
-          filter 400ms ease;
+          opacity 320ms ease,
+          filter 320ms ease;
       }
 
-      .boot__star.on {
-        fill: #f2efe6;
-        filter: drop-shadow(0 0 4px rgba(255, 230, 190, 0.9));
+      .boot__node-code {
+        font-family: var(--door-mono);
+        font-size: 7.5px;
+        letter-spacing: 0.14em;
+        fill: rgba(233, 230, 240, 0.42);
+        transition: fill 320ms ease;
+      }
+
+      .boot__orbit-node.on .boot__sightline {
+        opacity: 0.56;
+      }
+
+      .boot__orbit-node.on .boot__node-ring {
+        opacity: 0.9;
+      }
+
+      .boot__orbit-node.on .boot__star {
+        opacity: 1;
+        filter: drop-shadow(0 0 4px var(--probe-tint));
+      }
+
+      .boot__orbit-node.on .boot__node-code {
+        fill: var(--probe-tint);
       }
 
       .boot__dial {
         fill: none;
-        stroke: rgba(233, 230, 240, 0.14);
-        stroke-width: 1;
+        stroke: rgba(233, 230, 240, 0.16);
+        stroke-width: 0.9;
       }
 
-      /* 60 格刻度：用虚线画在一圈圆上 */
+      /* 60 格主刻度（r=60 -> 周长 376.99 / 60 = 6.283） */
       .boot__ticks {
         fill: none;
-        stroke: rgba(233, 230, 240, 0.32);
-        stroke-width: 5;
-        stroke-dasharray: 0.8 7.79;
+        stroke: rgba(233, 230, 240, 0.34);
+        stroke-width: 4;
+        stroke-dasharray: 0.75 5.533;
       }
 
       .boot__arc {
         fill: none;
         stroke: #ffc27a;
-        stroke-width: 1.6;
+        stroke-width: 1.65;
         stroke-linecap: round;
-        filter: drop-shadow(0 0 3px rgba(255, 194, 122, 0.8));
+        filter: drop-shadow(0 0 3px rgba(255, 194, 122, 0.85));
       }
 
       .boot__glow {
         fill: none;
-        stroke: rgba(255, 214, 160, 0.35);
-        stroke-width: 6;
+        stroke: rgba(255, 214, 160, 0.34);
+        stroke-width: 5;
         filter: blur(4px);
       }
 
       .boot__horizon {
         fill: #000;
-        stroke: rgba(255, 228, 190, 0.85);
+        stroke: rgba(255, 228, 190, 0.88);
         stroke-width: 1;
       }
 
       .boot__label {
-        font-size: 0.85rem;
+        font-size: 0.86rem;
         letter-spacing: 0.32em;
-        color: rgba(233, 230, 240, 0.85);
+        color: rgba(233, 230, 240, 0.88);
       }
 
       .boot__label span {
@@ -1268,62 +1825,187 @@ const tags = [
         font-family: var(--door-din);
         font-size: 0.6rem;
         letter-spacing: 0.5em;
-        color: rgba(143, 212, 255, 0.6);
+        color: rgba(143, 212, 255, 0.62);
       }
 
-      /* 加载画面：底、地面、四角和进度槽在 warp.css；这里只管进度条本身和上下两行字 */
+      .boot__stage {
+        font-family: var(--door-mono);
+        font-size: 0.64rem;
+        letter-spacing: 0.16em;
+        color: rgba(255, 206, 138, 0.72);
+      }
+
+      /* 穿过视界后的跃迁画面：静态深空繁星 + 居中 1px 水平精密导轨，到达 100% 后淡出面板保留底图无缝跳页 */
       .warp {
-        --warp-track: rgba(233, 230, 240, 0.15);
         position: fixed;
         inset: 0;
-        z-index: 2147483640;
+        z-index: 2147483645;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         opacity: 0;
         transition: opacity var(--door-dur);
+      }
+
+      .warp[hidden] {
+        display: none;
       }
 
       .warp[data-state] {
         opacity: 1;
       }
 
-      .warp__fill {
+      .warp__cosmos {
         position: fixed;
-        z-index: 2147483647;
+        inset: 0;
+        z-index: 2;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        transition: opacity var(--door-dur);
+      }
+
+      .warp__frame {
+        position: fixed;
+        inset: 0;
+        z-index: 3;
+        pointer-events: none;
+        font-family: var(--door-din);
+        font-size: 0.6rem;
+        letter-spacing: 0.32em;
+        color: rgba(233, 230, 240, 0.45);
+        transition: opacity var(--door-dur);
+      }
+
+      /* 居中三行精密网格排版，使中间 1px 导轨严格对齐视口 50% 垂直中线（与 warp.css 无缝重合） */
+      .warp__panel {
+        position: relative;
+        z-index: 4;
+        width: min(24rem, 72vw);
+        display: grid;
+        grid-template-rows: 1.4rem 1px 1.4rem;
+        align-items: center;
+        gap: 0.7rem;
+        transition: opacity var(--door-dur);
+      }
+
+      .warp__head,
+      .warp__foot {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.85rem;
+        min-width: 0;
+      }
+
+      .warp__label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.82rem;
+        letter-spacing: 0.16em;
+        color: rgba(233, 230, 240, 0.9);
+      }
+
+      .warp__pct {
+        flex: none;
+        font-family: var(--door-mono);
+        font-size: 0.8rem;
+        letter-spacing: 0.1em;
+        color: #8fd4ff;
+      }
+
+      .warp__track {
+        position: relative;
+        width: 100%;
+        height: 1px;
+        background: rgba(233, 230, 240, 0.18);
+      }
+
+      .warp__stop,
+      .warp__tick {
+        position: absolute;
+        width: 1px;
+        pointer-events: none;
+      }
+
+      .warp__stop {
+        top: -3px;
+        height: 7px;
+        background: rgba(233, 230, 240, 0.56);
+      }
+
+      .warp__stop--l {
+        left: 0;
+      }
+
+      .warp__stop--r {
+        right: 0;
+      }
+
+      .warp__tick {
+        top: -2px;
+        height: 5px;
+        background: rgba(143, 212, 255, 0.36);
+      }
+
+      .warp__tick--q1 {
+        left: 25%;
+      }
+
+      .warp__tick--q2 {
         left: 50%;
-        top: 50%;
-        width: min(18rem, 60vw);
-        height: 2px;
-        margin: -1px 0 0 calc(min(18rem, 60vw) / -2);
-        background: rgba(233, 230, 240, 0.9);
+      }
+
+      .warp__tick--q3 {
+        left: 75%;
+      }
+
+      .warp__fill {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, rgba(143, 212, 255, 0.94), #ffd9a0);
         transform-origin: left center;
         transform: scaleX(0);
       }
 
-      .warp__label,
-      .warp__pct {
-        position: fixed;
-        z-index: 2147483647;
-        left: 0;
-        right: 0;
-        text-align: center;
+      .warp__sub {
+        flex: none;
+        font-family: var(--door-din);
+        font-size: 0.58rem;
+        letter-spacing: 0.34em;
+        color: rgba(143, 212, 255, 0.62);
+      }
+
+      .warp__stage {
+        flex: 1;
+        min-width: 0;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         font-family: var(--door-mono);
-        letter-spacing: 0.24em;
-        transition: opacity var(--door-dur);
+        font-size: 0.62rem;
+        letter-spacing: 0.1em;
+        color: rgba(255, 206, 138, 0.8);
       }
 
-      .warp__label {
-        bottom: calc(50% + 1.1rem);
-        font-size: 0.72rem;
-        color: rgba(233, 230, 240, 0.8);
+      @media (max-width: 40rem) {
+        .warp__label {
+          font-size: 0.74rem;
+          letter-spacing: 0.08em;
+        }
+
+        .warp__sub {
+          letter-spacing: 0.2em;
+        }
       }
 
-      .warp__pct {
-        top: calc(50% + 1rem);
-        font-size: 0.66rem;
-        color: rgba(143, 212, 255, 0.8);
-      }
-
-      .warp[data-state='done'] .warp__label,
-      .warp[data-state='done'] .warp__pct {
+      .warp[data-state='done'] .warp__cosmos,
+      .warp[data-state='done'] .warp__frame,
+      .warp[data-state='done'] .warp__panel {
         opacity: 0;
       }
 
@@ -2170,7 +2852,7 @@ const tags = [
       // 跑到这里说明 three.js 和场景脚本已经下载并执行了
       type Boot = { reach: (value: number, nextCap?: number) => void; done: () => void };
       const boot = (window as unknown as { __boot?: Boot }).__boot;
-      boot?.reach(0.5, 0.75);
+      boot?.reach(0.45, 0.66);
 
       const pick = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
       const tag = (id: string) => ({
@@ -2216,10 +2898,12 @@ const tags = [
           },
           loader: {
             root: pick<HTMLElement>('[data-warp]'),
-            floor: pick<HTMLElement>('[data-warp-floor]'),
             fill: pick<HTMLElement>('[data-warp-fill]'),
             label: pick<HTMLElement>('[data-warp-label]'),
             pct: pick<HTMLElement>('[data-warp-pct]'),
+            stage: pick<HTMLElement>('[data-warp-stage]'),
+            telemetry: pick<HTMLElement>('[data-warp-telemetry]'),
+            status: pick<HTMLElement>('[data-warp-status]'),
           },
           hud: {
             distance: pick<HTMLElement>('[data-distance]'),
@@ -2229,11 +2913,10 @@ const tags = [
             pitchTape: pick<HTMLElement>('[data-pitch-tape]'),
             guide: pick<HTMLElement>('[data-guide]'),
           },
-          // 着色器编译完、第一帧画出来，加载画面收起
+          // 真实进度里程碑：场景构筑与着色器编译完均上限 95%，待首轮完整画面合成提交后再走完 100% 并揭开
+          onProgress: (floor, cap) => boot?.reach(floor, cap),
           onReady: () => boot?.done(),
         });
-        // 场景已经搭好，剩下的是着色器编译
-        boot?.reach(0.8, 0.96);
       } else {
         // 不支持 WebGL2：没有场景，引线文字原地变成进入链接
         document.documentElement.classList.add('flat');
