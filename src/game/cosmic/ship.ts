@@ -79,8 +79,100 @@ function getHullBump(): THREE.CanvasTexture {
   return tex;
 }
 
-// 真空离子推力羽流着色器：无大气压缩马赫环与风压抖振，呈真空 Prandtl-Meyer 顺滑膨胀电离扇
-const plumeVertex = /* glsl */ `
+// 喷气式加力尾焰系统：外层包络锥 + 内层马赫环激波菱形核 + 正交体积火焰翼（零离散圆球粒子）
+const OUTER_PLUME_LEN = 1.45;
+const INNER_PLUME_LEN = 1.08;
+const FIN_PLUME_LEN = 1.38;
+
+const jetConeVertex = /* glsl */ `
+  varying float vAxial;
+  varying float vAngle;
+  varying vec3 vNormalV;
+  varying vec3 vViewPos;
+  uniform float uTime;
+  uniform float uThrust;
+  uniform float uLen;
+
+  void main() {
+    float t = clamp(position.y / max(uLen, 0.001), 0.0, 1.0);
+    vAxial = t;
+    vAngle = atan(position.z, position.x);
+
+    float pulse = 1.0 + 0.032 * sin(uTime * 42.0 - t * 6.0) * (0.35 + uThrust);
+    float lenScale = (0.88 + uThrust * 0.86) * pulse;
+
+    // 喷口内部喉部锁定，仅末端随高速喷流产生细微热颤与极轻微收敛/膨胀呼吸
+    float tipMask = t * t;
+    float radialBreath = 1.0 + (0.045 * sin(uTime * 34.0 - t * 9.0) + 0.08 * uThrust) * smoothstep(0.05, 0.55, t);
+
+    vec3 pos = position;
+    pos.xz *= radialBreath;
+    pos.y *= lenScale;
+    pos.x += sin(uTime * 48.0 + t * 7.5) * 0.011 * tipMask * (0.4 + uThrust);
+    pos.z += cos(uTime * 43.0 + t * 8.2) * 0.011 * tipMask * (0.4 + uThrust);
+
+    vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+    vViewPos = -mv.xyz;
+    vNormalV = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const jetConeFragment = /* glsl */ `
+  varying float vAxial;
+  varying float vAngle;
+  varying vec3 vNormalV;
+  varying vec3 vViewPos;
+  uniform float uTime;
+  uniform float uThrust;
+  uniform float uMode; // 0.0 = 外层高温射流包络, 1.0 = 内层马赫环激波核
+  uniform vec3 uHotCol;
+  uniform vec3 uMidCol;
+  uniform vec3 uOuterCol;
+
+  void main() {
+    float t = vAxial;
+    float nLen = length(vNormalV);
+    float vLen = length(vViewPos);
+    vec3 n = nLen > 1e-5 ? vNormalV / nLen : vec3(0.0, 0.0, 1.0);
+    vec3 v = vLen > 1e-5 ? vViewPos / vLen : vec3(0.0, 0.0, 1.0);
+    float rim = abs(dot(n, v));
+
+    // 柔和菲涅尔边缘消除多边形轮廓硬边
+    float radial = uMode > 0.5 ? pow(rim, 1.85) : pow(rim, 1.32);
+
+    // 高速轴向喷流条纹（基于无缝圆周角，零 UV 接缝）
+    float streakA = 0.82 + 0.18 * sin(t * 22.0 - uTime * 54.0 + cos(vAngle * 3.0) * 1.1);
+    float streakB = 0.88 + 0.12 * cos(t * 34.0 - uTime * 72.0 + sin(vAngle * 5.0) * 1.4);
+    float flow = streakA * streakB;
+
+    // 驻波马赫环激波节点（近喷口密集明亮，向尾端渐弱）
+    float machFreq = uMode > 0.5 ? 24.0 : 18.0;
+    float machWave = 0.5 + 0.5 * cos(t * machFreq - uTime * 4.5 - 0.55);
+    float machRing = pow(machWave, uMode > 0.5 ? 2.6 : 3.2) * (1.0 - smoothstep(0.08, 0.82, t));
+
+    // 从喷口点火起步并按气动尖锥收尾
+    float ignite = smoothstep(0.0, 0.045, t);
+    float tailFade = pow(clamp(1.0 - smoothstep(0.12, 1.0, t), 0.0, 1.0), uMode > 0.5 ? 1.35 : 1.55);
+
+    vec3 col = mix(uOuterCol, uMidCol, smoothstep(0.12, 0.72, radial * (1.05 - t * 0.45)));
+    float hotAmt = clamp(
+      (1.0 - smoothstep(0.0, 0.62, t)) * pow(rim, uMode > 0.5 ? 1.4 : 2.6) + machRing * (0.45 + 0.4 * uThrust),
+      0.0,
+      1.0
+    );
+    col = mix(col, uHotCol, hotAmt);
+
+    float baseAlpha = uMode > 0.5 ? (0.46 + 0.34 * uThrust) : (0.52 + 0.32 * uThrust);
+    float alpha = ignite * tailFade * radial * flow * (baseAlpha + machRing * (0.28 + 0.25 * uThrust));
+    if (alpha < 0.008) discard;
+
+    float radiance = uMode > 0.5 ? (1.15 + 0.65 * machRing + 0.25 * uThrust) : (0.95 + 0.45 * hotAmt + 0.2 * uThrust);
+    gl_FragColor = vec4(col * radiance, clamp(alpha, 0.0, 1.0));
+  }
+`;
+
+const jetFinVertex = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vNormalV;
   varying vec3 vViewPos;
@@ -89,12 +181,18 @@ const plumeVertex = /* glsl */ `
 
   void main() {
     vUv = uv;
-    // uv.y: 0 在喷口喉部，1 在真空膨胀末端
     float t = uv.y;
-    float expansion = 1.0 + pow(t, 0.82) * (0.58 + 0.34 * uThrust);
+    float pulse = 1.0 + 0.032 * sin(uTime * 42.0 - t * 6.0) * (0.35 + uThrust);
+    float lenScale = (0.88 + uThrust * 0.86) * pulse;
+    float tipMask = t * t;
+    float radialBreath = 1.0 + (0.045 * sin(uTime * 34.0 - t * 9.0) + 0.08 * uThrust) * smoothstep(0.05, 0.55, t);
+
     vec3 pos = position;
-    pos.xz *= expansion;
-    pos.y *= (0.76 + uThrust * 0.82);
+    pos.xz *= radialBreath;
+    pos.y *= lenScale;
+    pos.x += sin(uTime * 48.0 + t * 7.5) * 0.011 * tipMask * (0.4 + uThrust);
+    pos.z += cos(uTime * 43.0 + t * 8.2) * 0.011 * tipMask * (0.4 + uThrust);
+
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
     vViewPos = -mv.xyz;
     vNormalV = normalize(normalMatrix * normal);
@@ -102,36 +200,116 @@ const plumeVertex = /* glsl */ `
   }
 `;
 
-const plumeFragment = /* glsl */ `
+const jetFinFragment = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vNormalV;
   varying vec3 vViewPos;
   uniform float uTime;
   uniform float uThrust;
-  uniform vec3 uCoreCol;
+  uniform vec3 uHotCol;
+  uniform vec3 uMidCol;
   uniform vec3 uOuterCol;
 
   void main() {
     float t = vUv.y;
-    vec3 n = normalize(vNormalV);
-    vec3 v = normalize(vViewPos);
-    float rim = abs(dot(n, v));
-    float radial = pow(rim, 1.6);
+    float nx = (vUv.x - 0.5) * 2.0;
+    float nLen = length(vNormalV);
+    float vLen = length(vViewPos);
+    vec3 n = nLen > 1e-5 ? vNormalV / nLen : vec3(0.0, 0.0, 1.0);
+    vec3 v = vLen > 1e-5 ? vViewPos / vLen : vec3(0.0, 0.0, 1.0);
 
-    // 真空中平滑稀释，仅留轻微磁场谐振微脉动（无大气湍流噪点）
-    float magPulse = 0.92 + 0.08 * sin(t * 10.0 - uTime * 22.0);
-    float axial = smoothstep(0.0, 0.08, t) * pow(1.0 - smoothstep(0.04, 1.0, t), 1.9);
-    float coreMask = pow(rim, 3.0) * (1.0 - smoothstep(0.0, 0.55, t));
+    // 掠射角平滑消隐，防止正对片面边缘时出现细线穿帮
+    float angleFade = smoothstep(0.07, 0.42, abs(dot(n, v)));
 
-    vec3 hotWhite = vec3(1.0, 0.98, 0.94);
-    vec3 col = mix(uOuterCol, uCoreCol, smoothstep(0.18, 0.84, radial));
-    col = mix(col, hotWhite, clamp(coreMask * 0.85, 0.0, 1.0));
+    float transverse = exp(-nx * nx * 4.6);
+    float coreGauss = exp(-nx * nx * 12.0);
+    float streak = 0.84 + 0.16 * sin(t * 26.0 - uTime * 62.0 + nx * 2.4);
+    float machWave = 0.5 + 0.5 * cos(t * 22.0 - uTime * 3.5 - 0.4);
+    float machDiamond = pow(machWave, 3.0) * (1.0 - smoothstep(0.05, 0.80, t));
 
-    float intensity = axial * radial * magPulse * (0.58 + uThrust * 0.92);
-    if (intensity < 0.008) discard;
-    gl_FragColor = vec4(col * intensity * 1.4, clamp(intensity, 0.0, 1.0));
+    float ignite = smoothstep(0.0, 0.05, t);
+    float tailFade = pow(clamp(1.0 - smoothstep(0.08, 1.0, t), 0.0, 1.0), 1.45);
+
+    vec3 col = mix(uOuterCol, uMidCol, smoothstep(0.15, 0.85, transverse));
+    float hotAmt = clamp(coreGauss * (1.0 - smoothstep(0.0, 0.72, t)) + machDiamond * coreGauss * 0.85, 0.0, 1.0);
+    col = mix(col, uHotCol, hotAmt);
+
+    float alpha = angleFade * ignite * tailFade * transverse * streak * (0.42 + 0.34 * uThrust + machDiamond * 0.24);
+    if (alpha < 0.008) discard;
+
+    gl_FragColor = vec4(col * (1.05 + 0.45 * hotAmt + 0.25 * uThrust), clamp(alpha, 0.0, 1.0));
   }
 `;
+
+function makeFlameFinGeometry(len: number): THREE.BufferGeometry {
+  const segs = 14;
+  // 按尾焰外包络比例插值每一节半宽，形成顺滑收尖的喷气焰心翼
+  const profile: [number, number][] = [
+    [0.0, 0.088],
+    [0.09, 0.118],
+    [0.24, 0.106],
+    [0.48, 0.076],
+    [0.74, 0.042],
+    [1.0, 0.008],
+  ];
+  function halfWidthAt(u: number): number {
+    for (let k = 0; k < profile.length - 1; k++) {
+      const [u0, w0] = profile[k];
+      const [u1, w1] = profile[k + 1];
+      if (u <= u1) {
+        const f = (u - u0) / Math.max(u1 - u0, 1e-5);
+        return w0 + (w1 - w0) * f;
+      }
+    }
+    return profile[profile.length - 1][1];
+  }
+
+  const positions = new Float32Array((segs + 1) * 2 * 3);
+  const normals = new Float32Array((segs + 1) * 2 * 3);
+  const uvs = new Float32Array((segs + 1) * 2 * 2);
+  const indices: number[] = [];
+
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const y = t * len;
+    const hw = halfWidthAt(t);
+
+    const v0 = i * 2;
+    positions[v0 * 3] = -hw;
+    positions[v0 * 3 + 1] = y;
+    positions[v0 * 3 + 2] = 0;
+    normals[v0 * 3] = 0;
+    normals[v0 * 3 + 1] = 0;
+    normals[v0 * 3 + 2] = 1;
+    uvs[v0 * 2] = 0;
+    uvs[v0 * 2 + 1] = t;
+
+    const v1 = i * 2 + 1;
+    positions[v1 * 3] = hw;
+    positions[v1 * 3 + 1] = y;
+    positions[v1 * 3 + 2] = 0;
+    normals[v1 * 3] = 0;
+    normals[v1 * 3 + 1] = 0;
+    normals[v1 * 3 + 2] = 1;
+    uvs[v1 * 2] = 1;
+    uvs[v1 * 2 + 1] = t;
+
+    if (i < segs) {
+      const a = v0;
+      const b = v1;
+      const c = v0 + 2;
+      const d = v1 + 2;
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  return geo;
+}
 
 function makeWingGeometry(
   innerR: number,
@@ -260,19 +438,31 @@ export function buildShip(spec: ShipSpec): ShipModel {
     }),
   );
 
-  // ---- 内凹矢量喷口 + 体积等离子尾焰系统 ----
-  const plumeCoreCol = accentCol.clone().lerp(new THREE.Color(0xffffff), 0.48);
-  const plumeOuterCol = spec.id === 'glider' ? new THREE.Color(0xff7248) : accentCol.clone().lerp(new THREE.Color(0x4cb8ff), 0.55);
+  // ---- 内凹矢量喷口 + 连续喷气加力尾焰系统 ----
+  const palette =
+    spec.id === 'glider'
+      ? { hot: 0xfff8e8, mid: 0xffa03d, outer: 0xf03a18 }
+      : spec.id === 'voyager'
+        ? { hot: 0xfffaeb, mid: 0xffc852, outer: 0xe86b1c }
+        : { hot: 0xf2fdff, mid: 0x5ce2ff, outer: 0x1860f5 };
 
-  const plumeMat = trackMat(
+  const hotCol = new THREE.Color(palette.hot);
+  const midCol = new THREE.Color(palette.mid);
+  const outerCol = new THREE.Color(palette.outer);
+  const throatCoolCol = midCol.clone().lerp(hotCol, 0.35);
+
+  const outerPlumeMat = trackMat(
     new THREE.ShaderMaterial({
-      vertexShader: plumeVertex,
-      fragmentShader: plumeFragment,
+      vertexShader: jetConeVertex,
+      fragmentShader: jetConeFragment,
       uniforms: {
         uTime: { value: 0 },
         uThrust: { value: 0.35 },
-        uCoreCol: { value: plumeCoreCol },
-        uOuterCol: { value: plumeOuterCol },
+        uLen: { value: OUTER_PLUME_LEN },
+        uMode: { value: 0.0 },
+        uHotCol: { value: hotCol },
+        uMidCol: { value: midCol },
+        uOuterCol: { value: outerCol },
       },
       transparent: true,
       depthWrite: false,
@@ -280,28 +470,83 @@ export function buildShip(spec: ShipSpec): ShipModel {
       side: THREE.DoubleSide,
     }),
   );
-  const throatMat = trackMat(
-    new THREE.MeshBasicMaterial({
-      color: plumeCoreCol.clone().lerp(new THREE.Color(0xffffff), 0.55),
+
+  const innerPlumeMat = trackMat(
+    new THREE.ShaderMaterial({
+      vertexShader: jetConeVertex,
+      fragmentShader: jetConeFragment,
+      uniforms: {
+        uTime: { value: 0 },
+        uThrust: { value: 0.35 },
+        uLen: { value: INNER_PLUME_LEN },
+        uMode: { value: 1.0 },
+        uHotCol: { value: hotCol },
+        uMidCol: { value: midCol },
+        uOuterCol: { value: midCol },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
     }),
   );
 
-  // 外层包裹的开放抛物面软壳（uv.y = 0 在喷口处，1 在尾部渐隐）
-  const plumePts = [
-    new THREE.Vector2(0.08, 0.0),
-    new THREE.Vector2(0.115, 0.2),
-    new THREE.Vector2(0.105, 0.55),
-    new THREE.Vector2(0.072, 0.85),
-    new THREE.Vector2(0.025, 1.0),
-  ];
-  const outerPlumeGeo = trackGeo(new THREE.LatheGeometry(plumePts, 20));
-  const innerPlumePts = [
-    new THREE.Vector2(0.052, 0.0),
-    new THREE.Vector2(0.068, 0.22),
-    new THREE.Vector2(0.045, 0.65),
-    new THREE.Vector2(0.008, 1.0),
-  ];
-  const innerPlumeGeo = trackGeo(new THREE.LatheGeometry(innerPlumePts, 16));
+  const finPlumeMat = trackMat(
+    new THREE.ShaderMaterial({
+      vertexShader: jetFinVertex,
+      fragmentShader: jetFinFragment,
+      uniforms: {
+        uTime: { value: 0 },
+        uThrust: { value: 0.35 },
+        uHotCol: { value: hotCol },
+        uMidCol: { value: midCol },
+        uOuterCol: { value: outerCol },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    }),
+  );
+
+  const throatMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      color: throatCoolCol.clone(),
+    }),
+  );
+
+  // 外层喷气焰锥：喉部贴合喷管内腔，出喷口后平滑膨胀至气动腰线并顺滑收尖
+  const outerPlumeGeo = trackGeo(
+    new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.095, 0.0),
+        new THREE.Vector2(0.128, 0.14),
+        new THREE.Vector2(0.122, 0.34),
+        new THREE.Vector2(0.095, 0.65),
+        new THREE.Vector2(0.056, 1.02),
+        new THREE.Vector2(0.022, 1.28),
+        new THREE.Vector2(0.004, OUTER_PLUME_LEN),
+      ],
+      28,
+    ),
+  );
+
+  // 内层马赫激波高能芯：更收拢聚焦的激波核锥
+  const innerPlumeGeo = trackGeo(
+    new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.064, 0.0),
+        new THREE.Vector2(0.078, 0.14),
+        new THREE.Vector2(0.062, 0.42),
+        new THREE.Vector2(0.032, 0.78),
+        new THREE.Vector2(0.003, INNER_PLUME_LEN),
+      ],
+      22,
+    ),
+  );
+
+  // 正交十字立体焰芯翼：保证任意追踪/侧视角度都有致密喷气焰体
+  const finGeo = trackGeo(makeFlameFinGeometry(FIN_PLUME_LEN));
 
   const nozzleBellGeo = trackGeo(
     new THREE.LatheGeometry(
@@ -315,9 +560,7 @@ export function buildShip(spec: ShipSpec): ShipModel {
     ),
   );
   const nozzleRibGeo = trackGeo(new THREE.TorusGeometry(0.16, 0.014, 6, 20));
-  const throatDiskGeo = trackGeo(new THREE.CircleGeometry(0.1, 16));
-
-  const emitters: THREE.Object3D[] = [];
+  const throatDiskGeo = trackGeo(new THREE.CircleGeometry(0.108, 18));
 
   function mountThruster(pos: THREE.Vector3, scale = 1.0) {
     const tGroup = new THREE.Group();
@@ -341,20 +584,25 @@ export function buildShip(spec: ShipSpec): ShipModel {
     throat.position.z = 0.02;
     tGroup.add(throat);
 
-    // 双层体积等离子尾焰（y 轴正向映射到 +Z 尾流）
-    const outerMesh = new THREE.Mesh(outerPlumeGeo, plumeMat);
-    outerMesh.rotation.x = Math.PI * 0.5;
-    outerMesh.position.z = 0.08;
-    const innerMesh = new THREE.Mesh(innerPlumeGeo, plumeMat);
-    innerMesh.rotation.x = Math.PI * 0.5;
-    innerMesh.position.z = 0.08;
-    tGroup.add(outerMesh, innerMesh);
+    // 三层连续喷气式加力尾焰（从喉部 z = 0.05 顺滑喷出至 +Z 尾流，renderOrder 后置防遮挡）
+    const plumeGroup = new THREE.Group();
+    plumeGroup.position.z = 0.05;
+    plumeGroup.rotation.x = Math.PI * 0.5;
 
-    // 粒子的世界空间发射锚点
-    const anchor = new THREE.Object3D();
-    anchor.position.set(0, 0, 0.24);
-    tGroup.add(anchor);
-    emitters.push(anchor);
+    const outerMesh = new THREE.Mesh(outerPlumeGeo, outerPlumeMat);
+    outerMesh.renderOrder = 4;
+
+    const innerMesh = new THREE.Mesh(innerPlumeGeo, innerPlumeMat);
+    innerMesh.renderOrder = 5;
+
+    const finA = new THREE.Mesh(finGeo, finPlumeMat);
+    finA.renderOrder = 5;
+    const finB = new THREE.Mesh(finGeo, finPlumeMat);
+    finB.rotation.y = Math.PI * 0.5;
+    finB.renderOrder = 5;
+
+    plumeGroup.add(outerMesh, innerMesh, finA, finB);
+    tGroup.add(plumeGroup);
 
     body.add(tGroup);
   }
@@ -602,140 +850,23 @@ export function buildShip(spec: ShipSpec): ShipModel {
     mountThruster(new THREE.Vector3(0, 0.02, 0.46), 0.65);
   }
 
-  // ---- 真实感物理尾迹粒子流（紧贴每个真实喷口后方在世界坐标里喷射消散，零硬折线） ----
-  const P_COUNT = 84;
-  const pPos = new Float32Array(P_COUNT * 3);
-  const pVel = new Float32Array(P_COUNT * 3);
-  const pLife = new Float32Array(P_COUNT);
-  const pSize = new Float32Array(P_COUNT);
-  for (let i = 0; i < P_COUNT; i++) {
-    pLife[i] = i / P_COUNT;
-    pSize[i] = 1.0;
-  }
+  // 保留空 Group 以兼容 game.ts 的 scene 挂接与销毁协议，彻底取消离散球状尾迹粒子
+  const trail = new THREE.Group();
 
-  const pGeo = trackGeo(new THREE.BufferGeometry());
-  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  pGeo.setAttribute('aLife', new THREE.BufferAttribute(pLife, 1));
-  pGeo.setAttribute('aSize', new THREE.BufferAttribute(pSize, 1));
-
-  const pMat = trackMat(
-    new THREE.ShaderMaterial({
-      vertexShader: /* glsl */ `
-        attribute float aLife;
-        attribute float aSize;
-        uniform float uTrailScale;
-        varying float vLife;
-        void main() {
-          vLife = aLife;
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * mv;
-          gl_PointSize = clamp((18.0 + aSize * 12.0) * uTrailScale * (1.0 - aLife * 0.55) / max(-mv.z, 0.18), 1.5, 18.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        varying float vLife;
-        uniform vec3 uCoreCol;
-        uniform vec3 uOuterCol;
-        void main() {
-          vec2 c = gl_PointCoord - 0.5;
-          float r2 = dot(c, c) * 4.0;
-          if (r2 > 1.0) discard;
-          float alpha = pow(1.0 - r2, 1.8) * (1.0 - smoothstep(0.15, 1.0, vLife));
-          vec3 col = mix(uCoreCol, uOuterCol, smoothstep(0.0, 0.65, vLife));
-          gl_FragColor = vec4(col * 1.1, alpha * 0.72);
-        }
-      `,
-      uniforms: {
-        uCoreCol: { value: plumeCoreCol.clone().lerp(new THREE.Color(0xffffff), 0.3) },
-        uOuterCol: { value: plumeOuterCol },
-        uTrailScale: { value: 1 },
-      },
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  const trail = new THREE.Points(pGeo, pMat);
-  trail.frustumCulled = false;
-
-  const spawnPos = new THREE.Vector3();
-  const aftDir = new THREE.Vector3();
-  const worldQuat = new THREE.Quaternion();
-  let spawnCursor = 0;
-  let spawnAccum = 0;
-
-  function spawnParticle(boostFactor: number) {
-    const sc = Math.max(root.scale.x, 0.1);
-    const anchor = emitters[spawnCursor % emitters.length];
-    spawnCursor++;
-    anchor.getWorldPosition(spawnPos);
-    root.getWorldQuaternion(worldQuat);
-    aftDir.set(0, 0, 1).applyQuaternion(worldQuat);
-
-    const idx = Math.floor(Math.random() * P_COUNT);
-    const b = idx * 3;
-    const jitter = 0.045 * sc;
-    pPos[b] = spawnPos.x + (Math.random() - 0.5) * jitter;
-    pPos[b + 1] = spawnPos.y + (Math.random() - 0.5) * jitter;
-    pPos[b + 2] = spawnPos.z + (Math.random() - 0.5) * jitter;
-
-    const ejectSpeed = (3.2 + boostFactor * 5.2 + Math.random() * 1.6) * sc;
-    const spread = (0.35 + boostFactor * 0.25) * sc;
-    pVel[b] = aftDir.x * ejectSpeed + (Math.random() - 0.5) * spread;
-    pVel[b + 1] = aftDir.y * ejectSpeed + (Math.random() - 0.5) * spread;
-    pVel[b + 2] = aftDir.z * ejectSpeed + (Math.random() - 0.5) * spread;
-    pLife[idx] = 0.001;
-    pSize[idx] = 0.6 + boostFactor * 0.7 + Math.random() * 0.35;
-  }
-
-  function resetTrail() {
-    root.updateMatrixWorld(true);
-    const anchor = emitters[0];
-    anchor.getWorldPosition(spawnPos);
-    for (let i = 0; i < P_COUNT; i++) {
-      const b = i * 3;
-      pPos[b] = spawnPos.x;
-      pPos[b + 1] = spawnPos.y;
-      pPos[b + 2] = spawnPos.z;
-      pVel[b] = 0;
-      pVel[b + 1] = 0;
-      pVel[b + 2] = 0;
-      pLife[i] = 1.0;
-    }
-    pGeo.attributes.position.needsUpdate = true;
-    pGeo.attributes.aLife.needsUpdate = true;
-  }
+  function resetTrail() {}
 
   function updateVisuals(simTime: number, _dt: number, boostFactor: number) {
-    plumeMat.uniforms.uTime.value = simTime;
-    plumeMat.uniforms.uThrust.value = 0.25 + boostFactor * 0.85;
+    const thrust = Math.max(0, Math.min(1, boostFactor));
+    outerPlumeMat.uniforms.uTime.value = simTime;
+    outerPlumeMat.uniforms.uThrust.value = thrust;
+    innerPlumeMat.uniforms.uTime.value = simTime;
+    innerPlumeMat.uniforms.uThrust.value = thrust;
+    finPlumeMat.uniforms.uTime.value = simTime;
+    finPlumeMat.uniforms.uThrust.value = thrust;
+    throatMat.color.copy(throatCoolCol).lerp(hotCol, 0.25 + thrust * 0.75);
   }
 
-  function updateTrail(dt: number, boostFactor: number) {
-    if (dt <= 0) return;
-    root.updateMatrixWorld(true);
-    pMat.uniforms.uTrailScale.value = Math.max(root.scale.x, 0.1);
-    const rate = 42 + boostFactor * 85;
-    spawnAccum += dt * rate;
-    const nSpawn = Math.min(Math.floor(spawnAccum), 8);
-    spawnAccum -= nSpawn;
-    for (let s = 0; s < nSpawn; s++) {
-      spawnParticle(boostFactor);
-    }
-
-    const lifeRate = 1.65 - boostFactor * 0.25;
-    for (let i = 0; i < P_COUNT; i++) {
-      if (pLife[i] >= 1.0) continue;
-      pLife[i] = Math.min(1.0, pLife[i] + dt * lifeRate);
-      const b = i * 3;
-      pPos[b] += pVel[b] * dt;
-      pPos[b + 1] += pVel[b + 1] * dt;
-      pPos[b + 2] += pVel[b + 2] * dt;
-    }
-    pGeo.attributes.position.needsUpdate = true;
-    pGeo.attributes.aLife.needsUpdate = true;
-    pGeo.attributes.aSize.needsUpdate = true;
-  }
+  function updateTrail(_dt: number, _boostFactor: number) {}
 
   function dispose() {
     for (const g of geometries) g.dispose();

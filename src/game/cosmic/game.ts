@@ -82,6 +82,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   const warpBar = root.querySelector<HTMLElement>('[data-warp]')!;
   const warpNum = root.querySelector<HTMLElement>('[data-warp-num]')!;
   const teleSpeed = root.querySelector<HTMLElement>('[data-tele-speed]')!;
+  const teleNextLbl = root.querySelector<HTMLElement>('[data-tele-next-lbl]')!;
   const teleNext = root.querySelector<HTMLElement>('[data-tele-next]')!;
 
   const readyBox = root.querySelector<HTMLElement>('[data-ready]')!;
@@ -301,6 +302,16 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   let slingshotCount = 0;
   let slingshotTimer = 0;
   let escapeCarry = 0;
+  let ergoCharge = 0;
+  let ergoChain = 0;
+  let activeHoleId = '';
+  let currentRsRatio = 9.9;
+  let currentTimeDilation = 1.0;
+  let inHoleField = false;
+  let inErgoCorridor = false;
+  let wellEnvSmooth = 0;
+  let holeGazeWeight = 0;
+  let camLookReady = false;
   let isWarpHeld = false;
   let camLock = 0;
   let ringToneIndex = 0;
@@ -315,6 +326,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   const litGalaxies = new Set<string>();
   const collectedIds = new Set<string>();
   const slingshotSeen = new Set<string>();
+  const ergoSeen = new Set<string>();
 
   const trackSample: TrackSample = {
     u: 0,
@@ -336,6 +348,9 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   const shipPos = new THREE.Vector3();
   const camGoal = new THREE.Vector3();
   const camLook = new THREE.Vector3();
+  const camLookTarget = new THREE.Vector3();
+  const camLookSmoothed = new THREE.Vector3();
+  const holeGazePos = new THREE.Vector3();
   const tmpA = new THREE.Vector3();
   const tmpB = new THREE.Vector3();
   const basisMat = new THREE.Matrix4();
@@ -664,38 +679,49 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     qPitch.setFromAxisAngle(axisX, pitchTilt);
     ship.root.quaternion.copy(qBase).multiply(qBank).multiply(qPitch);
 
-    const boostFactor = clamp01((trackSpeed - BASE_SPEED) / 18);
-    ship.updateVisuals(simTime, animate ? dt : 0, boostFactor);
-    ship.updateTrail(animate ? dt : 0, boostFactor);
+    const boostFactor = clamp01((trackSpeed - BASE_SPEED) / 48);
+    ship.updateVisuals(simTime, animate ? dt : 0, 0.14 + boostFactor * 0.86);
+    ship.updateTrail(animate ? dt : 0, 0.14 + boostFactor * 0.86);
 
     if (animate) {
-      // 微粒飞船贴尾与超广角宏大视角；黑洞引力弹弓期间视角居中锁定中轴航线，稳住构图
+      // 超广角自由视角追尾：高速曲速与弹弓期动态拉深视野纵深；黑洞邻近柔和照顾奇观构图但不抢舵权
+      const chaseDist = -1.42 + boostFactor * 0.24;
       camGoal
         .copy(shipPos)
-        .addScaledVector(trackSample.forward, -1.42)
-        .addScaledVector(trackSample.up, 0.4);
+        .addScaledVector(trackSample.forward, chaseDist)
+        .addScaledVector(trackSample.up, 0.4 - boostFactor * 0.04);
       tmpA
         .copy(trackSample.pos)
-        .addScaledVector(trackSample.forward, -1.62)
+        .addScaledVector(trackSample.forward, -1.56)
         .addScaledVector(trackSample.up, 0.38);
-      camGoal.lerp(tmpA, camLock);
-      camera.position.lerp(camGoal, 1 - Math.exp(-(6.5 + camLock * 6.5) * dt));
+      camGoal.lerp(tmpA, camLock * 0.65);
+      camera.position.lerp(camGoal, 1 - Math.exp(-(7.2 + camLock * 5.0) * dt));
 
-      const aheadS = trackS + 68;
+      const aheadS = trackS + 68 + boostFactor * 36;
       track.sampleAtS(Math.min(aheadS, track.totalLength), lookSample);
       if (aheadS > track.totalLength) {
         lookSample.pos.addScaledVector(track.finishDir, aheadS - track.totalLength);
       }
-      const lookFreeScale = (1 - camLock) * 0.35;
-      camLook
+      const lookFreeScale = (1 - camLock * 0.72) * 0.42;
+      camLookTarget
         .copy(lookSample.pos)
         .addScaledVector(lookSample.right, laneX * lookFreeScale)
         .addScaledVector(lookSample.up, laneY * lookFreeScale);
+      if (holeGazeWeight > 0.0005) {
+        camLookTarget.lerp(holeGazePos, holeGazeWeight);
+      }
+      if (!camLookReady) {
+        camLookSmoothed.copy(camLookTarget);
+        camLookReady = true;
+      } else {
+        camLookSmoothed.lerp(camLookTarget, 1 - Math.exp(-9.0 * dt));
+      }
+      camLook.copy(camLookSmoothed);
       camera.lookAt(camLook);
 
-      const targetFov = BASE_FOV + boostFactor * 10 + camLock * 4;
+      const targetFov = BASE_FOV + boostFactor * 18 + ergoCharge * 3.5;
       if (Math.abs(camera.fov - targetFov) > 0.05) {
-        camera.fov += (targetFov - camera.fov) * Math.min(dt * 8, 1);
+        camera.fov += (targetFov - camera.fov) * Math.min(dt * 5.2, 1);
         camera.updateProjectionMatrix();
       }
     }
@@ -720,6 +746,16 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     slingshotCount = 0;
     slingshotTimer = 0;
     escapeCarry = 0;
+    ergoCharge = 0;
+    ergoChain = 0;
+    activeHoleId = '';
+    currentRsRatio = 9.9;
+    currentTimeDilation = 1.0;
+    inHoleField = false;
+    inErgoCorridor = false;
+    wellEnvSmooth = 0;
+    holeGazeWeight = 0;
+    camLookReady = false;
     isWarpHeld = false;
     camLock = 0;
     ringToneIndex = 0;
@@ -734,6 +770,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     litGalaxies.clear();
     collectedIds.clear();
     slingshotSeen.clear();
+    ergoSeen.clear();
     world.resetProgress();
 
     placeShipFromTrack(0, false);
@@ -900,6 +937,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   };
 
   const onStageClick = (e: MouseEvent) => {
+    if (state === 'atlas') return;
     if ((e.target as HTMLElement).closest('button, a')) return;
     if (state === 'ready' || (state === 'finished' && outroTime >= 3.7)) {
       startRun();
@@ -1014,6 +1052,9 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     (e.currentTarget as HTMLElement).blur();
     toggleAtlas();
   };
+  const stopAtlasBubble = (e: Event) => {
+    e.stopPropagation();
+  };
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
@@ -1029,6 +1070,10 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   pauseBtn.addEventListener('click', onPause);
   atlasBtn.addEventListener('click', onAtlasClick);
   atlasCloseBtn.addEventListener('click', onAtlasClick);
+  atlasDialog.addEventListener('pointerdown', stopAtlasBubble);
+  atlasDialog.addEventListener('pointermove', stopAtlasBubble);
+  atlasDialog.addEventListener('touchstart', stopAtlasBubble, { passive: true });
+  atlasDialog.addEventListener('touchmove', stopAtlasBubble, { passive: true });
 
   function behindHole(p: THREE.Vector3, r: number) {
     const toHole = tmpA.copy(holeCenter).sub(camera.position);
@@ -1072,6 +1117,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
   let hudProgressStr = '';
   let hudRelicsStr = '';
   let hudSectorStr = '';
+  let hudNextLblStr = '';
   let hudNextStr = '';
   let hudWarpScaleStr = '';
   let hudWarpPctStr = '';
@@ -1123,9 +1169,17 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
 
     const nextMs = track.milestones.find((m) => m.s > trackS);
-    const nextStr = nextMs
-      ? `${nextMs.node.name} · ${(Math.max(0, nextMs.s - trackS) / COSMOS_SCALE).toFixed(0)} Mpc`
-      : `终点 · ${(Math.max(0, track.totalLength - trackS) / COSMOS_SCALE).toFixed(0)} Mpc`;
+    const showGravity = inHoleField || prox.alpha > 0.08;
+    const nextLblStr = showGravity ? (inErgoCorridor ? 'ERGOSPHERE' : 'GRAV WELL') : 'TARGET';
+    if (textDue && nextLblStr !== hudNextLblStr) {
+      hudNextLblStr = nextLblStr;
+      teleNextLbl.textContent = nextLblStr;
+    }
+    const nextStr = showGravity
+      ? `${inErgoCorridor ? '能层' : prox.node.name} · ${currentRsRatio.toFixed(1)}Rs · ${currentTimeDilation.toFixed(2)}τ`
+      : nextMs
+        ? `${nextMs.node.name} · ${(Math.max(0, nextMs.s - trackS) / COSMOS_SCALE).toFixed(0)} Mpc`
+        : `终点 · ${(Math.max(0, track.totalLength - trackS) / COSMOS_SCALE).toFixed(0)} Mpc`;
     if (textDue && nextStr !== hudNextStr) {
       hudNextStr = nextStr;
       teleNext.textContent = nextStr;
@@ -1143,12 +1197,20 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     }
 
     const isSling = slingshotTimer > 0;
-    const modeAttr = isSling ? 'sling' : 'cruise';
+    const modeAttr = inErgoCorridor ? 'ergo' : isSling ? 'sling' : isWarpHeld ? 'warp' : 'cruise';
     if (modeAttr !== hudTeleModeAttr) {
       hudTeleModeAttr = modeAttr;
       teleBox.dataset.mode = modeAttr;
     }
-    const modeText = isSling ? 'GRAV-ASSIST' : isWarpHeld ? 'WARP' : 'CRUISE';
+    const modeText = inErgoCorridor
+      ? ergoChain > 1
+        ? `PENROSE ×${ergoChain}`
+        : 'PENROSE'
+      : isSling
+        ? 'GRAV-ASSIST'
+        : isWarpHeld
+          ? 'WARP'
+          : 'CRUISE';
     if (modeText !== hudTeleModeText) {
       hudTeleModeText = modeText;
       teleModeEl.textContent = modeText;
@@ -1267,6 +1329,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
   function stepPlaying(dt: number) {
     elapsed += dt;
+    track.sampleAtS(trackS, trackSample);
 
     const steerLeft = keys.has('ArrowLeft') || keys.has('KeyA');
     const steerRight = keys.has('ArrowRight') || keys.has('KeyD');
@@ -1280,7 +1343,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
     const dsEnd = Math.max(0, track.totalLength - trackS);
     const finalT = dsEnd < 320 ? clamp01((320 - dsEnd) / 320) : 0;
-    const finishLock = dsEnd < 180 ? clamp01((180 - dsEnd) / 115) : 0;
+    const finishLock = dsEnd < 130 ? clamp01((130 - dsEnd) / 95) : 0;
 
     const wantBoost = keys.has('Space') || keys.has('ShiftLeft') || keys.has('ShiftRight') || touchBoost;
     // 耗尽后要松开曲速键、并且回充到 WARP_RESUME 才解锁；一直按着就一直巡航，不会一冲一停
@@ -1290,68 +1353,159 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     const isBoosting = (wantBoost && canWarp) || finalT > 0.25;
     isWarpHeld = isBoosting;
 
-    // 真实开普勒引力弹弓 + 奥伯特近心机动（随宏大斯隆尺度同步放大引力阱区间）
-    const activeMs = track.milestones.find((m) => trackS >= m.s - 185 && trackS <= m.s + 195);
+    // 真实史瓦西度规 / 克尔能层参考系拖拽 / 奥伯特近心弹弓（保留 100% 玩家自由转向，鼓励主动切入内侧能层潮汐流！）
+    const activeMs = track.milestones.find((m) => trackS >= m.s - 205 && trackS <= m.s + 195);
     const inGravWell = !!activeMs;
     let dsPeri = 0;
-    let gravGuideLock = 0;
     let gravBoost = 0;
+    let driftAx = 0;
+    let driftAy = 0;
+    inHoleField = inGravWell;
+    inErgoCorridor = false;
 
     if (activeMs) {
+      activeHoleId = activeMs.node.id;
       dsPeri = trackS - activeMs.s;
-      const enterLock = clamp01((dsPeri + 185) / 74);
-      const exitLock = clamp01((170 - dsPeri) / 82);
-      gravGuideLock = enterLock * exitLock;
+      const enterT = clamp01((dsPeri + 205) / 85);
+      const exitT = clamp01((185 - dsPeri) / 85);
+      const wellEnv = enterT * exitT;
 
-      const infallGain = dsPeri <= 0 ? Math.pow(clamp01((dsPeri + 185) / 185), 1.45) * 16.0 : 16.0 * clamp01((175 - dsPeri) / 175);
-      const oberthPeak = Math.exp(-Math.pow((dsPeri - 3) / 30, 2)) * 8.5;
-      gravBoost = Math.max(infallGain, 0) + oberthPeak;
+      // 计算黑洞质心在当前航道横截面 (right, up) 上的内向单位矢量与切向拖拽矢量
+      tmpA.set(...activeMs.node.position).multiplyScalar(COSMOS_SCALE);
+      tmpB.copy(tmpA).sub(trackSample.pos);
+      const projR = tmpB.dot(trackSample.right);
+      const projU = tmpB.dot(trackSample.up);
+      const projLen = Math.hypot(projR, projU);
+      const dirR = projLen > 1e-3 ? projR / projLen : 0;
+      const dirU = projLen > 1e-3 ? projU / projLen : 0;
 
-      if (dsPeri >= -35 && dsPeri <= 48 && !slingshotSeen.has(activeMs.node.id)) {
+      // 玩家往黑洞侧（inner side, +dir）切入量，能层潮汐走廊中心位于 +9.6
+      const skimProj = laneX * dirR + laneY * dirU;
+      const nearStream = clamp01(1 - Math.abs(skimProj - 9.4) / 8.8);
+      const deepInward = clamp01((skimProj + 2.5) / 13.5);
+      const ergoFactor = Math.max(nearStream, deepInward * 0.9);
+
+      const alongT = clamp01(Math.abs(dsPeri) / 205);
+      const minRs = 3.55 - deepInward * 2.0; // 外侧约 3.55 Rs，贴近能层最低探入 ~1.55 Rs
+      currentRsRatio = minRs + alongT * 6.4;
+      currentTimeDilation = Math.sqrt(Math.max(0.18, 1 - 1 / currentRsRatio));
+
+      if (ergoFactor >= 0.44 && dsPeri >= -145 && dsPeri <= 105) {
+        inErgoCorridor = true;
+        ergoCharge += (1 - ergoCharge) * Math.min(dt * 4.8, 1);
+      } else {
+        ergoCharge *= Math.exp(-3.4 * dt);
+      }
+
+      // 温和的克尔自旋参考系拖拽（Lense-Thirring）：接近近心点时产生轻微朝向吸积盘内侧与切向的漂移体感，绝不卡死操作
+      if (wellEnv > 0.15) {
+        const dragStrength = wellEnv * (0.8 + deepInward * 1.15);
+        driftAx = (dirR * 0.72 - dirU * 0.65) * dragStrength;
+        driftAy = (dirU * 0.72 + dirR * 0.65) * dragStrength * 0.75;
+      }
+
+      const baseInfall =
+        dsPeri <= 0 ? Math.pow(clamp01((dsPeri + 205) / 205), 1.35) * 12.0 : 12.0 * clamp01((185 - dsPeri) / 185);
+      const baseOberth = Math.exp(-Math.pow((dsPeri - 4) / 36, 2)) * 8.0;
+      const ergoOberth = inErgoCorridor
+        ? 16.0 + Math.exp(-Math.pow((dsPeri - 2) / 56, 2)) * (14.0 + Math.min(ergoChain, 4) * 3.0)
+        : 0;
+      gravBoost = Math.max(baseInfall, 0) + baseOberth + ergoOberth;
+
+      // 主动切入能层潮汐走廊：触发彭罗斯能层汲取 & 高能奥伯特弹弓
+      if (inErgoCorridor && dsPeri >= -95 && dsPeri <= 68 && !ergoSeen.has(activeMs.node.id)) {
+        ergoSeen.add(activeMs.node.id);
+        ergoChain++;
+        if (!slingshotSeen.has(activeMs.node.id)) {
+          slingshotSeen.add(activeMs.node.id);
+          slingshotCount++;
+        }
+        warpDrained = false;
+        warpEnergy = Math.min(1, warpEnergy + 0.65);
+        escapeCarry = Math.max(escapeCarry, 24.0 + Math.min(ergoChain, 4) * 3.5);
+        audio.slingshot();
+        pushToast(
+          `彭罗斯能层汲取 · ${activeMs.node.name} ${currentRsRatio.toFixed(1)} Rs 奥伯特加速`,
+          ICONS.sling,
+          2.6,
+        );
+      } else if (dsPeri >= -30 && dsPeri <= 52 && !slingshotSeen.has(activeMs.node.id)) {
         slingshotSeen.add(activeMs.node.id);
         slingshotCount++;
-        warpEnergy = Math.min(1, warpEnergy + 0.45);
+        warpEnergy = Math.min(1, warpEnergy + 0.42);
+        escapeCarry = Math.max(escapeCarry, 14.5);
         audio.slingshot();
-        pushToast(`近心点奥伯特加速 · ${activeMs.node.name}引力弹弓`, ICONS.sling, 2.5);
+        pushToast(`近心点掠飞 · ${activeMs.node.name}引力弹弓`, ICONS.sling, 2.4);
       }
 
-      if (dsPeri >= 10 && dsPeri <= 105) {
-        escapeCarry = Math.max(escapeCarry, 14.5);
+      if (dsPeri >= 8 && dsPeri <= 105) {
+        escapeCarry = Math.max(escapeCarry, inErgoCorridor ? 24.0 : 14.5);
       }
-      slingshotTimer = gravGuideLock > 0.05 ? 0.2 : 0;
+      slingshotTimer = wellEnv > 0.08 ? 0.2 : 0;
+
+      // 连续平滑黑洞视线偏移：仅在黑洞位于侧前方时轻柔过渡，落入侧后方前平顺退零，绝不硬扯回正
+      const wellSmooth = wellEnv * wellEnv * (3 - 2 * wellEnv);
+      wellEnvSmooth += (wellSmooth - wellEnvSmooth) * (1 - Math.exp(-3.6 * dt));
+      tmpB.copy(tmpA).sub(shipPos);
+      const holeDistNow = tmpB.length();
+      const forwardDot = holeDistNow > 1e-3 ? tmpB.dot(trackSample.forward) / holeDistNow : 0;
+      const gazeIn = clamp01((dsPeri + 205) / 110);
+      const gazeOut = clamp01((55 - dsPeri) / 85);
+      const fwdFade = clamp01((forwardDot - 0.04) / 0.42);
+      const gazeSmooth =
+        gazeIn * gazeIn * (3 - 2 * gazeIn) * (gazeOut * gazeOut * (3 - 2 * gazeOut)) * (fwdFade * fwdFade * (3 - 2 * fwdFade));
+      const holeGazeTarget = gazeSmooth * (0.065 + ergoCharge * 0.04);
+      if (holeGazeTarget > 0.001) {
+        if (holeGazeWeight < 0.002) holeGazePos.copy(tmpA);
+        else holeGazePos.lerp(tmpA, 1 - Math.exp(-6.0 * dt));
+      }
+      holeGazeWeight += (holeGazeTarget - holeGazeWeight) * (1 - Math.exp(-3.2 * dt));
     } else {
       slingshotTimer = 0;
+      if (activeHoleId) {
+        if (!ergoSeen.has(activeHoleId)) ergoChain = 0;
+        activeHoleId = '';
+      }
+      wellEnvSmooth *= Math.exp(-3.6 * dt);
+      holeGazeWeight *= Math.exp(-3.2 * dt);
+      ergoCharge *= Math.exp(-3.2 * dt);
+      currentRsRatio = 9.9;
+      currentTimeDilation = 1.0;
     }
 
     if (dsPeri > 105 || !inGravWell) {
-      escapeCarry *= Math.exp(-0.22 * dt);
+      escapeCarry *= Math.exp(-0.18 * dt);
       if (escapeCarry < 0.08) escapeCarry = 0;
     }
 
-    if (wantBoost && canWarp && !inGravWell && finalT <= 0.01) {
-      warpEnergy = Math.max(0, warpEnergy - 0.22 * dt);
+    // 曲速能量消耗与恢复：持久耐飞 + 天体充能（能层走廊不仅不扣能量，还逆势充能并解除锁死）
+    if (inErgoCorridor) {
+      warpDrained = false;
+      warpEnergy = Math.min(1, warpEnergy + 0.38 * dt);
+    } else if (wantBoost && canWarp && finalT <= 0.01) {
+      warpEnergy = Math.max(0, warpEnergy - (inGravWell ? 0.045 : 0.085) * dt);
     } else {
-      warpEnergy = Math.min(1, warpEnergy + (inGravWell || finalT > 0.01 ? 0.34 : 0.14) * dt);
+      warpEnergy = Math.min(1, warpEnergy + (inGravWell || finalT > 0.01 ? 0.42 : 0.26) * dt);
     }
 
-    const guideLock = Math.max(gravGuideLock, finishLock);
-    // 视角锁定权重：进入黑洞引力井或冲向终点星门即柔和居中，离开时缓慢交还
-    camLock += (guideLock - camLock) * (1 - Math.exp(-5.4 * dt));
+    // 仅仅在最后进凯旋星门时柔和锁定居中，黑洞旁 100% 交还操作权，camLock 使用连续 C² 包络温柔过渡
+    const camAssistTarget = Math.max(wellEnvSmooth * 0.14, finishLock);
+    camLock += (camAssistTarget - camLock) * (1 - Math.exp(-4.0 * dt));
 
-    // 深空 RCS 横向响应更利落准确，同时保留温和无风阻滑行惯性
-    const freeControl = 1 - guideLock;
-    const targetVelX = inX * 12.2 * freeControl;
-    const targetVelY = inY * 7.8 * freeControl;
+    // 深空 RCS 横向响应更灵敏凌厉，叠加引力微拖拽，保留无风阻顺滑惯性
+    const freeControl = 1 - finishLock;
+    const targetVelX = inX * 13.8 * freeControl;
+    const targetVelY = inY * 8.8 * freeControl;
     const hasInput = Math.abs(inX) > 0.01 || Math.abs(inY) > 0.01;
-    const steerBlend = 1 - Math.exp(-(hasInput ? 4.4 : 2.5) * dt);
-    velX += (targetVelX - velX) * steerBlend;
-    velY += (targetVelY - velY) * steerBlend;
+    const steerBlend = 1 - Math.exp(-(hasInput ? 5.2 : 2.6) * dt);
+    velX += (targetVelX - velX) * steerBlend + driftAx * freeControl * dt;
+    velY += (targetVelY - velY) * steerBlend + driftAy * freeControl * dt;
 
     laneX += velX * dt;
     laneY += velY * dt;
 
-    if (guideLock > 0.01) {
-      const pull = 1 - Math.exp(-5.4 * dt * guideLock);
+    if (finishLock > 0.01) {
+      const pull = 1 - Math.exp(-5.4 * dt * finishLock);
       const prevX = laneX;
       laneX *= 1 - pull;
       laneY *= 1 - pull;
@@ -1359,7 +1513,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       velY *= 1 - pull;
       const pullRateX = (laneX - prevX) / Math.max(dt, 1e-4);
       const tiltBlend = 1 - Math.exp(-5.2 * dt);
-      const lockDecay = inGravWell ? 1 - clamp01((dsPeri + 185) / 105) * 0.85 : 1 - finishLock * 0.85;
+      const lockDecay = 1 - finishLock * 0.85;
       const targetBank = THREE.MathUtils.clamp(-pullRateX * 0.025, -0.28, 0.28) * lockDecay;
       bankRoll += (targetBank - bankRoll) * tiltBlend;
       pitchTilt += (0 - pitchTilt) * tiltBlend;
@@ -1397,17 +1551,17 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
         if (velY < 0) velY = 0;
       }
 
-      const tiltBlend = 1 - Math.exp(-4.2 * dt);
-      bankRoll += ((-velX / 12.2) * 0.42 - bankRoll) * tiltBlend;
-      pitchTilt += ((velY / 7.8) * 0.22 - pitchTilt) * tiltBlend;
+      const tiltBlend = 1 - Math.exp(-4.8 * dt);
+      bankRoll += ((-velX / 13.8) * 0.45 - bankRoll) * tiltBlend;
+      pitchTilt += ((velY / 8.8) * 0.24 - pitchTilt) * tiltBlend;
     }
 
-    // 终点星门冲刺段（最后 240 单位）持续加速直至满功率穿门；平时无空气阻力，减速远比加速轻缓
+    // 速度体系：常规 ~26c -> 曲速 ~55c -> 星门/奥伯特极端加速冲破 80~100c
     const totalBoost = Math.max(gravBoost, escapeCarry);
-    const finishBoost = Math.pow(finalT, 0.9) * 38.0;
-    const speedCap = finalT > 0.05 ? 64 : 52;
-    const targetSpeed = Math.min(BASE_SPEED + (isBoosting ? 16.0 : 0) + totalBoost + finishBoost, speedCap);
-    const speedRate = targetSpeed >= trackSpeed ? (inGravWell || finalT > 0.05 ? 3.8 : 4.2) : 0.9;
+    const finishBoost = Math.pow(finalT, 0.9) * 44.0;
+    const speedCap = finalT > 0.05 ? 92 : 84;
+    const targetSpeed = Math.min(BASE_SPEED + (isBoosting ? 26.0 : 0) + totalBoost + finishBoost, speedCap);
+    const speedRate = targetSpeed >= trackSpeed ? (inErgoCorridor || inGravWell || finalT > 0.05 ? 4.4 : 4.8) : 0.72;
     trackSpeed += (targetSpeed - trackSpeed) * Math.min(dt * speedRate, 1);
     trackS = Math.min(trackS + trackSpeed * dt, track.totalLength);
 
@@ -1415,34 +1569,40 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
     const prox = track.evaluateHub(shipPos);
 
+    if (!activeMs && prox.alpha > 0.08) {
+      currentRsRatio = Math.max(3.6, Math.min(18.0, (prox.dist - 120) * 0.048 + 3.6));
+      currentTimeDilation = Math.sqrt(Math.max(0.18, 1 - 1 / currentRsRatio));
+    }
+
     // 曲速星门穿越判定：按航向切片与截面半径检测，只要视觉飞进门环内即准确触发
     for (const g of world.gates) {
       if (g.triggered) continue;
       const gds = trackS - g.s;
-      if (gds >= -10 && gds <= 16 && Math.hypot(laneX - g.offX, laneY - g.offY) < 7.6) {
+      if (gds >= -10 && gds <= 16 && Math.hypot(laneX - g.offX, laneY - g.offY) < 7.8) {
         world.triggerGate(g, simTime);
-        warpEnergy = Math.min(1, warpEnergy + 0.3);
-        trackSpeed = Math.min(trackSpeed + 7.2, 56);
+        warpEnergy = Math.min(1, warpEnergy + 0.34);
+        trackSpeed = Math.min(trackSpeed + 11.5, 84);
+        escapeCarry = Math.max(escapeCarry, 14.0);
         ringToneIndex = (ringToneIndex + 1) % 7;
         audio.ring(ringToneIndex + 1);
       }
     }
 
-    // 藏品收录判定：黑洞引力井牵引期间扩大拾取包络，触发后在原位直接缩小并按抛物线收纳进右上/左上「图鉴」钮
-    const inSlingshot = inGravWell && guideLock > 0.25;
+    // 藏品收录判定：在黑洞引力井或能层汲取期间同步开启潮汐磁力捕捉窗，确保切弯掠飞也能顺畅收集遗珍
+    const inSlingCapture = inGravWell && (inErgoCorridor || ergoCharge > 0.25);
     for (const rel of world.collectibles) {
       if (rel.collected) continue;
       const ds = rel.s - trackS;
       const dist = shipPos.distanceTo(rel.pos);
       const hit =
-        (Math.abs(ds) < 12.0 && dist < 9.0) ||
-        (inSlingshot && Math.abs(ds) < 16.0 && dist < 25.0);
+        (Math.abs(ds) < 13.0 && dist < 10.5) ||
+        (inSlingCapture && Math.abs(ds) < 18.0 && dist < 24.0);
       if (hit) {
         rel.collected = true;
         spawnStowToken(rel.pos, rel.spec);
         rel.group.visible = false;
         recordCollection(rel.spec.id);
-        warpEnergy = Math.min(1, warpEnergy + 0.28);
+        warpEnergy = Math.min(1, warpEnergy + 0.2);
 
         let hubComplete = false;
         if (rel.spec.regionId !== 'cosmos') {
@@ -1463,7 +1623,7 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
       }
     }
 
-    audio.updatePad(prox.alpha > 0.25, clamp01((trackSpeed - BASE_SPEED) / 18));
+    audio.updatePad(prox.alpha > 0.25, clamp01((trackSpeed - BASE_SPEED) / 48));
 
     if (trackS >= track.totalLength) {
       beginOutro();
@@ -1600,7 +1760,12 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     dustUniforms.uDustAlpha.value = prox.alpha;
 
     const flying = state === 'playing' || state === 'outro' || state === 'finished';
-    const beta = flying ? clamp01((trackSpeed - 25.0) * 0.015 + (slingshotTimer > 0 ? 0.24 : 0)) : 0;
+    const speedNorm = flying ? clamp01((trackSpeed - BASE_SPEED) / 48) : 0;
+    // 将传给天球着色器的相对论 beta 收束至 0.34 以内，保留多普勒光行差的同时杜绝远星过曝爆闪
+    const rawBeta = flying
+      ? clamp01((trackSpeed - BASE_SPEED * 0.92) / 140 + (inErgoCorridor ? 0.12 : slingshotTimer > 0 ? 0.06 : 0))
+      : 0;
+    const beta = rawBeta * 0.34;
     warpBeta.value = beta;
     holeUniforms.uBeta.value = beta;
     holeUniforms.uCamPos.value.copy(camera.position);
@@ -1610,8 +1775,15 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
 
     const activeDt = flying ? dt : 0;
     track.setTime(simTime);
-    world.update(simTime, activeDt, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio);
-    drawRush(flying ? clamp01((trackSpeed - 31) / 18) : 0, slingshotTimer > 0);
+    world.update(simTime, activeDt, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio, {
+      shipPos,
+      forward: trackSample.forward,
+      right: trackSample.right,
+      up: trackSample.up,
+      speedNorm,
+      ergoCharge,
+    });
+    drawRush(flying ? speedNorm : 0, slingshotTimer > 0 || inErgoCorridor);
     tickToasts(now);
     tickStow(now);
     if (state === 'playing') updateHUD();
@@ -1676,6 +1848,21 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
         get state() {
           return state;
         },
+        get speed() {
+          return trackSpeed * 1.1;
+        },
+        get warpEnergy() {
+          return warpEnergy;
+        },
+        get rsRatio() {
+          return currentRsRatio;
+        },
+        get timeDilation() {
+          return currentTimeDilation;
+        },
+        get slingshotCount() {
+          return slingshotCount;
+        },
         setShip(id: string) {
           const spec = SHIPS.find((x) => x.id === id);
           if (!spec) return;
@@ -1696,6 +1883,9 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
           pitchTilt = 0;
           trackSpeed = 36;
           isWarpHeld = true;
+          wellEnvSmooth = 0;
+          holeGazeWeight = 0;
+          camLookReady = false;
           placeShipFromTrack(0, false);
           ship.resetTrail();
           ship.updateVisuals(simTime, 1 / 60, 0.78);
@@ -1739,7 +1929,14 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
           holeUniforms.uProjZ.value.set(camera.projectionMatrix.elements[10], camera.projectionMatrix.elements[14]);
           holeUniforms.uCamWorld.value.copy(camera.matrixWorld);
           track.setTime(simTime);
-          world.update(simTime, 1 / 60, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio);
+          world.update(simTime, 1 / 60, trackS, prox.node, prox.alpha, diskN, diskU, diskV, behindHole, ratio, {
+            shipPos,
+            forward: trackSample.forward,
+            right: trackSample.right,
+            up: trackSample.up,
+            speedNorm: 0.45,
+            ergoCharge: 0,
+          });
           updateHUD(true);
           renderer.render(scene, camera);
         },
@@ -1793,6 +1990,10 @@ export function mountCosmicRoam(root: HTMLElement): () => void {
     pauseBtn.removeEventListener('click', onPause);
     atlasBtn.removeEventListener('click', onAtlasClick);
     atlasCloseBtn.removeEventListener('click', onAtlasClick);
+    atlasDialog.removeEventListener('pointerdown', stopAtlasBubble);
+    atlasDialog.removeEventListener('pointermove', stopAtlasBubble);
+    atlasDialog.removeEventListener('touchstart', stopAtlasBubble);
+    atlasDialog.removeEventListener('touchmove', stopAtlasBubble);
 
     warpBeta.value = 0;
     warpImage.value = 0;

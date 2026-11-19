@@ -162,6 +162,11 @@ export function plainText(body = ''): string {
     .trim();
 }
 
+// 列表页首屏内嵌的正文前段，搜索未加载完整全文索引前用于即时检索与摘录
+export function bodyPreview(entry: { body?: string }): string {
+  return plainText(entry.body).slice(0, 500);
+}
+
 // 列表页内嵌的检索文本：标题 + 摘要 + 分类 + 标签 + 正文前段，页面一打开就能搜。
 // 全文在 /search/<分类>.json，搜索框第一次获得焦点时再拉，不让每页 HTML 跟着文章变长
 export function searchText(entry: {

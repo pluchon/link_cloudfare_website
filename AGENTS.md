@@ -82,7 +82,7 @@
 
 ## 7. 其余页面与全站通用规范
 
-- **列表 / 搜索 / 标签**：五个分类与 `/tags/[tag]/` 共用 `ListLayout`（每页 5 条）+ 客户端搜索（首屏前 500 字即时搜、聚焦后懒拉 `/search/<kind>.json` 全文索引；逐字折叠全半角而不用整段 `NFKC`，避免省略号错位）；`PageBackdrop` 不加模糊和额外遮罩，统一 `quality,q_85`；`/tags/` 单页不分页（老链接 `/tags/page/N/` 由中间件 301），拼音首字母分组默认展示 3 行。
+- **列表 / 搜索 / 标签**：五个分类与 `/tags/[tag]/` 共用 `ListLayout`（每页 5 条）+ 构建期预编码零字典检索（`devDependencies` 的 `pinyin-pro` 经 `src/lib/search-index.ts` 按上下文生成逐字拼音序列并写入首屏索引与懒加载 `/search/<kind>.json`，客户端 `src/lib/search-engine.ts` 支持繁简全半角逐字折叠、全拼/首字母/中拼混输、注音 `ㄅㄆㄇㄈ` 实时折算、普通话模糊音及短字段 Damerau-Levenshtein 拼写容错，并精准 `<mark>` 高亮回原汉字下标）；`PageBackdrop` 不加模糊和额外遮罩，统一 `quality,q_85`；`/tags/` 单页不分页（老链接 `/tags/page/N/` 由中间件 301），拼音首字母分组默认展示 3 行并复用同一套检索与高亮筛选。
 - **详情页与音频**（`ArticleLayout` + `MusicBar`）：`preload="none"` 点前不下载，伴奏循环、朗读播完即停，换页时务必停掉旧音频，合成脚本在 `scripts/speech/`；禁跳动音柱。
 - **公告栏**（`NoticeLayout`、`src/content/notice/`）：仅从顶栏小铃铛进入（不进 `ContentKind`/导图/RSS）；三栏布局，`tags` 含「置顶」置前，铃铛红点与 `NEW` 共用 `data-new-since` 按最新一篇 24h 内客户端计算；支持 ```` ```xiaomeng ```` / ```` ```post ```` / ```` ```link ```` 嵌入；正文图共用 `lightbox.ts` 放大（头图及外链图不放大）。
 - **Markdown 渲染约束**：
@@ -101,7 +101,7 @@
 - **鹈鹕骑车**（`src/game/pelican/`）：16 个 900m 随机顺序三车道场景（过门后 130m 才渐变天色灯光），含跳台/弹簧/斜板/断桥深沟/崖壁溶洞；`EffectComposer` 泛光 + `ATMOSPHERE` + `NeutralToneMapping`，所有自定义几何体必须确保有法线，点光源复用 `world.lamp` 不现建，四档画质仅降不升；支持 `?scenes=...` 与开发钩子 `window.__pelican`。
 - **星海漫游**（`src/game/cosmic/`）：
   - 基于门户页 5 系星图与 `COSMOS_SCALE = 11.5`、`HOLE_SCALE_MULT = 5.4` 缩放，开局洗牌 5 星系顺序并二分求得恒定 `~745 Mpc` 曲线航道；含共面分子尘埃、双极喷流、18 座涡旋星门、3 段开普勒/奥伯特黑洞引力弹弓及 25 件藏品（拾取后就地缩小抛物线飞入「图鉴」按钮）。黑洞周边保持真实天体结构，不摆奇幻石碑或漂浮雕塑。
-  - **星点与移动端规范**：`world.ts` 星点保留 `MIN_POINT = 5.0` 给高斯留足边距、移除时间 `shimmer`，片元传未钳制真实视尺寸 `vTruePx`，保持白热峰值 `1.0`（`coreSigma >= 0.62` px）并按真实比例 `haloMask` 仅在亮星展开彩晕、远星呈纯净针尖点，线性 `vec4(tint, a)` 传给 `AdditiveBlending`；触屏遥测留在左下（`HUD_TEXT_INTERVAL = 160`ms 节流刷新 + 脏检查），固定摇杆浮在遥测上方、`曲速` 键在右下、`雷达` 在右上；`WARP_RESUME = 0.2` 防止耗尽临界闪烁；手机 DPR 起步 `0.95`、上限 `1.3`（升档门槛 `18ms`）；支持开发钩子 `window.__cosmic`。
+  - **星点与移动端规范**：`ship.ts` 采用三层连续体积喷气式加力尾焰（外焰锥 + 内马赫环激波核 + 正交立体火焰翼，不用离散球状粒子）；`world.ts` 星点保留 `MIN_POINT = 5.0` 给高斯留足边距、移除时间 `shimmer`，片元传未钳制真实视尺寸 `vTruePx`，保持白热峰值 `1.0`（`coreSigma >= 0.62` px）并按真实比例 `haloMask` 仅在亮星展开彩晕、远星呈纯净针尖点，线性 `vec4(tint, a)` 传给 `AdditiveBlending`；触屏遥测留在左下（`HUD_TEXT_INTERVAL = 160`ms 节流刷新 + 脏检查），固定摇杆浮在遥测上方、`曲速` 键在右下、`雷达` 在右上；`WARP_RESUME = 0.2` 防止耗尽临界闪烁；手机 DPR 起步 `0.95`、上限 `1.3`（升档门槛 `18ms`）；支持开发钩子 `window.__cosmic`。
 - **画廊**（`/gallery/`）：清单在 `src/content/gallery.json`，页面 `GalleryView.astro` 按允许的分类校验（`插画`/`漫画`/`海报`/`角色立绘`/`常服设定`/`头像特写`），网格走 OSS `thumb` 样式，透明底设定设 `cutout: true`；**后续角色设定与常服不画旁侧拆解服装配件的「call-out 拆分图」**，统一画完整穿戴效果。
 
 ---

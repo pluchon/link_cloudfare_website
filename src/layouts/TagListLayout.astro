@@ -6,6 +6,7 @@ import BaseLayout from './BaseLayout.astro';
 import PageBackdrop from '../components/PageBackdrop.astro';
 import { pageBackdrops } from '../config/site';
 import KindIcon from '../components/KindIcon.astro';
+import { encodePinyin } from '../lib/search-index';
 
 interface Props {
   tags: { tag: string; count: number }[];
@@ -86,7 +87,7 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
               <input
                 class="filter__input"
                 type="search"
-                placeholder="筛选标签"
+                placeholder="筛选标签（支持拼音 / 注音）"
                 aria-label="筛选标签"
                 autocomplete="off"
                 data-tag-filter
@@ -102,7 +103,7 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
               <h2 class="dict__letter">{group.letter}</h2>
               <ul class="dict__tags">
                 {group.items.map(({ tag, count }) => (
-                  <li data-tag={tag.toLowerCase()}>
+                  <li data-tag={tag} data-py={encodePinyin(tag, true)}>
                     <a class="chip" href={tagHref(tag)}>
                       <span class="chip__name">{tag}</span>
                       <span class="chip__count">{count}</span>
@@ -383,6 +384,14 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
     cursor: pointer;
   }
 
+  .dict__tags :global(mark) {
+    background: none;
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
+
   .empty {
     margin: 2rem 0 0;
     color: var(--fg-faint);
@@ -416,113 +425,194 @@ const anchor = (letter: string) => (letter === '#' ? 'tag-other' : `tag-${letter
   }
 </style>
 
-<script is:inline>
-  (function () {
-    // 每组标签平时最多三行，超出时第三行末尾换成「更多...」，每点一次多放两行；
-    // 筛选框有内容时不收，只按名字过滤，组里一个不剩就整组藏起来
-    var FIRST = 3;
-    var STEP = 2;
+<script>
+  import {
+    highlightRanges,
+    matchField,
+    parseQuery,
+    prepareField,
+    type PreparedField,
+  } from '../lib/search-engine';
 
-    function init() {
-      var root = document.querySelector('[data-tag-index]');
-      if (!root) return;
-      var input = root.querySelector('[data-tag-filter]');
-      var counter = root.querySelector('[data-tag-count]');
-      var empty = root.querySelector('[data-tag-empty]');
-      var items = root.querySelectorAll('[data-tag]');
-      var groups = root.querySelectorAll('[data-group]');
+  // 每组标签平时最多三行，超出时第三行末尾换成「更多...」，每点一次多放两行；
+  // 筛选框有内容时不收，只按名字/拼音/注音/容错过滤与高亮，组里一个不剩就整组藏起来
+  const FIRST = 3;
+  const STEP = 2;
+
+  interface TagEntry {
+    li: HTMLLIElement;
+    nameEl: HTMLElement | null;
+    raw: string;
+    field: PreparedField;
+  }
+
+  interface TagGroupEl extends HTMLElement {
+    __lines?: number;
+  }
+
+  let cleanupTags: (() => void) | null = null;
+
+  function teardown() {
+    cleanupTags?.();
+    cleanupTags = null;
+  }
+
+  function init() {
+    teardown();
+
+    const root = document.querySelector<HTMLElement>('[data-tag-index]');
+    if (!root) return;
+    const input = root.querySelector<HTMLInputElement>('[data-tag-filter]');
+    const counter = root.querySelector<HTMLElement>('[data-tag-count]');
+    const empty = root.querySelector<HTMLElement>('[data-tag-empty]');
+    const itemEls = root.querySelectorAll<HTMLLIElement>('[data-tag]');
+    const groups = root.querySelectorAll<TagGroupEl>('[data-group]');
+    if (!input) return;
+
+    const tags: TagEntry[] = Array.from(itemEls).map((li) => {
+      const raw = li.getAttribute('data-tag') || '';
+      const py = li.getAttribute('data-py') || '';
+      return {
+        li,
+        nameEl: li.querySelector<HTMLElement>('.chip__name'),
+        raw,
+        field: prepareField(raw, py),
+      };
+    });
+
+    function lines(list: Element): number {
+      const tops: Record<number, number> = {};
+      let n = 0;
+      for (let i = 0; i < list.children.length; i++) {
+        const li = list.children[i] as HTMLElement;
+        if (li.hidden) continue;
+        const key = Math.round(li.offsetTop);
+        if (!tops[key]) {
+          tops[key] = 1;
+          n += 1;
+        }
+      }
+      return n;
+    }
+
+    function clamp(group: TagGroupEl) {
+      const list = group.querySelector('.dict__tags');
+      const items = group.querySelectorAll<HTMLElement>('[data-tag]');
+      const more = group.querySelector<HTMLElement>('[data-more]');
+      if (!list || !more) return;
+      const max = group.__lines || FIRST;
+      items.forEach((li) => {
+        li.hidden = false;
+      });
+      more.hidden = true;
+      if (lines(list) <= max) return;
+      more.hidden = false;
+      for (let k = items.length - 1; k > 0; k--) {
+        items[k].hidden = true;
+        if (lines(list) <= max) break;
+      }
+    }
+
+    function clampAll() {
+      if (input?.value.trim()) return;
+      groups.forEach(clamp);
+    }
+
+    function onRootClick(event: Event) {
+      const target = event.target as HTMLElement | null;
+      const btn = target?.closest?.('[data-more]');
+      if (!btn) return;
+      const group = btn.closest<TagGroupEl>('[data-group]');
+      if (!group) return;
+      group.__lines = (group.__lines || FIRST) + STEP;
+      clamp(group);
+    }
+
+    function onInput() {
       if (!input) return;
-
-      function fold(text) {
-        return String(text || '').normalize('NFKC').toLowerCase().trim();
+      const parsed = parseQuery(input.value);
+      if (!parsed.terms.length) {
+        tags.forEach((entry) => {
+          entry.li.hidden = false;
+          if (entry.nameEl && (entry.nameEl.firstElementChild || entry.nameEl.textContent !== entry.raw)) {
+            entry.nameEl.textContent = entry.raw;
+          }
+        });
+        groups.forEach((group) => {
+          group.hidden = false;
+        });
+        clampAll();
+        if (counter) counter.textContent = '';
+        if (empty) empty.hidden = true;
+        return;
       }
 
-      // 一组标签实际排了几行：按每个可见项的 offsetTop 去重
-      function lines(list) {
-        var tops = {};
-        var n = 0;
-        for (var i = 0; i < list.children.length; i++) {
-          var li = list.children[i];
-          if (li.hidden) continue;
-          var key = Math.round(li.offsetTop);
-          if (!tops[key]) {
-            tops[key] = 1;
-            n += 1;
+      let shown = 0;
+      tags.forEach((entry) => {
+        const ranges: [number, number][] = [];
+        let ok = true;
+        for (let i = 0; i < parsed.terms.length; i++) {
+          const m = matchField(entry.field, parsed.terms[i], { allowTypo: true, collectAll: true });
+          if (!m) {
+            ok = false;
+            break;
+          }
+          ranges.push(...m.ranges);
+        }
+        if (ok && parsed.phrase) {
+          const pm = matchField(entry.field, parsed.phrase, { allowTypo: false, collectAll: true });
+          if (pm) ranges.push(...pm.ranges);
+        }
+
+        entry.li.hidden = !ok;
+        if (entry.nameEl) {
+          if (ok) {
+            entry.nameEl.innerHTML = highlightRanges(entry.raw, ranges);
+          } else if (entry.nameEl.firstElementChild || entry.nameEl.textContent !== entry.raw) {
+            entry.nameEl.textContent = entry.raw;
           }
         }
-        return n;
-      }
-
-      function clamp(group) {
-        var list = group.querySelector('.dict__tags');
-        var tags = group.querySelectorAll('[data-tag]');
-        var more = group.querySelector('[data-more]');
-        if (!list || !more) return;
-        var max = group.__lines || FIRST;
-        tags.forEach(function (li) {
-          li.hidden = false;
-        });
-        more.hidden = true;
-        if (lines(list) <= max) return;
-        // 从最后一个往前藏，直到连同「更多...」一起回到 max 行以内
-        more.hidden = false;
-        for (var k = tags.length - 1; k > 0; k--) {
-          tags[k].hidden = true;
-          if (lines(list) <= max) break;
-        }
-      }
-
-      function clampAll() {
-        if (fold(input.value)) return;
-        groups.forEach(clamp);
-      }
-
-      root.addEventListener('click', function (event) {
-        var btn = event.target.closest ? event.target.closest('[data-more]') : null;
-        if (!btn) return;
-        var group = btn.closest('[data-group]');
-        group.__lines = (group.__lines || FIRST) + STEP;
-        clamp(group);
+        if (ok) shown += 1;
       });
 
-      input.addEventListener('input', function () {
-        var q = fold(input.value);
-        if (!q) {
-          groups.forEach(function (group) {
-            group.hidden = false;
-          });
-          clampAll();
-          if (counter) counter.textContent = '';
-          if (empty) empty.hidden = true;
-          return;
-        }
-        var shown = 0;
-        items.forEach(function (li) {
-          var hit = fold(li.getAttribute('data-tag')).indexOf(q) !== -1;
-          li.hidden = !hit;
-          if (hit) shown += 1;
-        });
-        groups.forEach(function (group) {
-          var more = group.querySelector('[data-more]');
-          if (more) more.hidden = true;
-          group.hidden = !group.querySelector('[data-tag]:not([hidden])');
-        });
-        if (counter) counter.textContent = shown + ' / ' + items.length;
-        if (empty) empty.hidden = shown > 0;
+      groups.forEach((group) => {
+        const more = group.querySelector<HTMLElement>('[data-more]');
+        if (more) more.hidden = true;
+        group.hidden = !group.querySelector('[data-tag]:not([hidden])');
       });
 
-      clampAll();
-      var timer = 0;
-      window.addEventListener('resize', function () {
-        clearTimeout(timer);
-        timer = setTimeout(clampAll, 120);
-      });
+      if (counter) counter.textContent = `${shown} / ${tags.length}`;
+      if (empty) empty.hidden = shown > 0;
     }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', init);
-    } else {
-      init();
+    function onKey(event: KeyboardEvent) {
+      if (!input || event.key !== 'Escape' || !input.value) return;
+      input.value = '';
+      onInput();
     }
-  })();
+
+    let timer = 0;
+    function onResize() {
+      clearTimeout(timer);
+      timer = window.setTimeout(clampAll, 120);
+    }
+
+    root.addEventListener('click', onRootClick);
+    input.addEventListener('input', onInput);
+    input.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    clampAll();
+
+    cleanupTags = () => {
+      clearTimeout(timer);
+      root.removeEventListener('click', onRootClick);
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    };
+  }
+
+  init();
+  document.addEventListener('astro:page-load', init);
+  document.addEventListener('astro:before-swap', teardown);
 </script>

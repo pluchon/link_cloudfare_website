@@ -43,6 +43,15 @@ export interface TrackCollectible {
   collected: boolean;
 }
 
+export interface FlightVisualState {
+  shipPos: THREE.Vector3;
+  forward: THREE.Vector3;
+  right: THREE.Vector3;
+  up: THREE.Vector3;
+  speedNorm: number;
+  ergoCharge: number;
+}
+
 export interface CosmicWorld {
   group: THREE.Group;
   gates: BoostGate[];
@@ -62,6 +71,7 @@ export interface CosmicWorld {
     diskV: THREE.Vector3,
     behindHole: (p: THREE.Vector3, r: number) => boolean,
     pixelRatio?: number,
+    flight?: FlightVisualState,
   ) => void;
   resetProgress: () => void;
   dispose: () => void;
@@ -256,6 +266,7 @@ const cosmosStarVertex = /* glsl */ `
 
   uniform float uPixelRatio;
   uniform float uTime;
+  uniform float uWarp;
 
   varying vec3 vColor;
   varying float vAlpha;
@@ -264,17 +275,20 @@ const cosmosStarVertex = /* glsl */ `
   varying float vSoft;
   varying float vPx;
   varying float vTruePx;
+  varying float vWarp;
 
-  // 最小画布保持 5px 给高斯抗锯齿留足边距；远星不画日冕仅绘 ~0.62px 锐利核心，兼顾针尖微星、零频闪与低填充率
-  const float MIN_POINT = 5.0;
+  // 最小画布保持 6.5px 为 Nyquist 抗闪烁高斯核留出 >3σ 边距；远星不画日冕并按面积能量守恒稳住亮度
+  const float MIN_POINT = 6.5;
 
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
     float dist = max(-mv.z, 22.0);
-    float px = aSize * uPixelRatio * (310.0 / dist);
+    // 抵消曲速 FOV 拉宽造成的亚像素缩放突变
+    float focal = projectionMatrix[1][1] * 0.6745;
+    float px = aSize * uPixelRatio * focal * (310.0 / dist);
     gl_PointSize = clamp(px, MIN_POINT, aKind > 1.5 ? 26.0 : 20.0);
-    float subPx = clamp(px / 1.55, 0.20, 1.0);
+    float subPx = mix(0.18, 1.0, smoothstep(0.12, 1.85, px));
     float distFade = pow(subPx, 0.95) * smoothstep(4000.0, 320.0, dist);
     float nearFade = smoothstep(14.0, 44.0, dist);
     vPx = gl_PointSize;
@@ -284,6 +298,7 @@ const cosmosStarVertex = /* glsl */ `
     vAlpha = nearFade * distFade * aLum;
     vKind = aKind;
     vSeed = aSeed;
+    vWarp = uWarp;
   }
 `;
 
@@ -296,6 +311,7 @@ const cosmosStarFragment = /* glsl */ `
   varying float vSoft;
   varying float vPx;
   varying float vTruePx;
+  varying float vWarp;
 
   void main() {
     if (vAlpha <= 0.005) discard;
@@ -319,18 +335,20 @@ const cosmosStarFragment = /* glsl */ `
       float halo = exp(-er * er * 4.2) * 0.44 + exp(-er * 2.8) * 0.16;
       shape = halo * smoothstep(1.0, 0.36, r);
       tint = mix(vColor, vec3(1.0, 0.93, 0.85), exp(-er * er * 8.0) * 0.42);
-      float softSigma = max(rad * 0.38, 0.72);
-      float softGlow = exp(-dpx * dpx / (2.0 * softSigma * softSigma)) * 0.42 * smoothstep(1.0, 0.25, r);
+      float softSigma = max(rad * 0.40, 0.92);
+      float softGlow = exp(-dpx * dpx / (2.0 * softSigma * softSigma)) * 0.40 * smoothstep(1.0, 0.25, r);
       shape = mix(shape, softGlow, vSoft);
     } else {
-      // 白热针尖核心（峰值保持 1.0 且至少 0.62px 稳定采样）+ 仅亮星展开真实比例日冕，远星零纸盘底晕
+      // 能量守恒 Nyquist 抗闪烁高斯核：高速曲速掠过像素网格时不出现高频明暗频闪，且保持微星纤细通透
       float trueRad = max(vTruePx * 0.5, 0.55);
-      float coreSigma = max(trueRad * 0.16, 0.62);
+      float minSigma = 0.90 + vWarp * 0.24;
+      float coreSigma = max(trueRad * 0.18, minSigma);
       float core = exp(-dpx * dpx / (2.0 * coreSigma * coreSigma));
+      float energyNorm = pow(min(0.64 / coreSigma, 1.0), 1.40);
       float trueR = dpx / max(trueRad, 1.0);
-      float haloMask = smoothstep(1.6, 4.5, vTruePx);
-      float corona = (exp(-trueR * trueR * 14.0) * 0.26 + exp(-trueR * 4.6) * 0.06) * haloMask;
-      shape = (core + corona) * smoothstep(1.0, 0.68, r);
+      float haloMask = smoothstep(2.0, 5.2, vTruePx);
+      float corona = (exp(-trueR * trueR * 14.0) * 0.24 + exp(-trueR * 4.6) * 0.05) * haloMask;
+      shape = (core * energyNorm + corona) * smoothstep(1.0, 0.58, r);
       if (vKind > 0.5) {
         // 极少数亮巨星：天文柔和十字衍射星芒与宽幅日冕
         float ang = atan(p.y, p.x) + vSeed * 6.28318;
@@ -340,6 +358,8 @@ const cosmosStarFragment = /* glsl */ `
         shape += aureole * haloMask * smoothstep(1.0, 0.55, r);
       }
       tint = mix(vColor, vec3(1.0), smoothstep(0.20, 0.78, core));
+      // 相对论多普勒蓝移：高速曲速与弹弓期星点向青白光谱微移
+      tint = mix(tint, vec3(0.74, 0.93, 1.0), vWarp * 0.36);
     }
 
     // THREE.AdditiveBlending（SRC_ALPHA, ONE）已乘一次 alpha，输出线性 rgb + alpha 避免平方杀光软外晕
@@ -446,6 +466,98 @@ const pulsarBeamFragment = /* glsl */ `
     float a = clamp(edgeSoft * axial * pulse * 0.24, 0.0, 0.28);
     if (a <= 0.004) discard;
     gl_FragColor = vec4(uColor * a * 1.05, a);
+  }
+`;
+
+// ---- 6. 相对论星际光行差流光束着色器（高速曲速与弹弓期沿视锥周边高速掠过，不遮挡正中视野） ----
+const streamerVertex = /* glsl */ `
+  attribute float aAngle;
+  attribute float aRadius;
+  attribute float aPhase;
+  attribute float aLen;
+  attribute float aEnd;
+
+  uniform vec3 uShipPos;
+  uniform vec3 uFwd;
+  uniform vec3 uRight;
+  uniform vec3 uUp;
+  uniform float uTime;
+  uniform float uSpeedNorm;
+
+  varying float vEdge;
+  varying float vTail;
+
+  void main() {
+    float travel = fract(aPhase + uTime * (0.95 + uSpeedNorm * 2.85));
+    float streak = aLen * (0.35 + uSpeedNorm * 2.45);
+    float zAlong = mix(118.0, -24.0, travel) + aEnd * streak;
+    float aberrationR = aRadius * (1.0 - uSpeedNorm * 0.24 * clamp(zAlong / 118.0, 0.0, 1.0));
+    vec3 radial = cos(aAngle) * uRight + sin(aAngle) * uUp;
+    vec3 worldPos = uShipPos + uFwd * zAlong + radial * aberrationR;
+    vEdge = sin(clamp(travel, 0.0, 1.0) * 3.14159265);
+    vTail = 1.0 - aEnd;
+    gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
+  }
+`;
+
+const streamerFragment = /* glsl */ `
+  uniform float uSpeedNorm;
+  uniform float uErgoCharge;
+  varying float vEdge;
+  varying float vTail;
+
+  void main() {
+    float vis = smoothstep(0.14, 0.92, uSpeedNorm);
+    if (vis <= 0.008) discard;
+    float alpha = pow(vEdge, 1.15) * (0.18 + 0.82 * vTail) * vis * (0.32 + uErgoCharge * 0.26);
+    if (alpha <= 0.004) discard;
+    vec3 warm = vec3(1.0, 0.88, 0.68);
+    vec3 cyan = vec3(0.58, 0.94, 1.0);
+    vec3 col = mix(warm, cyan, clamp(uSpeedNorm * 0.62 + uErgoCharge * 0.55, 0.0, 1.0));
+    gl_FragColor = vec4(col * alpha, clamp(alpha, 0.0, 0.68));
+  }
+`;
+
+// ---- 7. 黑洞能层潮汐电离等离子流（沿近心内缘航线分布的天然潮汐磁通通道，引导玩家切弯汲取彭罗斯能） ----
+const ergoStreamVertex = /* glsl */ `
+  ${warpGlsl}
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  void main() {
+    vUv = uv;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorld = wp.xyz;
+    gl_Position = warpClip(projectionMatrix * viewMatrix * vec4(spaceWarp(wp.xyz), 1.0));
+  }
+`;
+
+const ergoStreamFragment = /* glsl */ `
+  uniform float uTime;
+  uniform float uAlpha;
+  uniform float uErgoCharge;
+  uniform vec3 uNearHub;
+  uniform vec3 uColor;
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  varying vec3 vWarpTint;
+
+  void main() {
+    if (uAlpha <= 0.02) discard;
+    float nearMask = 1.0 - smoothstep(240.0, 440.0, distance(vWorld, uNearHub));
+    if (nearMask <= 0.01) discard;
+    float axial = pow(sin(clamp(vUv.x, 0.0, 1.0) * 3.14159265), 1.15);
+    float crossFade = pow(sin(clamp(vUv.y, 0.0, 1.0) * 3.14159265), 2.1);
+    float pulseA = 0.58 + 0.42 * sin(vUv.x * 26.0 - uTime * (4.8 + uErgoCharge * 4.5));
+    float pulseB = 0.65 + 0.35 * sin(vUv.x * 11.0 - uTime * 2.7 + vUv.y * 6.28318);
+    float fil = pow(crossFade, 1.35) * pulseA * pulseB;
+    float boost = 1.0 + uErgoCharge * 0.95;
+    float a = clamp(axial * fil * nearMask * uAlpha * 0.52 * boost, 0.0, 0.72);
+    if (a <= 0.004) discard;
+    vec3 hotCyan = vec3(0.56, 0.94, 1.0);
+    vec3 col = mix(uColor, hotCyan, 0.45 + 0.45 * uErgoCharge);
+    gl_FragColor = vec4(col * vWarpTint * a, a);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -803,6 +915,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   const fieldUniforms = {
     uPixelRatio: { value: 1 },
     uTime: { value: 0 },
+    uWarp: { value: 0 },
   };
   const fieldMat = trackMat(
     new THREE.ShaderMaterial({
@@ -936,6 +1049,105 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   }
   cosmicCloudMesh.instanceMatrix.needsUpdate = true;
   group.add(cosmicCloudMesh);
+
+  // ---- 层 6：相对论星际流光丝（纯 GPU 零分配 LineSegments） ----
+  const STREAMER_COUNT = lite ? 44 : 76;
+  const stPos = new Float32Array(STREAMER_COUNT * 2 * 3);
+  const stAngle = new Float32Array(STREAMER_COUNT * 2);
+  const stRadius = new Float32Array(STREAMER_COUNT * 2);
+  const stPhase = new Float32Array(STREAMER_COUNT * 2);
+  const stLen = new Float32Array(STREAMER_COUNT * 2);
+  const stEnd = new Float32Array(STREAMER_COUNT * 2);
+  for (let i = 0; i < STREAMER_COUNT; i++) {
+    const ang = (i / STREAMER_COUNT) * Math.PI * 2 + (rand() - 0.5) * 0.25;
+    const rad = 8.4 + Math.pow(rand(), 0.72) * 14.5;
+    const ph = rand();
+    const ln = 5.5 + rand() * 8.5;
+    for (let e = 0; e < 2; e++) {
+      const idx = i * 2 + e;
+      stAngle[idx] = ang;
+      stRadius[idx] = rad;
+      stPhase[idx] = ph;
+      stLen[idx] = ln;
+      stEnd[idx] = e;
+    }
+  }
+  const streamerGeo = trackGeo(new THREE.BufferGeometry());
+  streamerGeo.setAttribute('position', new THREE.BufferAttribute(stPos, 3));
+  streamerGeo.setAttribute('aAngle', new THREE.BufferAttribute(stAngle, 1));
+  streamerGeo.setAttribute('aRadius', new THREE.BufferAttribute(stRadius, 1));
+  streamerGeo.setAttribute('aPhase', new THREE.BufferAttribute(stPhase, 1));
+  streamerGeo.setAttribute('aLen', new THREE.BufferAttribute(stLen, 1));
+  streamerGeo.setAttribute('aEnd', new THREE.BufferAttribute(stEnd, 1));
+  const streamerMat = trackMat(
+    new THREE.ShaderMaterial({
+      vertexShader: streamerVertex,
+      fragmentShader: streamerFragment,
+      uniforms: {
+        uShipPos: { value: new THREE.Vector3() },
+        uFwd: { value: new THREE.Vector3(0, 0, -1) },
+        uRight: { value: new THREE.Vector3(1, 0, 0) },
+        uUp: { value: new THREE.Vector3(0, 1, 0) },
+        uTime: { value: 0 },
+        uSpeedNorm: { value: 0 },
+        uErgoCharge: { value: 0 },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  const streamerLines = new THREE.LineSegments(streamerGeo, streamerMat);
+  streamerLines.frustumCulled = false;
+  group.add(streamerLines);
+
+  // ---- 层 7：黑洞能层潮汐等离子通道（5 座黑洞近心内缘合入单个 BufferGeometry） ----
+  const ERGO_SEGS = 28;
+  const ergoVertsPerHub = (ERGO_SEGS + 1) * 4;
+  const ergoHubN = STAR_NODES.length;
+  const ergoPosArr = new Float32Array(ergoHubN * ergoVertsPerHub * 3);
+  const ergoUvArr = new Float32Array(ergoHubN * ergoVertsPerHub * 2);
+  const ergoIndices: number[] = [];
+  for (let h = 0; h < ergoHubN; h++) {
+    const baseV = h * ergoVertsPerHub;
+    for (let i = 0; i < ERGO_SEGS; i++) {
+      const p0 = baseV + i * 2;
+      const p1 = baseV + (i + 1) * 2;
+      ergoIndices.push(p0, p0 + 1, p1, p0 + 1, p1 + 1, p1);
+      const q0 = baseV + (ERGO_SEGS + 1) * 2 + i * 2;
+      const q1 = baseV + (ERGO_SEGS + 1) * 2 + (i + 1) * 2;
+      ergoIndices.push(q0, q0 + 1, q1, q0 + 1, q1 + 1, q1);
+    }
+  }
+  const ergoGeo = trackGeo(new THREE.BufferGeometry());
+  ergoGeo.setAttribute('position', new THREE.BufferAttribute(ergoPosArr, 3));
+  ergoGeo.setAttribute('uv', new THREE.BufferAttribute(ergoUvArr, 2));
+  ergoGeo.setIndex(ergoIndices);
+  const ergoMat = trackMat(
+    new THREE.ShaderMaterial({
+      vertexShader: ergoStreamVertex,
+      fragmentShader: ergoStreamFragment,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uTime: { value: 0 },
+        uAlpha: { value: 0 },
+        uErgoCharge: { value: 0 },
+        uNearHub: { value: new THREE.Vector3() },
+        uColor: { value: new THREE.Color(0x9be2ff) },
+        uWarpBeta: warpBeta,
+        uWarpImage: warpImage,
+        uWarpCenter: warpCenter,
+        uWarpScale: warpScale,
+      },
+    }),
+  );
+  const ergoMesh = new THREE.Mesh(ergoGeo, ergoMat);
+  ergoMesh.frustumCulled = false;
+  ergoMesh.visible = false;
+  group.add(ergoMesh);
 
   // ---- 层 5：深空航道侧翼脉冲星航标塔（与 26 座巨构星门协同拉起史诗远景参照物） ----
   const sample: TrackSample = {
@@ -1270,6 +1482,63 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
       bind.item.core.position.y = 0;
       bind.item.group.visible = false;
     }
+
+    // 重算 5 座黑洞的近心内缘能层潮汐等离子通道几何（始终贴向当前黑洞质心内侧 9.6 单位走廊）
+    const ergoCenter = new THREE.Vector3();
+    const ergoInward = new THREE.Vector3();
+    const ergoOrtho = new THREE.Vector3();
+    const ergoHubPt = new THREE.Vector3();
+    const ergoRibbonW = 2.6;
+    for (let h = 0; h < Math.min(ergoHubN, track.milestones.length); h++) {
+      const ms = track.milestones[h];
+      ergoHubPt.set(...ms.node.position).multiplyScalar(COSMOS_SCALE);
+      const s0 = Math.max(0, ms.s - 155);
+      const s1 = Math.min(track.totalLength, ms.s + 115);
+      const baseV = h * ergoVertsPerHub;
+      for (let i = 0; i <= ERGO_SEGS; i++) {
+        const u = i / ERGO_SEGS;
+        const s = s0 + (s1 - s0) * u;
+        track.sampleAtS(s, sample);
+        ergoInward.copy(ergoHubPt).sub(sample.pos);
+        // 投影到航道横截面上（去除沿 forward 的分量）
+        ergoInward.addScaledVector(sample.forward, -ergoInward.dot(sample.forward));
+        if (ergoInward.lengthSq() < 1e-4) ergoInward.copy(sample.right);
+        else ergoInward.normalize();
+        ergoOrtho.crossVectors(sample.forward, ergoInward).normalize();
+
+        const edgeEnv = Math.sin(u * Math.PI);
+        const shift = 9.6 * (0.35 + 0.65 * Math.pow(edgeEnv, 0.55));
+        ergoCenter.copy(sample.pos).addScaledVector(ergoInward, shift);
+        const halfW = ergoRibbonW * 0.5 * (0.45 + 0.55 * edgeEnv);
+
+        const vA = baseV + i * 2;
+        ergoPosArr[vA * 3] = ergoCenter.x - ergoOrtho.x * halfW;
+        ergoPosArr[vA * 3 + 1] = ergoCenter.y - ergoOrtho.y * halfW;
+        ergoPosArr[vA * 3 + 2] = ergoCenter.z - ergoOrtho.z * halfW;
+        ergoPosArr[(vA + 1) * 3] = ergoCenter.x + ergoOrtho.x * halfW;
+        ergoPosArr[(vA + 1) * 3 + 1] = ergoCenter.y + ergoOrtho.y * halfW;
+        ergoPosArr[(vA + 1) * 3 + 2] = ergoCenter.z + ergoOrtho.z * halfW;
+        ergoUvArr[vA * 2] = u;
+        ergoUvArr[vA * 2 + 1] = 0;
+        ergoUvArr[(vA + 1) * 2] = u;
+        ergoUvArr[(vA + 1) * 2 + 1] = 1;
+
+        const vB = baseV + (ERGO_SEGS + 1) * 2 + i * 2;
+        ergoPosArr[vB * 3] = ergoCenter.x - ergoInward.x * halfW;
+        ergoPosArr[vB * 3 + 1] = ergoCenter.y - ergoInward.y * halfW;
+        ergoPosArr[vB * 3 + 2] = ergoCenter.z - ergoInward.z * halfW;
+        ergoPosArr[(vB + 1) * 3] = ergoCenter.x + ergoInward.x * halfW;
+        ergoPosArr[(vB + 1) * 3 + 1] = ergoCenter.y + ergoInward.y * halfW;
+        ergoPosArr[(vB + 1) * 3 + 2] = ergoCenter.z + ergoInward.z * halfW;
+        ergoUvArr[vB * 2] = u;
+        ergoUvArr[vB * 2 + 1] = 0;
+        ergoUvArr[(vB + 1) * 2] = u;
+        ergoUvArr[(vB + 1) * 2 + 1] = 1;
+      }
+    }
+    (ergoGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (ergoGeo.attributes.uv as THREE.BufferAttribute).needsUpdate = true;
+    ergoGeo.computeBoundingSphere();
   }
 
   syncToTrack();
@@ -1285,13 +1554,30 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     diskV: THREE.Vector3,
     behindHole: (p: THREE.Vector3, r: number) => boolean,
     pixelRatio = 1,
+    flight?: FlightVisualState,
   ) {
     diskBasis.makeBasis(diskU, diskN, instPos.copy(diskV).negate());
     diskQuat.setFromRotationMatrix(diskBasis);
 
     fieldUniforms.uPixelRatio.value = pixelRatio;
     fieldUniforms.uTime.value = simTime;
+    const speedNorm = flight?.speedNorm ?? 0;
+    const ergoCharge = flight?.ergoCharge ?? 0;
+    fieldUniforms.uWarp.value = speedNorm;
     vMat.uniforms.uTime.value = simTime;
+
+    if (flight && speedNorm > 0.1) {
+      streamerLines.visible = true;
+      streamerMat.uniforms.uShipPos.value.copy(flight.shipPos);
+      streamerMat.uniforms.uFwd.value.copy(flight.forward);
+      streamerMat.uniforms.uRight.value.copy(flight.right);
+      streamerMat.uniforms.uUp.value.copy(flight.up);
+      streamerMat.uniforms.uTime.value = simTime;
+      streamerMat.uniforms.uSpeedNorm.value = speedNorm;
+      streamerMat.uniforms.uErgoCharge.value = ergoCharge;
+    } else {
+      streamerLines.visible = false;
+    }
 
     if (station && rocks) {
       const baseNear = nearNode.id === 'base' && holeAlpha > 0.02;
@@ -1314,8 +1600,14 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     const showAccretion = holeAlpha > 0.03;
     torusMesh.visible = showAccretion;
     polarJetMesh.visible = showAccretion;
+    ergoMesh.visible = showAccretion;
 
     if (showAccretion) {
+      ergoMat.uniforms.uTime.value = simTime;
+      ergoMat.uniforms.uAlpha.value = holeAlpha;
+      ergoMat.uniforms.uErgoCharge.value = ergoCharge;
+      ergoMat.uniforms.uNearHub.value.copy(centerVec);
+      ergoMat.uniforms.uColor.value.set(nearNode.color);
       // 1. 活动星系核外围羽化尘埃环面（与黑洞赤道面严格共面，开普勒 ω ∝ r^-1.5）
       torusMat.uniforms.uTime.value = simTime;
       torusMat.uniforms.uAlpha.value = holeAlpha;
