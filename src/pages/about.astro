@@ -29,6 +29,24 @@ const skills = doc?.data.skills ?? [];
       }
 
       <div class="card__body">
+        <svg
+          class="card__rings"
+          viewBox="0 0 260 200"
+          width="260"
+          height="200"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle class="card__ring card__ring--1" cx="200" cy="0" r="28" vector-effect="non-scaling-stroke" />
+          <circle class="card__ring card__ring--2" cx="200" cy="0" r="56" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
+          <circle class="card__ring card__ring--3" cx="200" cy="0" r="86" vector-effect="non-scaling-stroke" />
+          <circle class="card__ring card__ring--4" cx="200" cy="0" r="118" stroke-dasharray="5 6" vector-effect="non-scaling-stroke" />
+          <circle class="card__ring card__ring--5" cx="200" cy="0" r="152" vector-effect="non-scaling-stroke" />
+          <circle class="card__dot card__dot--accent" cx="142.5" cy="63.9" r="2.6" vector-effect="non-scaling-stroke" />
+          <circle class="card__dot" cx="226.3" cy="49.4" r="1.6" />
+          <circle class="card__dot" cx="167.5" cy="113.4" r="1.6" />
+        </svg>
+
         <h1 class="card__name">{profile.name}</h1>
         <p class="card__bio">{profile.bio}</p>
 
@@ -129,12 +147,67 @@ const skills = doc?.data.skills ?? [];
   }
 
   .card__body {
+    position: relative;
+    overflow: hidden;
     align-self: stretch;
     padding: clamp(1.5rem, 3vw, 2.25rem);
     border-left: var(--hair) solid var(--line);
     display: flex;
     flex-direction: column;
     justify-content: center;
+  }
+
+  .card__name,
+  .card__bio,
+  .links,
+  .skills {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 右上角同心半圆环发丝线：紧贴名片顶边与右边裁切，呼应站内轨道线条语言 */
+  .card__rings {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: clamp(180px, 26vw, 260px);
+    height: auto;
+    pointer-events: none;
+    z-index: 0;
+    color: var(--line-strong);
+    opacity: 0.88;
+    transition: opacity var(--dur-2) var(--ease-out);
+  }
+
+  :global(:root[data-theme='dark']) .card__rings {
+    color: color-mix(in srgb, var(--fg-faint) 68%, var(--line-strong));
+  }
+
+  .card:hover .card__rings {
+    opacity: 1;
+  }
+
+  .card__ring {
+    stroke: currentColor;
+    stroke-width: 1;
+  }
+
+  .card__ring--1 { opacity: 0.95; }
+  .card__ring--2 { opacity: 0.82; }
+  .card__ring--3 { opacity: 0.68; }
+  .card__ring--4 { opacity: 0.52; }
+  .card__ring--5 { opacity: 0.36; }
+
+  .card__dot {
+    fill: var(--fg-faint);
+    opacity: 0.65;
+  }
+
+  .card__dot--accent {
+    fill: var(--bg);
+    stroke: var(--accent);
+    stroke-width: 1.25;
+    opacity: 0.88;
   }
 
   .card__name {
@@ -350,6 +423,10 @@ const skills = doc?.data.skills ?? [];
 
     .card__body {
       border-left: 0;
+    }
+
+    .card__rings {
+      width: clamp(135px, 42vw, 195px);
     }
   }
 </style>
