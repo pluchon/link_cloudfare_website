@@ -1,6 +1,7 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 import EntryRow from '../components/EntryRow.astro';
+import EmptyState from '../components/EmptyState.astro';
 import PixelBackdrop from '../components/PixelBackdrop.astro';
 import PageBackdrop from '../components/PageBackdrop.astro';
 import KindIcon, { type IconName } from '../components/KindIcon.astro';
@@ -46,7 +47,7 @@ const {
   page = 1,
   totalPages = 1,
   basePath,
-  emptyText = '这里还没有内容。',
+  emptyText = '这里还没有内容',
 } = Astro.props;
 
 const rows: Item[] = items ?? (kind ? entries.map((entry) => ({ kind, entry })) : []);
@@ -113,7 +114,8 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
         <p class="list-desc">{description}</p>
       </div>
 
-      <div class="search" data-reveal style="--reveal-i: 2" hidden={isEmpty}>
+      <div class="search glow-field" data-reveal style="--reveal-i: 2" hidden={isEmpty}>
+        <span class="glow-field__halo" aria-hidden="true"></span>
         <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <circle cx="11" cy="11" r="7"></circle>
           <path d="M20 20l-3.5-3.5" stroke-linecap="round"></path>
@@ -122,11 +124,10 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
           class="search__input"
           type="search"
           data-search-input
-          placeholder="搜索内容（支持拼音 / 注音）"
+          placeholder="搜索标题或内容"
           aria-label={`在${title}中搜索`}
           autocomplete="off"
         />
-        <span class="search__count" data-search-count aria-live="polite"></span>
       </div>
     </div>
   </section>
@@ -144,12 +145,12 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
           ))}
         </div>
       ) : (
-        <p class="empty-state">{emptyText}</p>
+        <EmptyState text={emptyText} />
       )
     }
 
     <div class="entry-list" data-search-results hidden></div>
-    <p class="empty" data-search-empty hidden>没有匹配的内容。</p>
+    <EmptyState data-search-empty hidden text="没有匹配内容" />
 
     {
       showPager && (
@@ -296,14 +297,6 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     text-underline-offset: 0.2em;
   }
 
-  .search__count {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    letter-spacing: 0.08em;
-    color: var(--fg-faint);
-    white-space: nowrap;
-  }
-
   /* ---------- 标题区与列表区之间的分隔：虚线 + 左端一截实心色块 ---------- */
 
   .rule-tab {
@@ -330,18 +323,6 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     padding-block: 2.25rem 4rem;
     display: flex;
     flex-direction: column;
-  }
-
-  /* 空集合：内容区撑起一屏，文字水平垂直居中 */
-  .empty-state {
-    flex: 1;
-    display: grid;
-    place-content: center;
-    min-height: 45vh;
-    margin: 0;
-    color: var(--fg-faint);
-    font-size: 0.9375rem;
-    letter-spacing: 0.02em;
   }
 
   /* 一条列表项 = 封面高(14rem × 10/16) + 上下内边距，撑满一页五条，
@@ -411,6 +392,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
 </style>
 
 <script>
+  import { bindBorderGlow } from '../lib/border-glow';
   import {
     escapeHtml,
     extractSnippet,
@@ -467,6 +449,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     onInput: () => void;
     loadFull: () => void;
     onKey: (event: KeyboardEvent) => void;
+    stopGlow: () => void;
   }
 
   declare global {
@@ -479,6 +462,7 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
   function teardown() {
     const active = window.__nnSearch;
     if (!active) return;
+    active.stopGlow();
     active.input.removeEventListener('input', active.onInput);
     active.input.removeEventListener('focus', active.loadFull);
     active.input.removeEventListener('keydown', active.onKey);
@@ -493,7 +477,6 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
     const list = document.querySelector<HTMLElement>('[data-entry-list]');
     const results = document.querySelector<HTMLElement>('[data-search-results]');
     const empty = document.querySelector<HTMLElement>('[data-search-empty]');
-    const counter = document.querySelector<HTMLElement>('[data-search-count]');
     const pagination = document.querySelector<HTMLElement>('[data-pagination]');
     if (!input || !source || !results) return;
 
@@ -699,7 +682,6 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
         if (list && list.parentElement && pagination) {
           list.parentElement.dataset.reserve = '1';
         }
-        if (counter) counter.textContent = '';
         return;
       }
 
@@ -709,7 +691,6 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
       if (list) list.hidden = true;
       if (pagination) pagination.hidden = true;
       if (list && list.parentElement) list.parentElement.dataset.reserve = '';
-      if (counter) counter.textContent = `${hits.length} / ${index.length}`;
 
       results.innerHTML = '';
       hits.forEach((hit, i) => {
@@ -730,10 +711,13 @@ const nextUrl = page < totalPages ? pageHref(page + 1) : undefined;
       onInput();
     }
 
+    const searchBox = input.closest<HTMLElement>('.search');
+    const stopGlow = searchBox ? bindBorderGlow(searchBox) : () => {};
+
     input.addEventListener('input', onInput);
     input.addEventListener('focus', loadFull);
     input.addEventListener('keydown', onKey);
-    window.__nnSearch = { input, onInput, loadFull, onKey };
+    window.__nnSearch = { input, onInput, loadFull, onKey, stopGlow };
   }
 
   init();

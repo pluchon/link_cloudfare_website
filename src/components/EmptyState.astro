@@ -1,0 +1,49 @@
+---
+import type { HTMLAttributes } from 'astro/types';
+import { site } from '../config/site';
+
+interface Props extends HTMLAttributes<'div'> {
+  text?: string;
+}
+
+const { text = '没有匹配内容', class: className, ...rest } = Astro.props;
+---
+
+<div class:list={['empty-panel', className]} {...rest}>
+  <img
+    class="empty-panel__art"
+    src={site.emptyArt}
+    alt=""
+    width="480"
+    height="480"
+    loading="lazy"
+    decoding="async"
+  />
+  <p class="empty-panel__text" role="status">{text}</p>
+</div>
+
+<style>
+  .empty-panel:not([hidden]) {
+    flex: 1;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 0.85rem;
+    min-height: clamp(19rem, 48vh, 28rem);
+    padding: 2rem 1rem;
+    text-align: center;
+  }
+
+  .empty-panel__art {
+    display: block;
+    width: clamp(8.5rem, 22vw, 11.5rem);
+    height: auto;
+  }
+
+  .empty-panel__text {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+  }
+</style>

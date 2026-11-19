@@ -31,6 +31,8 @@ export const site = {
   gameLine: '快和诺诺一起玩游戏吧~ ヾ(≧▽≦*)o',
   galleryLine: '诺诺的角色设定、常服图鉴与基地日常相册 ♪',
   galleryEmptyArt: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/ui/empty.webp',
+  // 搜索无结果及通用空状态可复用的透明背景诺诺插画（独立于 404 海报与画廊空画框）
+  emptyArt: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/empty/20261119/no-match.webp',
   notFoundPoster: {
     light: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404/20261103/404-landscape.webp?v=7b4f2b54fbf8',
     dark: 'https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/profile_website/404/20261103/night/404-landscape.webp?v=a33d14e2fa4e',

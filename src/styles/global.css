@@ -36,6 +36,13 @@
   --line-strong: #c9c6be;
   --accent: #c6462f;
   --accent-wash: rgba(198, 70, 47, 0.07);
+  --search-glow-core: #df543a;
+  --search-glow-mid: #f28a6c;
+  --search-glow-halo-1: rgba(215, 76, 52, 0.30);
+  --search-glow-halo-2: rgba(235, 114, 86, 0.17);
+  --search-glow-halo-3: rgba(235, 114, 86, 0.07);
+  --search-glow-border-op: 0.92;
+  --search-glow-halo-op: 0.95;
   /* 图标里那一点粉：和站标猫尾巴上的蝴蝶结同色系，只做点缀，不当交互色 */
   --icon-pink: #f3a3bd;
 
@@ -53,6 +60,13 @@
   --line-strong: #3a3b42;
   --accent: #e0674f;
   --accent-wash: rgba(224, 103, 79, 0.1);
+  --search-glow-core: #ff7e66;
+  --search-glow-mid: #f5a07a;
+  --search-glow-halo-1: rgba(255, 126, 102, 0.48);
+  --search-glow-halo-2: rgba(245, 150, 118, 0.26);
+  --search-glow-halo-3: rgba(235, 112, 86, 0.12);
+  --search-glow-border-op: 1;
+  --search-glow-halo-op: 1;
   --icon-pink: #e58eaa;
 
   color-scheme: dark;
@@ -76,6 +90,11 @@
   --line-strong: #a9bfa6;
   --accent: #2f6b46;
   --accent-wash: rgba(47, 107, 70, 0.1);
+  --search-glow-core: #358354;
+  --search-glow-mid: #5bb880;
+  --search-glow-halo-1: rgba(47, 118, 76, 0.28);
+  --search-glow-halo-2: rgba(78, 168, 114, 0.16);
+  --search-glow-halo-3: rgba(78, 168, 114, 0.06);
 }
 
 :root[data-theme="dark"][data-palette="moss"] {
@@ -89,6 +108,11 @@
   --line-strong: #32493a;
   --accent: #79c496;
   --accent-wash: rgba(121, 196, 150, 0.14);
+  --search-glow-core: #86dba7;
+  --search-glow-mid: #52c48c;
+  --search-glow-halo-1: rgba(134, 219, 167, 0.44);
+  --search-glow-halo-2: rgba(82, 196, 140, 0.24);
+  --search-glow-halo-3: rgba(82, 196, 140, 0.11);
 }
 
 /* 木叶棕：宣纸底，枯叶色的强调 */
@@ -103,6 +127,11 @@
   --line-strong: #c7b193;
   --accent: #96551f;
   --accent-wash: rgba(150, 85, 31, 0.1);
+  --search-glow-core: #b36624;
+  --search-glow-mid: #dc924a;
+  --search-glow-halo-1: rgba(168, 96, 36, 0.28);
+  --search-glow-halo-2: rgba(214, 140, 68, 0.16);
+  --search-glow-halo-3: rgba(214, 140, 68, 0.07);
 }
 
 :root[data-theme="dark"][data-palette="wood"] {
@@ -116,6 +145,11 @@
   --line-strong: #473726;
   --accent: #e0a15c;
   --accent-wash: rgba(224, 161, 92, 0.14);
+  --search-glow-core: #f2b46d;
+  --search-glow-mid: #de8e46;
+  --search-glow-halo-1: rgba(242, 180, 109, 0.46);
+  --search-glow-halo-2: rgba(222, 142, 70, 0.25);
+  --search-glow-halo-3: rgba(222, 142, 70, 0.11);
 }
 
 /* 远山黛：月白底，黛青色的强调 */
@@ -130,6 +164,11 @@
   --line-strong: #a7b4c3;
   --accent: #2f4d78;
   --accent-wash: rgba(47, 77, 120, 0.1);
+  --search-glow-core: #396299;
+  --search-glow-mid: #638ec7;
+  --search-glow-halo-1: rgba(52, 88, 138, 0.28);
+  --search-glow-halo-2: rgba(94, 138, 196, 0.16);
+  --search-glow-halo-3: rgba(94, 138, 196, 0.07);
 }
 
 :root[data-theme="dark"][data-palette="mist"] {
@@ -143,6 +182,11 @@
   --line-strong: #2d3c4e;
   --accent: #7ba7d8;
   --accent-wash: rgba(123, 167, 216, 0.14);
+  --search-glow-core: #8ec0f5;
+  --search-glow-mid: #649be0;
+  --search-glow-halo-1: rgba(142, 192, 245, 0.46);
+  --search-glow-halo-2: rgba(100, 155, 224, 0.25);
+  --search-glow-halo-3: rgba(100, 155, 224, 0.11);
 }
 
 /* ---------- 卡片描边的光 ----------
@@ -1372,6 +1416,111 @@ a.tag:hover { border-color: var(--accent); color: var(--accent); }
 
 .text-link:hover { color: var(--accent); border-color: var(--accent); }
 
+/* ---------- 搜索 / 筛选框沿边主题色辉光（仅桌面端指针悬浮按需激活，零常驻耗电） ---------- */
+
+.glow-field {
+  position: relative;
+  isolation: isolate;
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-op: 0;
+}
+
+.glow-field > :not(.glow-field__halo) {
+  position: relative;
+  z-index: 1;
+}
+
+.glow-field__halo {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .glow-field.is-glow::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    padding: 1px;
+    pointer-events: none;
+    z-index: 2;
+    background: radial-gradient(
+      88px 32px at var(--glow-x) var(--glow-y),
+      var(--search-glow-core) 0%,
+      var(--search-glow-mid) 36%,
+      transparent 96%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: calc(var(--glow-op) * var(--search-glow-border-op));
+    transition: opacity 220ms var(--ease-out);
+  }
+
+  :root[data-theme="dark"] .glow-field.is-glow::before {
+    padding: 1.5px;
+  }
+
+  /* 弥散外晕放在独立 40px 余量层中，真实高斯阴影在边界内自然归零，绝不截出硬平线 */
+  .glow-field.is-glow .glow-field__halo {
+    display: block;
+    position: absolute;
+    inset: -40px;
+    pointer-events: none;
+    z-index: 0;
+    -webkit-mask-image: radial-gradient(
+      108px 44px at calc(var(--glow-x) + 40px) calc(var(--glow-y) + 40px),
+      #000 0%,
+      rgba(0, 0, 0, 0.52) 42%,
+      transparent 90%
+    );
+    mask-image: radial-gradient(
+      108px 44px at calc(var(--glow-x) + 40px) calc(var(--glow-y) + 40px),
+      #000 0%,
+      rgba(0, 0, 0, 0.52) 42%,
+      transparent 90%
+    );
+    opacity: calc(var(--glow-op) * var(--search-glow-halo-op));
+    transition: opacity 260ms var(--ease-out);
+  }
+
+  .glow-field.is-glow .glow-field__halo::before {
+    content: "";
+    position: absolute;
+    inset: 39px;
+    box-shadow:
+      0 0 6px 0 var(--search-glow-halo-1),
+      0 0 15px 0 var(--search-glow-halo-2),
+      0 0 28px 0 var(--search-glow-halo-3);
+  }
+
+  :root[data-theme="dark"] .glow-field.is-glow .glow-field__halo::before {
+    box-shadow:
+      inset 0 0 6px 0 var(--search-glow-halo-2),
+      0 0 8px 0 var(--search-glow-halo-1),
+      0 0 18px 0 var(--search-glow-halo-2),
+      0 0 32px 0 var(--search-glow-halo-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-field.is-glow::before,
+  .glow-field.is-glow .glow-field__halo {
+    transition-duration: var(--dur-1);
+  }
+}
+
+@media (forced-colors: active) {
+  .glow-field.is-glow::before,
+  .glow-field.is-glow .glow-field__halo {
+    display: none;
+  }
+}
+
 /* ---------- 空状态 ---------- */
 
 .empty {
@@ -1379,5 +1528,4 @@ a.tag:hover { border-color: var(--accent); color: var(--accent); }
   text-align: center;
   color: var(--fg-faint);
   font-size: 0.875rem;
-  border-bottom: var(--hair) solid var(--line);
 }
