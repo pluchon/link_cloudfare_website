@@ -74,9 +74,9 @@
 - **全程序生成 3D 黑洞与透镜光学**：
   - `src/door/shaders.ts` 为全屏光线步进着色器，包含黑洞吸积盘（9 秒时间窗双相交叠防摩尔纹）、多普勒光子环、银河与星云（仅在片区内计算）；`sky()` 在片元着色器**仅保留单一调用点**并用无分支权重 `t0..t4` 混色 5 套主题，避免 GLSL 编译膨胀。
   - **星点抗闪烁与景深平衡**：`starLayer` 使用 6 面等角立方体贴图 2D 晶格消除 3D 斜切半星，并在 `sky()` 前分支外限幅 `gPixAng = clamp(length(fwidth(skyRd)) * 0.7071, 0.0005, 0.0028)` 保护核宽 `coreW = max(size, px * 0.76)`（仅 `mag > 0.05` 亮星展开星冕、暗星零光晕呈针尖点，配合 `cellFade` 防出格）；`sky()` 使用 `scale = 68 / 148`，`starCluster` 复用平滑星层消除 `floor(d * 620)` 摩尔闪烁。
-  - 几何体（空间站 `station.ts`、小行星 `rocks.ts`、探测器 `orbits.ts`、外围景物 `realms.ts`）通过 `warp.ts` 顶点透镜公式与主shader对齐，`renderSecondaryImages` 用图层 1 + `gl.frontFace(gl.CW)` 渲染次像（手机端跳过），全屏黑洞着色器写 `gl_FragDepth` 处理遮挡；灯光必须开启 `layers.enable(IMAGE_LAYER)`。
+  - 几何体（空间站 `station.ts`、小行星 `rocks.ts`、探测器 `orbits.ts`）通过 `warp.ts` 顶点透镜公式与主shader对齐，`renderSecondaryImages` 用图层 1 + `gl.frontFace(gl.CW)` 渲染次像（手机端跳过），全屏黑洞着色器写 `gl_FragDepth` 处理遮挡；灯光必须开启 `layers.enable(IMAGE_LAYER)`。
   - 像素比自动调档的升档门槛**不能低于 `16.7ms`**（建议 `>= 18ms`），避免 60Hz 屏锁死降档。
-- **斯隆长城五系星图与终端**：`starmap.ts` 定义 `base` / `tags` / `gallery` / `about` / `game` 五座四层落差枢纽；`realms.ts` 为各星域提供单次 `InstancedMesh` 科学浮标/碎岩/浑仪星环；终端数据在构建时写入（禁止改用 iframe，受 `_headers` `X-Frame-Options: DENY` 限制）；双击飞回甲板需恢复 `minDistance=0`、结清阻尼并插值视线方向。
+- **斯隆长城五系星图与终端**：`starmap.ts` 定义 `base` / `tags` / `gallery` / `about` / `game` 五座四层落差枢纽；终端数据在构建时写入（禁止改用 iframe，受 `_headers` `X-Frame-Options: DENY` 限制）；双击飞回甲板需恢复 `minDistance=0`、结清阻尼并插值视线方向。
 
 ---
 

@@ -5,7 +5,6 @@ import { buildStation } from './station';
 import { buildProbe, orbitFrame, orbitPath, orbitPosition, type Orbit } from './orbits';
 import { travel, type LoaderUI } from './loader';
 import { buildRocks } from './rocks';
-import { buildRealmProps } from './realms';
 import { lensPoint, warpBeta, warpCenter, warpImage, warpMaterial, warpObject, warpScale } from './warp';
 import { AZIMUTH_LABELS, STAR_NODES, buildStarMap, renderMiniMap, type StarNodeSpec } from './starmap';
 
@@ -110,7 +109,7 @@ const STATION_ORBIT: Orbit = { a: 45, e: 0, inc: -3, node: 0, peri: 0, m0: -Math
 // 黑洞在 45 Rs 外，阴影加下方光弧约占 5°，再近扶栏就太大、再远就挡住光弧
 const EYE_LOCAL = new THREE.Vector3(0, 0.32, 0.95);
 
-// 自由视角：绕人马座 A* 黑洞巡航，略压低仰角让空间站、五颗探测器、中继浮标阵与吸积盘更有史诗纵深
+// 自由视角：绕人马座 A* 黑洞巡航，略压低仰角让空间站、五颗探测器与吸积盘更有史诗纵深
 const FREE_DISTANCE = 68;
 const FREE_PHI = 0.76;
 
@@ -120,7 +119,7 @@ const DISK_V = new THREE.Vector3(0, 0, -1);
 
 const LEAVE_MS = 3800;
 const RETURN_MS = 5200;
-const DOCK_MS = 3200;
+const DOCK_MS = 2400;
 const UNDOCK_MS = 2600;
 const MAP_ENTER_MS = 2400;
 const MAP_LEAVE_MS = 2000;
@@ -419,6 +418,11 @@ export function mountDoor(options: DoorOptions): () => void {
   const eye = new THREE.Vector3();
   const stationQuat = new THREE.Quaternion();
   const lastQuat = new THREE.Quaternion();
+  const offsetTmp = new THREE.Vector3();
+  const sideTmp = new THREE.Vector3();
+  const crossTmp = new THREE.Vector3();
+  const changeDirTmp = new THREE.Vector3();
+  const ndcTmp = new THREE.Vector2();
 
   function placeStation() {
     orbitPosition(STATION_ORBIT, stationFrame, simTime, stationPos);
@@ -427,25 +431,26 @@ export function mountDoor(options: DoorOptions): () => void {
     station.updateMatrixWorld();
     eye.copy(EYE_LOCAL).applyMatrix4(station.matrixWorld);
   }
+  function updateProbes() {
+    for (const p of probes) {
+      orbitPosition(p.orbit, p.frame, simTime, p.group.position);
+      // 天线（局部 -z）始终对准空间站，像真的探测器对着地球通讯
+      p.group.lookAt(offsetTmp.copy(p.group.position).multiplyScalar(2).sub(stationPos));
+      p.beacon.color.copy(p.tint).multiplyScalar(0.4 + 0.6 * Math.max(0, Math.sin(simTime * 3 + p.phase)));
+    }
+  }
   placeStation();
+  updateProbes();
   lastQuat.copy(station.quaternion);
 
   // ---- 外围的小行星带和两颗岩质行星：按开场时空间站的方向摆，从甲板一眼就能看见 ----
   const rocks = buildRocks(lite, stationPos.clone().normalize());
   scene.add(rocks.group);
-  // ---- 画廊/游戏星系与基地外围轻量化三维景物（随主场景一同挂载，首帧即就位） ----
-  const realmProps = buildRealmProps(lite);
-  scene.add(realmProps.group);
   for (const root of [station, rocks.group, ...probes.map((p) => p.group)]) {
     root.traverse((object) => object.layers.enable(IMAGE_LAYER));
   }
 
   // 甲板上的默认朝向：正对黑洞
-  const offsetTmp = new THREE.Vector3();
-  const sideTmp = new THREE.Vector3();
-  const crossTmp = new THREE.Vector3();
-  const changeDirTmp = new THREE.Vector3();
-  const ndcTmp = new THREE.Vector2();
   const deckLook = (out = new THREE.Vector3()) => out.copy(eye).add(offsetTmp.copy(ORIGIN).sub(eye).setLength(0.05));
   camera.position.copy(eye);
   controls.target.copy(deckLook());
@@ -894,15 +899,44 @@ export function mountDoor(options: DoorOptions): () => void {
     }
   }
 
-  // ---- 探测器对接：飞到探测器侧后方停住，终端屏幕从旁边展开 ----
-  // 停靠点：探测器外侧 5.5、上方 0.9、往右 1.6。镜头朝黑洞看，探测器落在画面左下，右边留给屏幕
+  // ---- 探测器对接：切向掠近后与探测器伴飞同行，终端屏幕从旁边展开 ----
+  // 停靠基准位：探测器外侧约 5.4、上方约 0.92、偏右约 1.55，使探测器处于左侧前景，右边留给终端面板
   const dockPos = new THREE.Vector3();
   const dockLook = new THREE.Vector3();
-  function placeDock(p: Probe) {
+  let dockPhase = 0;
+  let dockBlend = 0;
+  let dockPointerX = 0;
+  let dockPointerY = 0;
+  let dockLookX = 0;
+  let dockLookY = 0;
+  function placeDock(p: Probe, followWeight = 0) {
+    const pLen = p.group.position.length();
     const out = offsetTmp.copy(p.group.position).normalize();
-    sideTmp.crossVectors(DISK_N, out);
-    dockPos.copy(p.group.position).addScaledVector(out, 5.5).addScaledVector(DISK_N, 0.9).addScaledVector(sideTmp, 1.6);
-    dockLook.copy(p.group.position).multiplyScalar(0.5);
+    sideTmp.crossVectors(DISK_N, out).normalize();
+
+    const narrow = camera.aspect < 1;
+    const baseOut = narrow ? 5.8 : 5.4;
+    const baseUp = narrow ? 1.15 : 0.92;
+    const baseSide = narrow ? 0.25 : 1.55;
+
+    // 缓慢柔和的零重力伴飞漂移 + 鼠标微视差，保持探测器稳居左侧且呈现真实空间跟随纵深
+    const driftOut = (Math.sin(dockPhase * 0.43) * 0.36 + Math.cos(dockPhase * 0.19) * 0.16) * followWeight;
+    const driftUp = (Math.sin(dockPhase * 0.61 + 1.1) * 0.24 - dockLookY * 0.32) * followWeight;
+    const driftSide = (Math.cos(dockPhase * 0.37 + 0.5) * 0.52 + dockLookX * 0.58) * followWeight;
+
+    dockPos
+      .copy(p.group.position)
+      .addScaledVector(out, baseOut + driftOut)
+      .addScaledVector(DISK_N, baseUp + driftUp)
+      .addScaledVector(sideTmp, baseSide + driftSide);
+
+    // 各轨道半径（13~37 Rs）统一景深构图，避免外轨探测器偏出左边缘
+    const lookIn = Math.min(pLen * 0.5, 10.5);
+    dockLook
+      .copy(p.group.position)
+      .addScaledVector(out, -lookIn)
+      .addScaledVector(DISK_N, (narrow ? -0.35 : 0.08) - dockLookY * 0.18 * followWeight)
+      .addScaledVector(sideTmp, dockLookX * 0.22 * followWeight);
   }
 
   function dock(p: Probe) {
@@ -913,6 +947,15 @@ export function mountDoor(options: DoorOptions): () => void {
     }
     closeTerminal();
     docked = p;
+    dockPhase = 0;
+    dockBlend = 0;
+    dockPointerX = 0;
+    dockPointerY = 0;
+    dockLookX = 0;
+    dockLookY = 0;
+    scaleDampingActive = false;
+    targetScaleU = null;
+    dragScaleU = null;
     settleControls();
     controls.enabled = false;
     canvas.style.cursor = '';
@@ -938,6 +981,8 @@ export function mountDoor(options: DoorOptions): () => void {
   // 点屏幕：先把屏幕收起来（有动画），收完再转向黑洞俯冲，穿过视界后加载这个分类
   function warp(p: Probe) {
     if (mode !== 'docked') return;
+    dockPointerX = 0;
+    dockPointerY = 0;
     closeTerminal();
     if (still) {
       travel(p.href, `正在前往「${p.label}」`, options.loader);
@@ -980,9 +1025,22 @@ export function mountDoor(options: DoorOptions): () => void {
   const onDown = (e: PointerEvent) => {
     down = { x: e.clientX, y: e.clientY };
   };
+  const onLeave = () => {
+    hovering = false;
+    dockPointerX = 0;
+    dockPointerY = 0;
+  };
   const onMove = (e: PointerEvent) => {
     if (down && mode === 'docked' && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) {
       undock();
+      return;
+    }
+    if (!down && mode === 'docked' && e.pointerType === 'mouse') {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        dockPointerX = THREE.MathUtils.clamp(((e.clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
+        dockPointerY = THREE.MathUtils.clamp(((e.clientY - rect.top) / rect.height) * 2 - 1, -1, 1);
+      }
       return;
     }
     if (e.pointerType !== 'mouse' || scripted()) {
@@ -1229,6 +1287,7 @@ export function mountDoor(options: DoorOptions): () => void {
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointerleave', onLeave);
   canvas.addEventListener('wheel', onWheel, { passive: true });
   canvas.addEventListener('dblclick', goBack);
   options.hole.label.addEventListener('click', onHoleLabel);
@@ -1438,6 +1497,7 @@ export function mountDoor(options: DoorOptions): () => void {
     let diveRush = 0;
 
     placeStation();
+    if (mode !== 'starmap' && mode !== 'galaxy' && mode !== 'flyingGalaxy') updateProbes();
     stationQuat.copy(station.quaternion);
 
     if (mode === 'deck') {
@@ -1522,21 +1582,32 @@ export function mountDoor(options: DoorOptions): () => void {
         setMode('free');
       }
     } else if ((mode === 'docking' || mode === 'docked' || mode === 'warping') && docked) {
-      placeDock(docked);
       if (mode === 'docking') {
+        placeDock(docked, 0);
         const k = clamp01(t / DOCK_MS);
-        const e = smooth(k);
+        const e = smoother(k);
         const out = offsetTmp.copy(docked.group.position).normalize();
-        c1.copy(from.pos).lerp(dockPos, 0.3).addScaledVector(DISK_N, from.pos.distanceTo(dockPos) * 0.15);
-        c2.copy(dockPos).addScaledVector(out, 6).addScaledVector(DISK_N, 2);
+        const tangent = sideTmp.crossVectors(DISK_N, out).normalize();
+        c1.copy(from.pos).lerp(dockPos, 0.34).addScaledVector(DISK_N, Math.min(from.pos.distanceTo(dockPos) * 0.14, 7));
+        c2.copy(dockPos).addScaledVector(out, 4.0).addScaledVector(DISK_N, 1.3).addScaledVector(tangent, -3.2);
         bezier(from.pos, c1, c2, dockPos, e, camera.position);
-        controls.target.lerpVectors(from.target, dockLook, smooth(clamp01(k / 0.7)));
+        controls.target.lerpVectors(from.target, dockLook, smoother(clamp01(k / 0.85)));
         if (k >= 1) {
+          camera.position.copy(dockPos);
+          controls.target.copy(dockLook);
+          dockPhase = 0;
+          dockBlend = 0;
           setMode('docked');
           openTerminal(docked);
         }
       } else {
-        // 停靠后（以及屏幕收起的那一小段）跟着探测器一起公转；收完就转向黑洞俯冲
+        // 停靠后沿开普勒轨道伴飞跟随：柔缓引入微幅零重力相对漂移与悬停视差，跃迁收屏时平稳归正
+        dockPhase += dt;
+        dockBlend = Math.min(1, dockBlend + dt * 0.65);
+        const pd = 1 - Math.exp(-5 * dt);
+        dockLookX += (dockPointerX - dockLookX) * pd;
+        dockLookY += (dockPointerY - dockLookY) * pd;
+        placeDock(docked, smooth(dockBlend));
         camera.position.copy(dockPos);
         controls.target.copy(dockLook);
         if (mode === 'warping' && t >= FOLD_MS) startDive(docked.href, `正在穿越视界 · 前往「${docked.label}」`);
@@ -1737,13 +1808,7 @@ export function mountDoor(options: DoorOptions): () => void {
 
     if (!inCosmos) {
       station.visible = mode !== 'diving' || !behindHole(stationPos, 2.0);
-      for (const p of probes) {
-        orbitPosition(p.orbit, p.frame, simTime, p.group.position);
-        // 天线（局部 -z）始终对准空间站，像真的探测器对着地球通讯
-        p.group.lookAt(offsetTmp.copy(p.group.position).multiplyScalar(2).sub(stationPos));
-        p.group.visible = true;
-        p.beacon.color.copy(p.tint).multiplyScalar(0.4 + 0.6 * Math.max(0, Math.sin(simTime * 3 + p.phase)));
-      }
+      for (const p of probes) p.group.visible = true;
       rocks.group.visible = true;
       rocks.update(simTime, behindHole);
     } else {
@@ -1768,8 +1833,6 @@ export function mountDoor(options: DoorOptions): () => void {
     dustUniforms.uSize.value = holeScale > 1.25 ? 14 : 18;
     dust.visible = dustAlpha > 0.005;
     starMap.setOpacity(mapOpacity, simTime, ratio);
-    const propsAlpha = holeAlpha * (1 - mapOpacity);
-    realmProps.update(holeTheme, propsAlpha, simTime, holeCenter, holeScale);
     updateStreaks(beta, dt);
 
     if (scripted() || scaleDampingActive) camera.lookAt(controls.target);
@@ -1803,7 +1866,7 @@ export function mountDoor(options: DoorOptions): () => void {
     const away = mode === 'free' || mode === 'leaving' ? 1 : 0;
     const nearProbe = mode === 'docked' || mode === 'docking' || mode === 'warping';
     const baseFade = inCosmos || mode === 'diving' ? 0 : mode === 'enteringMap' ? holeAlpha : 1;
-    const trackGoal = (away ? 0.18 : nearProbe ? 0.02 : 0.06) * baseFade;
+    const trackGoal = (away ? 0.18 : nearProbe ? 0.11 : 0.06) * baseFade;
     if (inCosmos && (activeGalaxy !== null || mode === 'starmap' || mode === 'galaxy' || mode === 'flyingGalaxy')) {
       trackMaterial.opacity = 0;
       stationTrackMaterial.opacity = 0;
@@ -2018,6 +2081,7 @@ export function mountDoor(options: DoorOptions): () => void {
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerup', onUp);
+    canvas.removeEventListener('pointerleave', onLeave);
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('dblclick', goBack);
     options.hole.label.removeEventListener('click', onHoleLabel);
@@ -2036,7 +2100,6 @@ export function mountDoor(options: DoorOptions): () => void {
     window.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVisible);
     starMap.dispose();
-    realmProps.dispose();
     rocks.dispose();
     renderer.dispose();
   };
