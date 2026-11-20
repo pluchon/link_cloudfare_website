@@ -1,168 +1,103 @@
 [
   {
     "id": "01",
-    "title": "学习基地手帐海报",
-    "summary": "16:9 手帐构图，诺诺坐在摊开的画册上，书页绘着笔记本电脑与行星轨道。",
+    "title": "学习基地主视觉海报",
+    "summary": "日漫官方番剧主视觉海报构图：诺诺在天窗书桌旁微笑回眸，白尾从裙摆下自然探出，左侧印着「儒雅的诺诺的学习基地」主标题。",
     "category": "海报",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/base-poster.webp",
-    "publishedAt": "2026-11-11"
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/posters/base-main-poster.webp",
+    "publishedAt": "2026-11-20"
   },
   {
     "id": "02",
-    "title": "雨停前五分钟",
-    "summary": "低视角看诺诺穿淡紫半透明雨衣与粉爪雨靴伸脚试探水洼，门缝漏出一线暖光。",
-    "category": "插画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/scenes/rain-before-clearing.webp",
-    "publishedAt": "2026-11-11"
+    "title": "诺诺与小萌：星海与森林的约定",
+    "summary": "日漫剧场版双人宣传海报：姐姐诺诺牵着妹妹小萌站在幻想之森晨雾与星海观测甲板交界处，身高差、镜像发饰与圆铃星铃成对映衬。",
+    "category": "海报",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/posters/sisters-key-visual.webp",
+    "publishedAt": "2026-11-20"
   },
   {
     "id": "03",
-    "title": "这次真的修好了",
-    "summary": "诺诺穿猫爪卫衣把笔记本电脑转过来，得意地给你看屏幕上的绿色对勾。",
-    "category": "插画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/scenes/finally-fixed.webp",
-    "publishedAt": "2026-11-11"
+    "title": "观测夜与游戏时光特辑海报",
+    "summary": "夜色柔和的基地观测甲板窗边，诺诺高举正在运行果冻小游戏的淡紫掌机，身旁圆桌摆着三色果冻与暖星灯，窗外悬着紫金黑洞吸积盘。",
+    "category": "海报",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/posters/observatory-arcade-poster.webp",
+    "publishedAt": "2026-11-20"
   },
   {
     "id": "04",
-    "title": "书签掉下来了",
-    "summary": "午后洒满阳光的窗边，诺诺伸手去接从书页间滑落的粉色书签。",
-    "category": "插画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/scenes/falling-bookmark.webp",
-    "publishedAt": "2026-11-11"
+    "title": "诺诺标准水手服 · 全身三视图",
+    "summary": "正面、右侧面与背面标准设定表：延续白紫水手服与右侧粉花淡紫发带镜像结构，背面百褶裙下摆自然遮挡尾根、卷尾从裙下伸出。",
+    "category": "角色立绘",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/character/sailor-turnaround.webp",
+    "publishedAt": "2026-11-20",
+    "cutout": true
   },
   {
     "id": "05",
-    "title": "观测站的最后一盏灯",
-    "summary": "诺诺在空间站观测甲板捧着暖光星灯，夜空远处悬着一枚带吸积盘的小黑洞。",
-    "category": "插画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/scenes/last-observatory-light.webp",
-    "publishedAt": "2026-11-11"
+    "title": "诺诺日漫表情设定集",
+    "summary": "透明底 2×2 肩上特写表情表，依次收录元气单眼眨眼笑、托腮歪头认真思索、星星眼惊喜开口笑与微微鼓腮小傲娇四种神态。",
+    "category": "头像特写",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/character/expression-sheet.webp",
+    "publishedAt": "2026-11-20",
+    "cutout": true
   },
   {
     "id": "06",
-    "title": "诺诺标准立绘",
-    "summary": "白紫双条纹水手服、淡紫百褶裙与玛丽珍鞋，白色卷尾尖系着粉蝴蝶结与小铃铛。",
-    "category": "角色立绘",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/character/standard.webp",
-    "publishedAt": "2026-11-11",
+    "title": "春日外出服 · 全身三视图",
+    "summary": "米白针织开衫配水手领、樱花刺绣斜挎小包与浅粉百褶裙的三视图设定，肩带正侧背三维走向连贯，白尾从粉色裙摆后下方自然探出。",
+    "category": "常服设定",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/outfits/spring-outing-turnaround.webp",
+    "publishedAt": "2026-11-20",
     "cutout": true
   },
   {
     "id": "07",
-    "title": "全身三视图",
-    "summary": "正面、右侧面与背面标准设定，固定右侧五瓣粉花夹、淡紫发带与尾尖粉铃铛。",
-    "category": "角色立绘",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/character/turnaround.webp",
-    "publishedAt": "2026-11-11",
-    "cutout": true
+    "title": "春日外出 · 樱花林荫道的小憩",
+    "summary": "暖阳清透的樱花林荫道上，诺诺轻扶樱花斜挎小包微侧身伸手去接飘落的粉色花瓣，微风轻轻扬起长发、粉裙与身后小圆铃。",
+    "category": "插画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/scenes/spring-outing-scene.webp",
+    "publishedAt": "2026-11-20"
   },
   {
     "id": "08",
-    "title": "掌机游戏半身图",
-    "summary": "双手握淡紫掌机专注游玩的半身像，左下方露出卷起的尾尖与粉色小铃铛。",
-    "category": "角色立绘",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/character/game-portrait.webp",
-    "publishedAt": "2026-11-11",
+    "title": "午后图书馆装 · 全身三视图",
+    "summary": "奶油衬衫、灰紫针织背心与深紫高腰交叉背带裙三视图设定，完整展示后背交叉背带结构，白尾从深紫裙摆下沿自然探出。",
+    "category": "常服设定",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/outfits/afternoon-library-turnaround.webp",
+    "publishedAt": "2026-11-20",
     "cutout": true
   },
   {
+    "id": "09",
+    "title": "午后图书馆 · 阳光窗边的读书时刻",
+    "summary": "午后金色阳光穿过复古高窗格洒进木质书房，诺诺倚在木桌旁轻翻手中的淡紫笔记本，柔和光影落在微弯眉眼与紫裙褶间。",
+    "category": "插画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/scenes/afternoon-library-scene.webp",
+    "publishedAt": "2026-11-20"
+  },
+  {
     "id": "10",
-    "title": "春日外出服",
-    "summary": "米白针织开衫配水手领、浅粉百褶裙与樱花刺绣斜挎小包，搭配玫粉玛丽珍鞋。",
+    "title": "夜间观测服 · 全身三视图",
+    "summary": "深蓝水手领短外套、淡紫领巾与袖口四角星章三视图设定，背面水手披领与外套下摆立体自然，深色布面洁净顺滑且猫尾自然探出裙底。",
     "category": "常服设定",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/outfits/spring-outing.webp",
-    "publishedAt": "2026-11-11",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/outfits/night-observatory-turnaround.webp",
+    "publishedAt": "2026-11-20",
     "cutout": true
   },
   {
     "id": "11",
-    "title": "午后图书馆装",
-    "summary": "奶油色衬衫、灰紫针织背心与深紫高腰背带裙，手抱一本淡紫笔记本。",
-    "category": "常服设定",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/outfits/afternoon-library.webp",
-    "publishedAt": "2026-11-11",
-    "cutout": true
+    "title": "夜间观测 · 星海甲板的微光时刻",
+    "summary": "空间站透明玻璃观测廊桥旁，诺诺穿着夜间观测服双手捧着四角星灯仰望紫蓝星海与远处黑洞吸积盘，暖光映亮脸颊与紫瞳。",
+    "category": "插画",
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/scenes/night-observatory-scene.webp",
+    "publishedAt": "2026-11-20"
   },
   {
     "id": "12",
-    "title": "夜间观测服",
-    "summary": "深蓝水手领短外套、淡紫领巾与短靴，袖口上方饰有一枚四角小星章。",
-    "category": "常服设定",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/outfits/night-observatory.webp",
-    "publishedAt": "2026-11-11",
-    "cutout": true
-  },
-  {
-    "id": "15",
-    "title": "贴脸张嘴笑特写",
-    "summary": "延续游戏大厅贴脸仰视视角与元气张嘴笑表情的方形特写。",
-    "category": "头像特写",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261111/character/closeup-square.webp",
-    "publishedAt": "2026-11-11"
-  },
-  {
-    "id": "16",
-    "title": "黑洞观测甲板的下午茶",
-    "summary": "诺诺在观测甲板上吃草莓芭菲，桌上摊着笔记本，窗外是黑洞的金橙色吸积盘。",
-    "category": "插画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/aurora-tea-deck.webp",
-    "publishedAt": "2026-11-13"
-  },
-  {
-    "id": "17",
-    "title": "半夜调 Bug 记 (ﾉ>ω<)ﾉ",
-    "summary": "从抓耳挠腮盯报错到测试全绿，抱着金鱼玩偶趴桌秒睡 ♪",
+    "title": "草莓蛋糕与姐妹的约定",
+    "summary": "无字四格暖心日常：小萌忍着馋意把顶着大草莓的蛋糕推给姐姐，诺诺温柔笑着把唯一的草莓夹进妹妹盘子，末格两姐妹贴贴吃蛋糕、尾巴在身后交错成心形。",
     "category": "漫画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/midnight-debug-4koma.webp",
-    "publishedAt": "2026-11-13"
-  },
-  {
-    "id": "18",
-    "title": "梅雨书店檐下的透明伞",
-    "summary": "诺诺撑着透明伞，在书店檐下伸手接雨滴。窗里的暖光映在湿润的石板上。",
-    "category": "插画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/rainy-eaves-umbrella.webp",
-    "publishedAt": "2026-11-13"
-  },
-  {
-    "id": "20",
-    "title": "诺诺的基地游戏夜特辑海报",
-    "summary": "诺诺一手托着彩色果冻罐，一手举起淡紫掌机，朱红细线框内点缀猫爪和像素星星。",
-    "category": "海报",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261113/arcade-weekend-poster.webp",
-    "publishedAt": "2026-11-13"
-  },
-  {
-    "id": "21",
-    "title": "梦里也在修 Bug (´-ω-`)zzZ",
-    "summary": "穿着星云猫爪云朵领睡衣迷糊盯着死循环流程图，低头却发现昨晚睡梦中早已把三叉树正解画在了枕边便签上 ♪",
-    "category": "漫画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/morning-alarm-4koma.webp?v=3",
-    "publishedAt": "2026-11-18"
-  },
-  {
-    "id": "22",
-    "title": "草莓二等分定理 (・ω<)☆",
-    "summary": "姐妹互相谦让最后的大草莓，诺诺搬出圆规三角尺准备精确平分，却被白猫团子一碰直接滚进了小萌勺里 ♪",
-    "category": "漫画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/strawberry-cake-4koma.webp?v=3",
-    "publishedAt": "2026-11-18"
-  },
-  {
-    "id": "23",
-    "title": "手冲咖啡的精密仪式 (＞﹏＜)",
-    "summary": "电子秤配温度计像做物理实验般严谨手冲黑咖啡，结果抿一口就苦成飞机耳，火速端起牛奶壶满血救场 ♪",
-    "category": "漫画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/pour-over-coffee-4koma.webp?v=3",
-    "publishedAt": "2026-11-18"
-  },
-  {
-    "id": "24",
-    "title": "晴雨表与晒太阳的猫 (・∀・)☂",
-    "summary": "刚按晴天预报晾好毛巾和小鱼抱枕就瓢泼大雨，火速抢回屋的一瞬间窗外竟然晴空万里挂起大彩虹 ♪",
-    "category": "漫画",
-    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261118/rainy-laundry-4koma.webp?v=3",
-    "publishedAt": "2026-11-18"
+    "src": "https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/nuonuo_gallery/20261120/scenes/sisters-teatime-4koma.webp",
+    "publishedAt": "2026-11-20"
   }
 ]

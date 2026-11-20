@@ -1,14 +1,14 @@
 # 诺诺角色设定
 
-诺诺是「儒雅的诺诺的学习基地」的角色。这个目录收录角色立绘、三视图和服装设定。
+诺诺是「儒雅的诺诺的学习基地」的核心看板角色（亲妹妹小萌见 [xiaomeng_role](../xiaomeng_role/README.md)）。这个目录收录诺诺的角色立绘、三视图、常服设定、日漫日常场景及基地海报。
 
-下方的相对路径指向本地绘图原稿。站点画廊使用 OSS 上的 WebP 图片，作品信息维护在 [gallery.json](../src/content/gallery.json)。
+下方的相对路径指向本地绘图原稿。站点画廊使用 OSS 上的 WebP 图片，作品清单维护在 [gallery.json](../src/content/gallery.json)。
 
-角色以游戏大厅左下角的插画为原型。白色长发、紫瞳、粉色花夹和淡紫发带是主要辨识特征。花夹和发带都在诺诺的右侧，正面看位于画面左侧。线条用偏紫的细描边，阴影以大色块为主。
+角色以游戏大厅左下角的插画为原型。浅紫白及腰长发、明亮紫瞳、粉色五瓣花夹和淡紫发带是主要辨识特征。花夹和发带都在诺诺自身右侧（正面看位于画面左侧，背面位于画面右侧）。线条用偏紫的细描边，色块干净平涂、零噪点颗粒。
 
-诺诺只有头顶的一对猫耳，脸侧由发束自然衔接。白色卷尾靠近尾尖的位置系一枚小粉铃铛，粉色缎带参考网站图标。
+诺诺头顶仅有一对白猫耳，脸侧由发束自然衔接，无人类耳朵；白色卷尾从腰后裙摆下沿自然探出，尾尖系粉色缎带与一枚玫瑰粉小圆铃铛。
 
-## 人物
+## 人物设定
 
 | 素材 | 内容 |
 | --- | --- |
@@ -17,34 +17,28 @@
 | [白底方形特写](character/closeup-square.png) | 延续贴脸视角和张嘴笑的表情，1:1。 |
 | [圆形裁剪头像](character/closeup-avatar.png) | 白底 1:1 方图，耳尖、花夹和脸部都在内切圆内。 |
 | [游戏半身图](character/game-portrait.png) | 保留原插画中双手握掌机的姿势，画面左下方露出尾尖和铃铛。 |
-| [标准立绘](character/standard.png) | 全身站姿，穿白紫水手服、淡紫百褶裙、短袜和玛丽珍鞋。 |
-| [全身三视图](character/turnaround.png) | 从左到右为正面、右侧面和背面，沿用标准服装。 |
+| [标准立绘](character/standard.png) | 全身站姿，穿白紫水手服、淡紫百褶裙、短袜和玛丽珍鞋（角色比例与样式主锚点）。 |
+| [全身三视图](character/turnaround.png) | **2026-11-20 重制真透明底 RGBA**，从左到右为正面、右侧面与背面，背面裙摆自然遮挡尾根、卷尾从裙下伸出。 |
+| [日漫表情设定集](character/expression-sheet.png) | **2026-11-20 新增真透明底 RGBA**，2×2 收录眨眼笑、托腮思索、星星眼惊喜与鼓腮傲娇四种神态。 |
 
-## 服装
+## 常服设定与日常场景
 
-> **新规同步（2026-11-13）**：后续新绘制常服/服装时，**只画角色完整穿戴效果（全身或场景图），不再画旁侧拆解出来的衣服、帽子、鞋子等单品拆分图**；早先已完成的旧设定保留存档。
+> **绘制规范（2026-11-13 起延续）**：后续新绘制常服设定时，**只画角色完整穿戴效果（全身三视图或场景图），不再画旁侧拆解出来的衣服、帽子、鞋子等单品拆分图**；早先的单品参考稿（`outfits/sailor-uniform.png`、`spring-outing.png`、`afternoon-library.png`、`night-observatory.png`）仅作为造型锚点归档保留，不直接上画廊。
+
+| 套装 | 三视图（真透明底） | 日漫日常场景（16:9） | 原造型参考 |
+| --- | --- | --- | --- |
+| 春日外出服 | [全身三视图](outfits/spring-outing-turnaround.png) | [樱花林荫道的小憩](scenes/spring-outing-scene.png) | [春日外出参考](outfits/spring-outing.png) |
+| 午后图书馆装 | [全身三视图](outfits/afternoon-library-turnaround.png) | [阳光窗边的读书时刻](scenes/afternoon-library-scene.png) | [午后图书馆参考](outfits/afternoon-library.png) |
+| 夜间观测服 | [全身三视图](outfits/night-observatory-turnaround.png) | [星海甲板的微光时刻](scenes/night-observatory-scene.png) | [夜间观测参考](outfits/night-observatory.png) |
+
+## 姐妹日常漫画与海报
 
 | 素材 | 内容 |
 | --- | --- |
-| [白紫水手服](outfits/sailor-uniform.png) | 单独展示上衣、百褶裙、袜子、鞋子、发带、花夹和尾部铃铛。 |
-| [春日外出](outfits/spring-outing.png) | 米白开衫、粉色裙子和花朵斜挎包，搭配玫粉色玛丽珍鞋。 |
-| [午后图书馆](outfits/afternoon-library.png) | 奶油色衬衫、灰紫背心和深紫背带裙，配一本淡紫笔记本。 |
-| [夜间观测](outfits/night-observatory.png) | 深蓝水手领短外套、淡紫领巾和短靴，袖口上方有一枚小星章。 |
+| [基地主视觉海报](base-poster.png) | **2026-11-20 重制**，16:9 日漫番剧主视觉风格，天窗书桌回眸配工整标题「儒雅的诺诺的学习基地」（无网址）。 |
+| [星海与森林的约定](posters/sisters-key-visual.png) | 诺诺与妹妹小萌 16:9 双人宣传海报，左侧幻想之森晨雾自然衔接右侧观测甲板星海。 |
+| [观测夜与游戏时光](posters/observatory-arcade-poster.png) | 观测甲板窗边举掌机与三色果冻甜点特辑海报，窗外悬着紫金黑洞吸积盘。 |
+| [草莓蛋糕与姐妹的约定](scenes/sisters-teatime-4koma.png) | 2×2 无字四格暖心日常漫画：互让草莓后贴贴吃蛋糕，双尾在身后交错成心形。 |
+| [无网址版旧手帐海报](base-poster-no-url.png) | 早先版本留存，不参与新版画廊。 |
 
-## 场景插画
-
-| 素材 | 内容 |
-| --- | --- |
-| [雨停前五分钟](scenes/rain-before-clearing.png) | 低视角看诺诺伸脚试探水洼，门缝漏出一线暖光。 |
-| [这次真的修好了](scenes/finally-fixed.png) | 诺诺把电脑转过来，得意地给你看屏幕上的绿勾。 |
-| [书签掉下来了](scenes/falling-bookmark.png) | 午后窗边，诺诺伸手接滑落的粉色书签。 |
-| [观测站的最后一盏灯](scenes/last-observatory-light.png) | 诺诺在观测甲板捧着星灯，远处是一枚小黑洞。 |
-
-
-## 基地海报
-
-[基地介绍海报](base-poster.png)采用 16:9 手帐构图，包含诺诺、站名和网址。
-
-[无网址版海报](base-poster-no-url.png)保留站名和手帐构图，原网址的位置留白。
-
-立绘、三视图和服装图使用透明底 PNG，头像与海报使用带背景的 PNG。[游戏大厅原始插画](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261103/game-landscape.webp) · [绘图提示词](prompts.md)
+立绘、三视图与表情设定集使用真透明底 RGBA PNG（`Format32bppArgb`），海报、场景图与漫画使用实底 PNG。[游戏大厅原始插画](https://zlhimage.oss-cn-guangzhou.aliyuncs.com/personal_website_picture/category_backgrounds/20261103/game-landscape.webp) · [绘图提示词](prompts.md)
