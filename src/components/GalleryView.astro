@@ -18,14 +18,16 @@ interface GalleryItem {
 }
 
 const categories = [
-  { label: '全部', icon: 'M3 3h3v3H3zM10 3h3v3h-3zM3 10h3v3H3zM10 10h3v3h-3z' },
-  { label: '插画', icon: 'M2 12.5h12L9.5 6l-2 3-2-2.5-3.5 6Z' },
-  { label: '漫画', icon: 'M2.5 3h11v7.5h-6l-3 2.5v-2.5h-2zM5 6.5h6' },
-  { label: '海报', icon: 'M4 2h8v12H4zM6 5h4M6 8h4M6 11h2.5' },
-  { label: '角色立绘', icon: 'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 13c0-2.5 2-3.5 5-3.5s5 1 5 3.5' },
-  { label: '常服设定', icon: 'M6 3 2 5l2 3 1.5-.8V13h5V7.2L12 8l2-3-4-2a2 2 0 0 1-4 0Z' },
-  { label: '头像特写', icon: 'M2.5 6V2.5H6m4 0h3.5V6m0 4v3.5H10m-4 0H2.5V10M6 7h.01M10 7h.01M6.5 9.5c.8 1 2.2 1 3 0' },
+  { label: '全部', iconId: 'gallery-cat-all', icon: 'M3 3h3v3H3zM10 3h3v3h-3zM3 10h3v3H3zM10 10h3v3h-3z' },
+  { label: '插画', iconId: 'gallery-cat-illus', icon: 'M2 12.5h12L9.5 6l-2 3-2-2.5-3.5 6Z' },
+  { label: '漫画', iconId: 'gallery-cat-comic', icon: 'M2.5 3h11v7.5h-6l-3 2.5v-2.5h-2zM5 6.5h6' },
+  { label: '海报', iconId: 'gallery-cat-poster', icon: 'M4 2h8v12H4zM6 5h4M6 8h4M6 11h2.5' },
+  { label: '角色立绘', iconId: 'gallery-cat-char', icon: 'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 13c0-2.5 2-3.5 5-3.5s5 1 5 3.5' },
+  { label: '常服设定', iconId: 'gallery-cat-outfit', icon: 'M6 3 2 5l2 3 1.5-.8V13h5V7.2L12 8l2-3-4-2a2 2 0 0 1-4 0Z' },
+  { label: '头像特写', iconId: 'gallery-cat-avatar', icon: 'M2.5 6V2.5H6m4 0h3.5V6m0 4v3.5H10m-4 0H2.5V10M6 7h.01M10 7h.01M6.5 9.5c.8 1 2.2 1 3 0' },
 ] as const;
+
+const categoryIconId = new Map<string, string>(categories.map((item) => [item.label, item.iconId]));
 
 const items: GalleryItem[] = [...galleryItems];
 for (const item of items) {
@@ -59,18 +61,30 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
   </div>
 
   <section class="wrap gallery-body" aria-label="画廊相册列表">
+    <svg class="gallery-sprite" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        {
+          categories.map(({ iconId, icon }) => (
+            <symbol id={iconId} viewBox="0 0 16 16">
+              <path d={icon} fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" />
+              <circle cx="13.5" cy="2.5" r="1.2" fill="var(--icon-pink)" stroke="var(--gallery-icon-ring, var(--bg))" stroke-width="1.15" />
+            </symbol>
+          ))
+        }
+      </defs>
+    </svg>
+
     <div class="gallery-filter" role="group" aria-label="画廊分类筛选" data-reveal style="--reveal-i: 1">
       {
-        categories.map(({ label, icon }, idx) => (
+        categories.map(({ label, iconId }, idx) => (
           <button
             type="button"
             class="gallery-filter__btn"
             aria-pressed={idx === 0 ? 'true' : 'false'}
             data-gallery-filter={label}
           >
-            <svg class="gallery-filter__icon" viewBox="0 0 16 16" aria-hidden="true">
-              <path d={icon} />
-              <circle cx="13.5" cy="2.5" r="1.2" />
+            <svg class="gallery-filter__icon" width="15" height="15" aria-hidden="true">
+              <use href={`#${iconId}`} />
             </svg>
             <span>{label}</span>
             <span class="gallery-filter__num">
@@ -83,54 +97,86 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
 
     <ol class="gallery-grid" data-gallery-grid>
       {
-        items.map((item, i) => (
-          <li
-            class="gallery-cell"
-            data-gallery-item
-            data-category={item.category}
-            data-id={item.id}
-            data-title={item.title}
-            data-summary={item.summary}
-            data-src={item.src}
-          >
-            <article class="gallery-card">
-              <i class="gallery-card__corner gallery-card__corner--tl" aria-hidden="true" />
-              <i class="gallery-card__corner gallery-card__corner--tr" aria-hidden="true" />
-              <i class="gallery-card__corner gallery-card__corner--bl" aria-hidden="true" />
-              <i class="gallery-card__corner gallery-card__corner--br" aria-hidden="true" />
+        items.map((item, i) => {
+          const catIconId = categoryIconId.get(item.category) ?? 'gallery-cat-all';
+          return (
+            <li
+              class="gallery-cell"
+              data-gallery-item
+              data-category={item.category}
+              data-icon-id={catIconId}
+              data-id={item.id}
+              data-title={item.title}
+              data-summary={item.summary}
+              data-src={item.src}
+              data-published={item.publishedAt}
+              data-cutout={item.cutout ? '1' : '0'}
+            >
+              <article class="gallery-card">
+                <i class="gallery-card__corner gallery-card__corner--tl" aria-hidden="true" />
+                <i class="gallery-card__corner gallery-card__corner--tr" aria-hidden="true" />
+                <i class="gallery-card__corner gallery-card__corner--bl" aria-hidden="true" />
+                <i class="gallery-card__corner gallery-card__corner--br" aria-hidden="true" />
 
-              <header class="gallery-card__bar">
-                <span class="gallery-card__no">
-                  <i class="gallery-card__dot" aria-hidden="true" />
-                  NO.{item.id}
-                </span>
-                <span class="gallery-card__cat">{item.category}</span>
-              </header>
+                <header class="gallery-card__bar">
+                  <div class="gallery-card__index">
+                    <span class="gallery-card__no">
+                      <i class="gallery-card__dot" aria-hidden="true" />
+                      NO.{item.id}
+                    </span>
+                    {
+                      item.cutout && (
+                        <span class="gallery-cutout-badge" title="透明背景设定稿">
+                          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                            <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+                            <rect x="1" y="1" width="4" height="4" fill="currentColor" opacity="0.28" />
+                            <rect x="5" y="5" width="4" height="4" fill="currentColor" opacity="0.28" />
+                          </svg>
+                          <span>透明</span>
+                        </span>
+                      )
+                    }
+                  </div>
+                  <span class="gallery-tag">
+                    <svg class="gallery-tag__nose" width="11" height="22" viewBox="0 0 11 22" aria-hidden="true">
+                      <polygon points="11,0.5 1.5,11 11,21.5" fill="var(--tag-bg)" />
+                      <polyline points="11,0.5 1.5,11 11,21.5" fill="none" stroke="var(--tag-line)" stroke-width="1" stroke-linejoin="miter" stroke-linecap="butt" />
+                      <circle cx="7.2" cy="11" r="1.55" fill="var(--icon-pink)" stroke="var(--tag-line)" stroke-width="0.9" />
+                    </svg>
+                    <span class="gallery-tag__body">
+                      <svg class="gallery-tag__icon" width="13" height="13" aria-hidden="true">
+                        <use href={`#${catIconId}`} />
+                      </svg>
+                      <span>{item.category}</span>
+                    </span>
+                  </span>
+                </header>
 
-              <div class:list={['gallery-card__stage', item.cutout && 'gallery-card__stage--cutout']}>
-                <img
-                  class="gallery-card__img"
-                  src={thumbUrl(item.src)}
-                  alt={item.title}
-                  decoding="async"
-                  loading={i < 4 ? 'eager' : 'lazy'}
+                <div class:list={['gallery-card__stage', item.cutout && 'gallery-card__stage--cutout']}>
+                  <img
+                    class="gallery-card__img"
+                    src={thumbUrl(item.src)}
+                    alt={item.title}
+                    decoding="async"
+                    loading={i < 4 ? 'eager' : 'lazy'}
+                  />
+                </div>
+
+                <div class="gallery-card__body">
+                  <h2 class="gallery-card__title">{item.title}</h2>
+                  <p class="gallery-card__summary">{item.summary}</p>
+                </div>
+
+                <button
+                  type="button"
+                  class="gallery-card__hit"
+                  data-open-gallery
+                  aria-label={`查看「${item.title}」大图`}
                 />
-              </div>
-
-              <div class="gallery-card__body">
-                <h2 class="gallery-card__title">{item.title}</h2>
-                <p class="gallery-card__summary">{item.summary}</p>
-              </div>
-
-              <button
-                type="button"
-                class="gallery-card__hit"
-                data-open-gallery
-                aria-label={`查看「${item.title}」大图`}
-              />
-            </article>
-          </li>
-        ))
+              </article>
+            </li>
+          );
+        })
       }
     </ol>
 
@@ -138,20 +184,56 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
       <img class="gallery-empty__art" src={site.galleryEmptyArt} alt="" width="480" height="480" loading="lazy" decoding="async" />
       <p class="gallery-empty__text" role="status">这个分类暂时还没有作品</p>
     </div>
-    <div class="gallery-more" data-gallery-more aria-hidden="true" hidden></div>
+    <div class="gallery-foot" data-gallery-foot hidden={items.length === 0}>
+      <button type="button" class="gallery-more" data-gallery-more hidden>
+        <span data-gallery-more-label></span>
+      </button>
+      <p class="gallery-end" data-gallery-end hidden>
+        <i class="gallery-end__line" aria-hidden="true" />
+        <i class="gallery-end__mark" aria-hidden="true" />
+        <span data-gallery-end-label></span>
+        <i class="gallery-end__line" aria-hidden="true" />
+      </p>
+    </div>
   </section>
 
   <dialog class="gallery-lightbox" id="gallery-lightbox" aria-label="画廊大图预览">
     <div class="gallery-lightbox__panel">
       <header class="gallery-lightbox__head">
         <div class="gallery-lightbox__meta">
-          <span class="gallery-lightbox__no" data-lb-no></span>
-          <span aria-hidden="true">/</span>
-          <span data-lb-category></span>
+          <span class="gallery-lightbox__no">
+            <i class="gallery-card__dot" aria-hidden="true" />
+            <span data-lb-no></span>
+          </span>
+          <span class="gallery-tag gallery-tag--lightbox">
+            <svg class="gallery-tag__nose" width="11" height="22" viewBox="0 0 11 22" aria-hidden="true">
+              <polygon points="11,0.5 1.5,11 11,21.5" fill="var(--tag-bg)" />
+              <polyline points="11,0.5 1.5,11 11,21.5" fill="none" stroke="var(--tag-line)" stroke-width="1" stroke-linejoin="miter" stroke-linecap="butt" />
+              <circle cx="7.2" cy="11" r="1.55" fill="var(--icon-pink)" stroke="var(--tag-line)" stroke-width="0.9" />
+            </svg>
+            <span class="gallery-tag__body">
+              <svg class="gallery-tag__icon" width="13" height="13" aria-hidden="true">
+                <use data-lb-cat-icon href="" />
+              </svg>
+              <span data-lb-category></span>
+            </span>
+          </span>
+          <span class="gallery-cutout-badge" data-lb-cutout hidden>
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" />
+              <rect x="1" y="1" width="4" height="4" fill="currentColor" opacity="0.28" />
+              <rect x="5" y="5" width="4" height="4" fill="currentColor" opacity="0.28" />
+            </svg>
+            <span>透明底</span>
+          </span>
         </div>
-        <button type="button" class="gallery-lightbox__btn gallery-lightbox__close" data-lb-close aria-label="关闭预览">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" /></svg>
-        </button>
+        <i class="gallery-lightbox__rule" aria-hidden="true" />
+        <div class="gallery-lightbox__aside">
+          <time class="gallery-lightbox__date" data-lb-date></time>
+          <button type="button" class="gallery-lightbox__btn gallery-lightbox__close" data-lb-close aria-label="关闭预览">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 5 6 6m0-6-6 6" /></svg>
+          </button>
+        </div>
       </header>
 
       <div class="gallery-lightbox__stage">
@@ -191,7 +273,11 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     const root = document.querySelector<HTMLElement>('[data-gallery-grid]');
     if (!root || root.dataset.wired) return;
     const section = root.closest('.gallery-body');
-    const more = section?.querySelector<HTMLElement>('[data-gallery-more]');
+    const foot = section?.querySelector<HTMLElement>('[data-gallery-foot]');
+    const more = section?.querySelector<HTMLButtonElement>('[data-gallery-more]');
+    const moreLabel = more?.querySelector<HTMLElement>('[data-gallery-more-label]');
+    const galleryEnd = section?.querySelector<HTMLElement>('[data-gallery-end]');
+    const galleryEndLabel = galleryEnd?.querySelector<HTMLElement>('[data-gallery-end-label]');
     const empty = section?.querySelector<HTMLElement>('[data-gallery-empty]');
     const cells = Array.from(root.querySelectorAll<HTMLElement>('[data-gallery-item]'));
     const filterBtns = Array.from(section?.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]') ?? []);
@@ -199,13 +285,16 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     const media = dialog?.querySelector<HTMLElement>('[data-lb-media]');
     const lbNo = dialog?.querySelector<HTMLElement>('[data-lb-no]');
     const lbCategory = dialog?.querySelector<HTMLElement>('[data-lb-category]');
+    const lbCatIcon = dialog?.querySelector<SVGUseElement>('[data-lb-cat-icon]');
+    const lbCutout = dialog?.querySelector<HTMLElement>('[data-lb-cutout]');
+    const lbDate = dialog?.querySelector<HTMLTimeElement>('[data-lb-date]');
     const lbTitle = dialog?.querySelector<HTMLElement>('[data-lb-title]');
     const lbSummary = dialog?.querySelector<HTMLElement>('[data-lb-summary]');
     const lbStatus = dialog?.querySelector<HTMLElement>('[data-lb-status]');
     const download = dialog?.querySelector<HTMLAnchorElement>('[data-lb-download]');
     const prevBtn = dialog?.querySelector<HTMLButtonElement>('[data-lb-prev]');
     const nextBtn = dialog?.querySelector<HTMLButtonElement>('[data-lb-next]');
-    if (!more || !empty || !dialog || !media || !lbStatus || !download) return;
+    if (!foot || !more || !galleryEnd || !empty || !dialog || !media || !lbStatus || !download) return;
     root.dataset.wired = '1';
 
     const batchSize = 12;
@@ -218,16 +307,35 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     const observer = 'IntersectionObserver' in window
       ? new IntersectionObserver(([entry]) => {
           if (entry?.isIntersecting) showBatch();
-        }, { rootMargin: '0px 0px 160px 0px' })
+        }, { rootMargin: '0px 0px 180px 0px' })
       : null;
 
-    const showBatch = () => {
+    const showBatch = (minVisible = 0) => {
       observer?.disconnect();
-      const end = observer ? visibleCount + batchSize : matching.length;
-      matching.slice(visibleCount, end).forEach((cell) => { cell.hidden = false; });
-      visibleCount = Math.min(end, matching.length);
-      more.hidden = visibleCount === matching.length;
-      if (!more.hidden) observer?.observe(more);
+      const targetEnd = observer ? Math.max(visibleCount + batchSize, minVisible) : matching.length;
+      matching.slice(visibleCount, targetEnd).forEach((cell) => { cell.hidden = false; });
+      visibleCount = Math.min(targetEnd, matching.length);
+      if (matching.length === 0) {
+        foot.hidden = true;
+        more.hidden = true;
+        galleryEnd.hidden = true;
+        return;
+      }
+      foot.hidden = false;
+      if (visibleCount < matching.length) {
+        more.hidden = false;
+        galleryEnd.hidden = true;
+        if (moreLabel) {
+          moreLabel.textContent = `展开更多作品 · 已显示 ${visibleCount} / ${matching.length}`;
+        }
+        observer?.observe(more);
+      } else {
+        more.hidden = true;
+        galleryEnd.hidden = false;
+        if (galleryEndLabel) {
+          galleryEndLabel.textContent = `已展示全部 ${String(matching.length).padStart(2, '0')} 幅作品`;
+        }
+      }
     };
 
     const selectCategory = (category: string) => {
@@ -243,9 +351,21 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
       const target = matching[index];
       const src = target?.dataset.src;
       if (!src) return;
+      if (index >= visibleCount) showBatch(index + 1);
       activeIndex = index;
       if (lbNo) lbNo.textContent = `NO.${target.dataset.id ?? '01'}`;
       if (lbCategory) lbCategory.textContent = target.dataset.category ?? '';
+      if (lbCatIcon) {
+        const iconId = target.dataset.iconId;
+        if (iconId) lbCatIcon.setAttribute('href', `#${iconId}`);
+        else lbCatIcon.removeAttribute('href');
+      }
+      if (lbCutout) lbCutout.hidden = target.dataset.cutout !== '1';
+      if (lbDate) {
+        const published = target.dataset.published ?? '';
+        lbDate.textContent = published;
+        lbDate.dateTime = published;
+      }
       if (lbTitle) lbTitle.textContent = target.dataset.title ?? '';
       if (lbSummary) lbSummary.textContent = target.dataset.summary ?? '';
       if (prevBtn) prevBtn.disabled = matching.length <= 1;
@@ -294,6 +414,8 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     filterBtns.forEach((button) => {
       button.addEventListener('click', () => selectCategory(button.dataset.galleryFilter ?? '全部'));
     });
+
+    more.addEventListener('click', () => showBatch());
 
     root.addEventListener('click', (event) => {
       const hit = (event.target as HTMLElement).closest('[data-open-gallery]');
@@ -432,20 +554,18 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     background: var(--accent);
   }
 
+  .gallery-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
   .gallery-filter__icon {
     flex: none;
     width: 0.95rem;
     height: 0.95rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.15;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .gallery-filter__icon circle {
-    fill: var(--icon-pink);
-    stroke: var(--bg);
   }
 
   .gallery-filter__num {
@@ -521,8 +641,64 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     font-size: 0.875rem;
   }
 
-  .gallery-more {
-    height: 1px;
+  .gallery-foot:not([hidden]) {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.75rem;
+  }
+
+  .gallery-more:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.48rem 1rem;
+    border: var(--hair) solid var(--line-strong);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-more:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .gallery-end:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    margin: 0;
+    color: var(--fg-faint);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .gallery-end__line {
+    flex: 1;
+    height: var(--hair);
+    background: repeating-linear-gradient(
+      to right,
+      var(--line) 0 4px,
+      transparent 4px 8px
+    );
+  }
+
+  .gallery-end__mark {
+    flex: none;
+    width: 0.36rem;
+    height: 0.36rem;
+    border: var(--hair) solid var(--icon-pink);
+    transform: rotate(45deg);
   }
 
   .gallery-card {
@@ -589,18 +765,25 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     border-right: 2px solid var(--accent);
   }
 
-  /* 卡片顶部元信息条 */
+  /* 卡片顶部元信息条：编号/透明标 + 实体吊牌标签 */
   .gallery-card__bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.45rem 0.75rem;
+    padding: 0.38rem 0.7rem;
     border-bottom: var(--hair) solid var(--line);
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     letter-spacing: 0.08em;
     color: var(--fg-faint);
+  }
+
+  .gallery-card__index {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    min-width: 0;
   }
 
   .gallery-card__no {
@@ -610,14 +793,92 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
   }
 
   .gallery-card__dot {
+    flex: none;
     width: 0.38rem;
     height: 0.38rem;
     border-radius: 50%;
     background: var(--icon-pink);
   }
 
-  .gallery-card__cat {
+  .gallery-cutout-badge:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.24rem;
+    padding: 0.08rem 0.32rem;
+    border: var(--hair) solid var(--line);
+    font-family: var(--font-sans);
+    font-size: 0.625rem;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
     color: var(--fg-muted);
+    white-space: nowrap;
+  }
+
+  .gallery-cutout-badge svg {
+    flex: none;
+  }
+
+  .gallery-tag {
+    --tag-line: var(--line-strong);
+    --tag-bg: color-mix(in srgb, var(--bg-sunken) 65%, var(--bg));
+    --gallery-icon-ring: var(--tag-bg);
+    flex: none;
+    display: inline-flex;
+    align-items: stretch;
+    height: 22px;
+    color: var(--fg-muted);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-tag__nose {
+    flex: none;
+    display: block;
+    width: 11px;
+    height: 22px;
+  }
+
+  .gallery-tag__nose polygon,
+  .gallery-tag__nose polyline {
+    transition:
+      fill var(--dur-1) var(--ease-out),
+      stroke var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-tag__nose circle {
+    transition: stroke var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-tag__body {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    height: 22px;
+    padding: 0 0.48rem 0 0.28rem;
+    border-top: var(--hair) solid var(--tag-line);
+    border-right: var(--hair) solid var(--tag-line);
+    border-bottom: var(--hair) solid var(--tag-line);
+    background: var(--tag-bg);
+    white-space: nowrap;
+    transition:
+      border-color var(--dur-1) var(--ease-out),
+      background-color var(--dur-1) var(--ease-out);
+  }
+
+  .gallery-tag__icon {
+    flex: none;
+    width: 0.8125rem;
+    height: 0.8125rem;
+  }
+
+  .gallery-card:hover .gallery-tag {
+    --tag-line: var(--accent);
+    --tag-bg: color-mix(in srgb, var(--accent) 8%, var(--bg));
+    color: var(--accent);
   }
 
   /* 画面展示框：统一 4:3 画框 + 细点阵衬底，contain 完整保留猫耳尖、发饰与尾铃 */
@@ -723,9 +984,8 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
   .gallery-lightbox__head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.65rem 1.1rem;
+    gap: 0.75rem;
+    padding: 0.5rem 1.1rem;
     border-bottom: var(--hair) solid var(--line);
     font-family: var(--font-mono);
     font-size: 0.75rem;
@@ -736,11 +996,45 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
   .gallery-lightbox__meta {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.65rem;
+    min-width: 0;
   }
 
   .gallery-lightbox__no {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .gallery-tag--lightbox {
+    color: var(--fg);
+  }
+
+  .gallery-lightbox__rule {
+    flex: 1;
+    min-width: 1rem;
+    height: var(--hair);
+    background: repeating-linear-gradient(
+      to right,
+      var(--line) 0 4px,
+      transparent 4px 8px
+    );
+  }
+
+  .gallery-lightbox__aside {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-inline-start: auto;
+    flex: none;
+  }
+
+  .gallery-lightbox__date {
+    color: var(--fg-faint);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .gallery-lightbox__close {
@@ -989,6 +1283,26 @@ items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     .gallery-lightbox__btn.gallery-lightbox__close {
       width: 2.75rem;
       height: 2.75rem;
+    }
+
+    .gallery-lightbox__head {
+      padding-inline: 0.7rem;
+      gap: 0.45rem;
+    }
+
+    .gallery-lightbox__rule {
+      display: none;
+    }
+
+    .gallery-card .gallery-cutout-badge span {
+      display: none;
+    }
+  }
+
+  @media (max-width: 36rem) {
+    .gallery-lightbox__date,
+    .gallery-lightbox__head .gallery-cutout-badge {
+      display: none;
     }
   }
 

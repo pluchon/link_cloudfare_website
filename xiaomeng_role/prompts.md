@@ -4,6 +4,7 @@
 
 ## 公共约束（所有提示词必带）
 
+- **日常表情**：小萌的日常插画、漫画和头像遵循[姐妹日常表情与装饰](../nuonuo_role/game-and-gallery-prompts.md#姐妹日常表情与装饰)。
 - **姐妹血缘锚点**：完全复用诺诺的温润细紫描边（`#5B4378` 一带）、柔粉腮红、浅紫白丝滑发色与明亮紫瞳；仅头顶一对白底粉内耳的猫耳，脸侧由白发自然衔接，**绝不出现人类耳朵或耳垂**。
 - **妹妹独有区分**：身形略小巧（约 3.6 头身）、及肩微蓬松微卷披发加头顶一缕俏皮短呆毛；发饰位于**小萌自身左侧（正面看画面右侧）**，是一枚林间四瓣白花夹配柔粉蝴蝶结发带；白色卷尾尖系柔粉蝴蝶结与一枚迷你淡金星形铃铛。
 - **反颗粒与纯净画风**：`No grain, paper fibers, speckles, halftones, rough textures, or scattered dust; crisp warm-violet contours, clean color edges, broad soft pastel cel shading.`
