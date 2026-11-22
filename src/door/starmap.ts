@@ -94,7 +94,27 @@ export const STAR_NODES: StarNodeSpec[] = [
     holeScale: 1.85,
     diskTilt: [-0.2, 0.16],
   },
+  {
+    id: 'study',
+    kind: 'hub',
+    name: '书房',
+    code: 'STUDY CABIN · SLOAN SECTOR',
+    sub: 'STUDY',
+    scaleLabel: '34 MPC · 悬浮观测书房',
+    position: [56, 20, -10],
+    color: '#d8b4fe',
+    href: '#study',
+    targetLabel: '基地书房',
+    holeTheme: 1,
+    holeScale: 1.55,
+    diskTilt: [0.22, -0.14],
+  },
 ];
+
+// 书房节点已并入 STAR_NODES 第 6 座主星系枢纽（门户与星海漫游统一使用 6 星系坐标系）
+export const STUDY_NODE: StarNodeSpec = STAR_NODES[5];
+
+export const DOOR_STAR_NODES: StarNodeSpec[] = STAR_NODES;
 
 // 极坐标外环方位角刻度（每 30° 一组，配合外圈天球罗盘刻度）
 export const AZIMUTH_LABELS = Array.from({ length: 12 }, (_, i) => {
@@ -529,7 +549,8 @@ export interface StarMapHandle {
   dispose: () => void;
 }
 
-export function buildStarMap(lite: boolean): StarMapHandle {
+export function buildStarMap(lite: boolean, _includeStudy = true): StarMapHandle {
+  const activeNodes = STAR_NODES;
   const rand = mulberry32(20261117);
   const group = new THREE.Group();
   group.visible = false;
@@ -563,7 +584,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     return [x, y, z];
   };
 
-  // 拉尼亚凯亚四条星际引力流弧线：串联中心基地与四个高度错落的核心星系枢纽
+  // 拉尼亚凯亚五条星际引力流弧线：串联中心基地与五个外围核心星系枢纽（含书房观测扇区）
   const laniakeaStream = (branch: number, t: number): [number, number, number] => {
     if (branch === 0) {
       return [
@@ -586,10 +607,17 @@ export function buildStarMap(lite: boolean): StarMapHandle {
         THREE.MathUtils.lerp(-2, 64, t) - Math.sin(t * 2.4) * 8,
       ];
     }
+    if (branch === 3) {
+      return [
+        THREE.MathUtils.lerp(-8, -114, t) + Math.cos(t * 2.8) * 6,
+        THREE.MathUtils.lerp(-2, -44, t) - Math.sin(t * Math.PI) * 6,
+        THREE.MathUtils.lerp(2, 58, t) + Math.sin(t * 2.4) * 7,
+      ];
+    }
     return [
-      THREE.MathUtils.lerp(-8, -114, t) + Math.cos(t * 2.8) * 6,
-      THREE.MathUtils.lerp(-2, -44, t) - Math.sin(t * Math.PI) * 6,
-      THREE.MathUtils.lerp(2, 58, t) + Math.sin(t * 2.4) * 7,
+      THREE.MathUtils.lerp(4, 58, t) + Math.sin(t * 2.9) * 5,
+      THREE.MathUtils.lerp(2, 22, t) + Math.sin(t * Math.PI) * 6,
+      THREE.MathUtils.lerp(-2, -12, t) - Math.cos(t * 2.6) * 5,
     ];
   };
 
@@ -634,9 +662,9 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   }
 
   const streamVeilPerBranch = lite ? 8 : 15;
-  const streamWarm = ['#7ce8bd', '#e284bc', '#eb986c', '#ff9b78'];
-  const streamCool = ['#6cbdff', '#8a9eff', '#5dd6ff', '#8ea0ff'];
-  for (let branch = 0; branch < 4; branch++) {
+  const streamWarm = ['#7ce8bd', '#e284bc', '#eb986c', '#ff9b78', '#d8b4fe'];
+  const streamCool = ['#6cbdff', '#8a9eff', '#5dd6ff', '#8ea0ff', '#f9a8d4'];
+  for (let branch = 0; branch < 5; branch++) {
     for (let i = 0; i < streamVeilPerBranch; i++) {
       const t = (i + 0.5) / streamVeilPerBranch;
       const p0 = new THREE.Vector3(...laniakeaStream(branch, Math.max(t - 0.025, 0)));
@@ -659,13 +687,14 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     }
   }
 
-  // 五座交互中心外围也点亮柔和深空星云晕（令核心星系与纤维丝自然焊接）
+  // 六座交互中心外围也点亮柔和深空星云晕（令核心星系与纤维丝自然焊接）
   const hubVeils: [StarNodeSpec, string, string][] = [
     [STAR_NODES[0], '#ffb46e', '#6ea4ff'],
     [STAR_NODES[1], '#6ee7b7', '#7dd3fc'],
     [STAR_NODES[2], '#f078b0', '#7ca8ff'],
     [STAR_NODES[3], '#ff9671', '#8b9cf6'],
     [STAR_NODES[4], '#ffd078', '#52dcff'],
+    [STAR_NODES[5], '#d8b4fe', '#f9a8d4'],
   ];
   for (let i = 0; i < hubVeils.length; i++) {
     const [node, warm, cool] = hubVeils[i];
@@ -797,8 +826,9 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     ['#e49ad0', '#96c4ff'],
     ['#7ecaff', '#ffd6a2'],
     ['#ff9d76', '#a8b6ff'],
+    ['#d8b4fe', '#f9a8d4'],
   ];
-  for (let b = 0; b < 4; b++) {
+  for (let b = 0; b < 5; b++) {
     pushTendril((t) => laniakeaStream(b, t), branchTendrilColors[b][0], 2.1, b * 1.7);
     pushTendril((t) => laniakeaStream(b, t), branchTendrilColors[b][1], 1.8, b * 1.7 + 2.4);
   }
@@ -887,6 +917,16 @@ export function buildStarMap(lite: boolean): StarMapHandle {
       type: 1,
       seed: 0.83,
     },
+    {
+      pos: STAR_NODES[5].position,
+      size: 11.5,
+      euler: [Math.PI * 0.28, 0.22, -0.14] as [number, number, number],
+      core: '#fff6ff',
+      arm: '#d8b4fe',
+      rim: '#f9a8d4',
+      type: 0 as const,
+      seed: 0.95,
+    },
   ];
 
   const palettes: [string, string, string][] = [
@@ -911,7 +951,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
     });
   }
   for (let i = 0; i < 6; i++) {
-    const branch = i % 4;
+    const branch = i % 5;
     const t = 0.25 + (i / 6) * 0.62;
     const [lx, ly, lz] = laniakeaStream(branch, t);
     const pal = palettes[(i + 1) % palettes.length];
@@ -1054,7 +1094,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   // B. 拉尼亚凯亚星流中的星点（34%）
   const streamCount = Math.floor(total * 0.34);
   for (let i = 0; i < streamCount; i++) {
-    const branch = i % 4;
+    const branch = i % 5;
     const t = rand();
     const [lx, ly, lz] = laniakeaStream(branch, t);
     const spread = 2.6 + Math.sin(t * Math.PI) * 3.0;
@@ -1133,7 +1173,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   const ringPosList: [number, number, number, string][] = [];
 
   const tmpCol = new THREE.Color();
-  for (const node of STAR_NODES) {
+  for (const node of activeNodes) {
     const [x, y, z] = node.position;
     tmpCol.set(node.color);
     if (Math.abs(y) > 0.2) {
@@ -1161,7 +1201,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
       y = sy + (rand() - 0.5) * 5;
       z = sz + (rand() - 0.5) * 5;
     } else {
-      const branch = i % 4;
+      const branch = i % 5;
       const t = 0.28 + ((i - Math.floor(pillarCount * 0.45)) / (pillarCount * 0.55)) * 0.62;
       const [lx, ly, lz] = laniakeaStream(branch, t);
       x = lx;
@@ -1233,7 +1273,7 @@ export function buildStarMap(lite: boolean): StarMapHandle {
   ringGeo.rotateX(-Math.PI / 2);
   const ringMats: { mat: THREE.MeshBasicMaterial; isMain: boolean }[] = [];
   ringPosList.forEach(([x, , z, color], i) => {
-    const isMain = i < STAR_NODES.length;
+    const isMain = i < activeNodes.length;
     const mat = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
@@ -1310,6 +1350,7 @@ export function renderMiniMap(
   simTime: number,
   activeGalaxyId?: string | null,
   extras?: MiniMapExtras,
+  nodes: StarNodeSpec[] = STAR_NODES,
 ) {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -1427,8 +1468,8 @@ export function renderMiniMap(
   }
 
   // 核心星系标点；身处某个黑洞星系核内时，用呼吸十字准星高亮该星系
-  for (let i = 0; i < STAR_NODES.length; i++) {
-    const node = STAR_NODES[i];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
     const [nx, ny, nz] = node.position;
     const top = project(nx, ny, nz);
     const base = project(nx, 0, nz);

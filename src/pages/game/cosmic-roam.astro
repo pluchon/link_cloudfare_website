@@ -30,13 +30,13 @@ const summary = entry?.data.summary ?? '';
         <canvas class="roam__canvas" data-canvas aria-label="星海漫游三维星空画布"></canvas>
         <canvas class="roam__rush" data-rush aria-hidden="true"></canvas>
 
-        <!-- 四角清爽排版：左「星域 + 图鉴」、中「一线到底尖端渐变航程线 + 五星系节点」、右「声音 + 暂停」 -->
+        <!-- 四角清爽排版：左「星域 + 图鉴」、中「一线到底尖端渐变航程线 + 六星系节点」、右「声音 + 暂停」 -->
         <div class="roam__hud">
           <div class="roam__left">
             <span class="roam__sector roam__panel" data-sector>斯隆长城</span>
             <button type="button" class="roam-btn roam__atlas-btn" data-atlas-btn title="打开星海图鉴 (G)">
               <span>图鉴</span>
-              <b data-relics>0/25</b>
+              <b data-relics>0/29</b>
             </button>
           </div>
 
@@ -134,11 +134,11 @@ const summary = entry?.data.summary ?? '';
             <dl class="roam__stats">
               <div>
                 <dt>藏品</dt>
-                <dd data-stat-relics>0 / 25</dd>
+                <dd data-stat-relics>0 / 29</dd>
               </div>
               <div>
                 <dt>点亮星系</dt>
-                <dd data-stat-lit>0 / 5</dd>
+                <dd data-stat-lit>0 / 6</dd>
               </div>
               <div>
                 <dt>引力弹弓</dt>
@@ -182,7 +182,7 @@ const summary = entry?.data.summary ?? '';
         </svg>
         <p class="roam__record" data-record aria-live="polite">
           <span class="roam__high">HIGH</span>
-          <span>图鉴 <b data-record-val>0 / 25</b></span>
+          <span>图鉴 <b data-record-val>0 / 29</b></span>
         </p>
         <p class="roam__keys roam__keys--desktop">
           <span><kbd class="roam__kbd-alt">WASD</kbd><kbd>↑↓←→</kbd> 转向</span>

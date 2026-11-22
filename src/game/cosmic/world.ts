@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { STAR_NODES, type StarNodeSpec } from '../../door/starmap';
 import { buildRocks, type Rocks } from '../../door/rocks';
 import { buildStation } from '../../door/station';
 import { warpBeta, warpCenter, warpGlsl, warpImage, warpObject, warpScale } from '../../door/warp';
+import roomAssets from '../../room/assets.json';
 import {
   buildCollectibleCatalogGeos,
   buildPolarJetGeo,
@@ -107,6 +109,12 @@ const GALAXY_RELIC_CATALOG: Record<string, Array<{ name: string; hint: string }>
     { name: '微型鹈鹕仪', hint: '电离航标塔左侧上空' },
     { name: '脉冲音阶芯', hint: '游戏黑洞近星掠影中线' },
     { name: '街机纪念币', hint: '驶往斯隆终点门前加速弯' },
+  ],
+  study: [
+    { name: '观测黄铜望远镜', hint: '书房星系紫粉黑洞窗外侧' },
+    { name: '黑洞星盘手稿', hint: '悬空书房外围深空航道' },
+    { name: '精装索引册', hint: '掠过书房奇点引力弧后段' },
+    { name: '真空暖光台灯', hint: '书房星域近星转向廊道' },
   ],
 };
 
@@ -576,6 +584,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
 
   let station: THREE.Group | null = null;
   let rocks: Rocks | null = null;
+  let worldDisposed = false;
 
   const origin = new THREE.Vector3(0, 0, 0);
   const centerVec = new THREE.Vector3();
@@ -979,6 +988,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     ['#f074b4', '#86a2ff'],
     ['#ff9872', '#8f9ef6'],
     ['#ffd076', '#56dcff'],
+    ['#e45cc6', '#9d7dff'],
   ];
   for (let i = 0; i < STAR_NODES.length; i++) {
     const node = STAR_NODES[i];
@@ -1101,7 +1111,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   streamerLines.frustumCulled = false;
   group.add(streamerLines);
 
-  // ---- 层 7：黑洞能层潮汐等离子通道（5 座黑洞近心内缘合入单个 BufferGeometry） ----
+  // ---- 层 7：黑洞能层潮汐等离子通道（6 座黑洞近心内缘合入单个 BufferGeometry） ----
   const ERGO_SEGS = 28;
   const ergoVertsPerHub = (ERGO_SEGS + 1) * 4;
   const ergoHubN = STAR_NODES.length;
@@ -1266,7 +1276,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     if (gatePortalInst.instanceColor) gatePortalInst.instanceColor.needsUpdate = true;
   }
 
-  // ---- 25 件精细化藏品建模（按星域分工缓存 6 套合并几何体，共享金属壳 + 发光核材质） ----
+  // ---- 29 件精细化藏品建模（按星域分工缓存 7 套合并几何体，共享金属壳 + 发光核材质） ----
   const catalog: AtlasItemSpec[] = [];
   const collectibles: TrackCollectible[] = [];
   type CollectibleBind =
@@ -1405,7 +1415,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     collectibleBinds.push({ item, kind: 'probe', u: def.u, ox: def.offX, oy: def.offY });
   }
 
-  /** 按当前随机巡航航线原地重排星门、脉冲星航标与 25 件藏品坐标，零几何体分配 */
+  /** 按当前随机巡航航线原地重排星门、脉冲星航标与 29 件藏品坐标，零几何体分配 */
   function syncToTrack() {
     for (let i = 0; i < pulsarRotators.length; i++) {
       const s = pulsarUs[i] * track.totalLength;
@@ -1541,6 +1551,92 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
     ergoGeo.computeBoundingSphere();
   }
 
+  // ---- 层 8：「书房星系」紫粉黑洞外侧悬浮 3D 书房地标（安全偏移于航道之外，绝不碰撞穿模） ----
+  const studyCabinGroup = new THREE.Group();
+  studyCabinGroup.position.copy(track.studyCabinPos);
+  const studyHubNode = STAR_NODES.find((n) => n.id === 'study');
+  if (studyHubNode) {
+    studyCabinGroup.lookAt(
+      studyHubNode.position[0] * COSMOS_SCALE,
+      studyHubNode.position[1] * COSMOS_SCALE,
+      studyHubNode.position[2] * COSMOS_SCALE,
+    );
+  }
+  const studyBeaconRingGeo = trackGeo(new THREE.TorusGeometry(20, 0.45, 6, 36));
+  const studyBeaconRingMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      color: 0xe45cc6,
+      transparent: true,
+      opacity: 0.42,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  const studyBeaconRing = new THREE.Mesh(studyBeaconRingGeo, studyBeaconRingMat);
+  studyBeaconRing.rotation.x = Math.PI * 0.5;
+  const studyWarmBeaconGeo = trackGeo(new THREE.SphereGeometry(2.6, 12, 10));
+  const studyWarmBeaconMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      color: 0xffd2a0,
+      transparent: true,
+      opacity: 0.85,
+    }),
+  );
+  const studyWarmBeacon = new THREE.Mesh(studyWarmBeaconGeo, studyWarmBeaconMat);
+  studyWarmBeacon.position.set(0, 3.2, 0);
+  studyCabinGroup.add(studyBeaconRing, studyWarmBeacon);
+  studyCabinGroup.visible = false;
+  group.add(studyCabinGroup);
+
+  if (!lite && roomAssets.study_room) {
+    const cabinLoader = new GLTFLoader();
+    cabinLoader.setCrossOrigin('anonymous');
+    cabinLoader.load(
+      roomAssets.study_room,
+      (gltf) => {
+        if (worldDisposed) {
+          gltf.scene.traverse((obj) => {
+            if ((obj as THREE.Mesh).isMesh) {
+              const m = obj as THREE.Mesh;
+              m.geometry.dispose();
+              const mats = Array.isArray(m.material) ? m.material : [m.material];
+              mats.forEach((mm) => mm.dispose());
+            }
+          });
+          return;
+        }
+        const modelPivot = new THREE.Group();
+        modelPivot.rotation.y = Math.PI;
+        gltf.scene.scale.setScalar(3.8);
+        gltf.scene.traverse((obj) => {
+          if (!(obj as THREE.Mesh).isMesh) return;
+          const m = obj as THREE.Mesh;
+          m.castShadow = false;
+          m.receiveShadow = false;
+          trackGeo(m.geometry);
+          const mats = Array.isArray(m.material) ? m.material : [m.material];
+          mats.forEach((raw) => {
+            const std = raw as THREE.MeshStandardMaterial;
+            if (std.name === 'Mat_Glass') {
+              std.transparent = true;
+              std.depthWrite = false;
+            } else if (std.name === 'Mat_WarmGlow') {
+              std.emissive.set('#ffcc88');
+              std.emissiveIntensity = 1.6;
+            }
+            trackMat(std);
+          });
+        });
+        modelPivot.add(gltf.scene);
+        studyCabinGroup.add(modelPivot);
+      },
+      undefined,
+      () => {
+        /* fallback beacon ring remains visible cleanly */
+      },
+    );
+  }
+
   syncToTrack();
 
   function update(
@@ -1592,6 +1688,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
         rocks.update(simTime, behindHole);
       }
     }
+    studyCabinGroup.visible = nearNode.id === 'study' && holeAlpha > 0.02;
 
     centerVec.set(...nearNode.position).multiplyScalar(COSMOS_SCALE);
     const sc = (nearNode.holeScale ?? 1.85) * HOLE_SCALE_MULT;
@@ -1685,6 +1782,7 @@ export function buildCosmicWorld(track: CosmicTrack, lite: boolean): CosmicWorld
   }
 
   function dispose() {
+    worldDisposed = true;
     rocks?.dispose();
     for (const g of geometries) g.dispose();
     for (const m of materials) m.dispose();

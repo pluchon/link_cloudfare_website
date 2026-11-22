@@ -5,8 +5,16 @@ import { buildStation } from './station';
 import { buildProbe, orbitFrame, orbitPath, orbitPosition, type Orbit } from './orbits';
 import { travel, type LoaderUI } from './loader';
 import { buildRocks } from './rocks';
-import { lensPoint, warpBeta, warpCenter, warpImage, warpMaterial, warpObject, warpScale } from './warp';
-import { AZIMUTH_LABELS, STAR_NODES, buildStarMap, renderMiniMap, type StarNodeSpec } from './starmap';
+import { warpBeta, warpCenter, warpImage, warpMaterial, warpObject, warpScale, lensPoint } from './warp';
+import { AZIMUTH_LABELS, DOOR_STAR_NODES, STAR_NODES, STUDY_NODE, buildStarMap, renderMiniMap, type StarNodeSpec } from './starmap';
+import {
+  createStudyRoomModule,
+  STUDY_OVERVIEW_PRESET,
+  STUDY_ROOM_POS,
+  STUDY_SCOPE_LOCAL_POS,
+  type StudyRoomModule,
+} from '../room/scene';
+import type { FocusTarget, HotspotMeta, HoverPayload, RoomBook, RoomPayload } from '../room/types';
 
 // 屏幕上的一组标注：引线、端点圈、文字
 interface Tag {
@@ -61,6 +69,21 @@ interface DoorOptions {
   onProgress?: (floor: number, cap: number) => void;
   // 着色器编译完、首轮完整画面合成提交后调用（开场加载画面据此走完 100% 并收起）
   onReady?: () => void;
+  // 初始模式：默认从甲板起步；若 URL 含 #study 则直接进入 3D 书房
+  initialMode?: 'deck' | 'study';
+  // 同一 WebGL 场景内嵌的 3D 书房模块挂载配置
+  room?: {
+    payload: RoomPayload;
+    container: HTMLElement;
+    onFocusChange?: (target: FocusTarget, meta: HotspotMeta | null) => void;
+    onHover?: (info: HoverPayload | null, clientX: number, clientY: number) => void;
+    onBookOpening?: (book: RoomBook) => void;
+    onBookOpened?: (book: RoomBook) => void;
+    onBookClosed?: () => void;
+    onRoomReady?: () => void;
+    onModeChange?: (mode: Mode) => void;
+    onScopePhase?: (phase: 'hidden' | 'aligning' | 'eyepiece') => void;
+  };
   // 四周的读数和刻度带
   hud: {
     distance: HTMLElement;
@@ -70,6 +93,18 @@ interface DoorOptions {
     pitchTape: HTMLElement;
     guide: HTMLElement;
   };
+}
+
+export interface DoorController {
+  dispose(): void;
+  travelTo(href: string, title: string): void;
+  enterStudyDirect(): void;
+  openStarMapFromStudy(): void;
+  approachStudyBlackHole(): void;
+  focusRoom(target: FocusTarget): void;
+  closeRoomBook(): void;
+  enterStudyScope(): void;
+  exitStudyScope(): void;
 }
 
 type Mode =
@@ -86,7 +121,12 @@ type Mode =
   | 'starmap'
   | 'leavingMap'
   | 'flyingGalaxy'
-  | 'galaxy';
+  | 'galaxy'
+  | 'flyingStudy'
+  | 'study'
+  | 'studyScope'
+  | 'flyingStudyToBh'
+  | 'leavingStudyToMap';
 
 // 五条探测器轨道都在盘面里（共面），半长轴 13 到 37 Rs，都在吸积盘（外径 10）外面；
 // 偏心率和近心点方向各不相同，俯视时是五个错开的椭圆
@@ -124,6 +164,10 @@ const UNDOCK_MS = 2600;
 const MAP_ENTER_MS = 2400;
 const MAP_LEAVE_MS = 2000;
 const GALAXY_FLY_MS = 3800;
+const STUDY_FLY_MS = 2350;
+const STUDY_SCOPE_MS = 820;
+const STUDY_FLY_BH_MS = 2200;
+const STUDY_LEAVE_MAP_MS = 1600;
 // 点屏幕后，屏幕收起要这么久，收完才开始俯冲
 const FOLD_MS = 650;
 const DIVE_MS = 4600;
@@ -177,7 +221,7 @@ export function supportsWebGL2(): boolean {
   }
 }
 
-export function mountDoor(options: DoorOptions): () => void {
+export function mountDoor(options: DoorOptions): DoorController {
   const { canvas, target, veil, copy, hud } = options;
 
   // 手机和小屏：步数、星点层、粒子、速度线都往下压，横向光晕也不画
@@ -186,11 +230,13 @@ export function mountDoor(options: DoorOptions): () => void {
 
   // 黑洞是逐像素光线步进，开销跟像素数成正比。开场先用 0.75 倍，帧时间宽裕再慢慢往上加
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  const maxRatio = Math.min(devicePixelRatio, lite ? 1 : 1.5);
-  let ratio = Math.min(maxRatio, 0.75);
+  const maxRatio = Math.min(devicePixelRatio, lite ? 0.95 : 1.35);
+  let ratio = Math.min(maxRatio, lite ? 0.7 : 0.75);
   renderer.setPixelRatio(ratio);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = false;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, 0.02, 1200);
@@ -231,19 +277,33 @@ export function mountDoor(options: DoorOptions): () => void {
     uCosmosMix: { value: 0 },
     uNucleusGlow: { value: 0 },
   };
-  const defines: Record<string, number | string> = { STEPS: lite ? 84 : 136 };
-  if (lite) defines.LITE = '';
-  const hole = new THREE.Mesh(
-    new THREE.PlaneGeometry(2, 2),
-    new THREE.ShaderMaterial({
-      vertexShader: holeVertex,
-      fragmentShader: holeFragment,
-      uniforms: holeUniforms,
-      defines,
-      // 深度由片元着色器按光线算出来写入，所以不做比较、只写
-      depthFunc: THREE.AlwaysDepth,
-    }),
-  );
+  const mainDefines: Record<string, number | string> = { STEPS: lite ? 60 : 96 };
+  if (lite) mainDefines.LITE = '';
+  const mainHoleMat = new THREE.ShaderMaterial({
+    vertexShader: holeVertex,
+    fragmentShader: holeFragment,
+    uniforms: holeUniforms,
+    defines: mainDefines,
+    // 深度由片元着色器按光线算出来写入，所以不做比较、只写
+    depthFunc: THREE.AlwaysDepth,
+  });
+  const studyDefines: Record<string, number | string> = {
+    STEPS: lite ? 36 : 48,
+    NO_FRAG_DEPTH: '',
+    STUDY_FAST: '',
+  };
+  if (lite) studyDefines.LITE = '';
+  const studyHoleMat = new THREE.ShaderMaterial({
+    vertexShader: holeVertex,
+    fragmentShader: holeFragment,
+    uniforms: holeUniforms,
+    defines: studyDefines,
+    // 书房室内模式：在实景网格之后以 LessEqualDepth 绘制全屏背景，GPU Early-Z 直接跳过被墙壁和家具遮挡的像素
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.LessEqualDepth,
+  });
+  const hole = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mainHoleMat);
   hole.frustumCulled = false;
   hole.renderOrder = -1;
   scene.add(hole);
@@ -351,8 +411,8 @@ export function mountDoor(options: DoorOptions): () => void {
   dust.frustumCulled = false;
   scene.add(dust);
 
-  // ---- 深空星图与斯隆长城（随主场景一同挂载并预编译，确保首帧即呈完整画面） ----
-  const starMap = buildStarMap(lite);
+  // ---- 深空星图与斯隆长城（门户含「书房」第 6 个枢纽节点） ----
+  const starMap = buildStarMap(lite, true);
   scene.add(starMap.group);
 
   // ---- 速度线：挂在相机上，只在俯冲和跃迁时出现，从前方迎面掠过 ----
@@ -456,7 +516,7 @@ export function mountDoor(options: DoorOptions): () => void {
   controls.target.copy(deckLook());
   controls.update();
 
-  let mode: Mode = 'deck';
+  let mode: Mode = options.initialMode === 'study' ? 'study' : 'deck';
   let modeAt = performance.now();
   let leavePhi = Math.PI / 2;
   let docked: Probe | null = null;
@@ -470,10 +530,82 @@ export function mountDoor(options: DoorOptions): () => void {
   const sm = options.starmap;
   const holeTextEl = options.hole.label.querySelector<HTMLElement>('[data-tag-text]') ?? options.hole.label;
   const baseHoleText = holeTextEl.textContent ?? '';
-  const starNodeMap = new Map(STAR_NODES.map((n) => [n.id, n]));
-  const starPosVec = new Map(STAR_NODES.map((n) => [n.id, new THREE.Vector3(...n.position)]));
+  const starNodeMap = new Map(DOOR_STAR_NODES.map((n) => [n.id, n]));
+  const starPosVec = new Map(DOOR_STAR_NODES.map((n) => [n.id, new THREE.Vector3(...n.position)]));
+  const studyPos = starPosVec.get('study')!.clone();
   const diskTiltQuat = new THREE.Quaternion();
   const diskTiltEuler = new THREE.Euler();
+
+  // ---- 单一场景内嵌 3D 书房状态（共享同一个渲染器与紫粉黑洞，零双画布切换） ----
+  const scopeWorldPos = STUDY_ROOM_POS.clone().add(STUDY_SCOPE_LOCAL_POS);
+  const scopeLookDir = ORIGIN.clone().sub(scopeWorldPos).normalize();
+  const scopeRightVec = new THREE.Vector3().crossVectors(scopeLookDir, new THREE.Vector3(0, 1, 0)).normalize();
+  const scopeUpVec = new THREE.Vector3().crossVectors(scopeRightVec, scopeLookDir).normalize();
+  const scopeAimTarget = new THREE.Vector3();
+  const SCOPE_SC_RY = 0.587;
+  const SCOPE_SC_EL = 0.046;
+  const scopeBarrelDir = new THREE.Vector3(
+    -Math.sin(SCOPE_SC_RY) * Math.cos(SCOPE_SC_EL),
+    Math.sin(SCOPE_SC_EL),
+    -Math.cos(SCOPE_SC_RY) * Math.cos(SCOPE_SC_EL),
+  ).normalize();
+  const scopePivotWorld = STUDY_ROOM_POS.clone().add(new THREE.Vector3(2.66, 1.07, 2.08));
+  const scopeAlignWorld = scopePivotWorld
+    .clone()
+    .addScaledVector(scopeBarrelDir, -1.38)
+    .add(new THREE.Vector3(0, 0.22, 0));
+  const scopeAlignTarget = scopePivotWorld.clone().addScaledVector(scopeBarrelDir, 0.85);
+  const scopeEyepieceWorld = scopePivotWorld
+    .clone()
+    .addScaledVector(scopeBarrelDir, -0.32)
+    .add(new THREE.Vector3(0, 0.08, 0));
+  const scopeForwardTmp = new THREE.Vector3();
+  let scopeParallaxGoalX = 0;
+  let scopeParallaxGoalY = 0;
+  let scopeParallaxCurX = 0;
+  let scopeParallaxCurY = 0;
+  let scopeAlignMs = 680;
+  const SCOPE_PUSH_MS = 920;
+  let scopeAlignArc = 0;
+  let scopeEnteredEyepiece = false;
+  let scopePhase: 'hidden' | 'aligning' | 'eyepiece' = 'hidden';
+  const setScopePhase = (next: 'hidden' | 'aligning' | 'eyepiece') => {
+    if (scopePhase === next) return;
+    scopePhase = next;
+    options.room?.onScopePhase?.(next);
+  };
+  let studyFlyCrossed = false;
+  const studyFlyStartPos = new THREE.Vector3();
+  const studyFlyStartTarget = new THREE.Vector3();
+  let studyFlyStartFov = 50;
+  const studyFlyGoalPos = new THREE.Vector3();
+  const studyFlyGoalTarget = new THREE.Vector3();
+  let studyFlyGoalFov = 40;
+  let studyBhFromScope = false;
+
+  const studyRoom: StudyRoomModule | null = options.room
+    ? createStudyRoomModule({
+        renderer,
+        scene,
+        camera,
+        controls,
+        canvas,
+        container: options.room.container,
+        payload: options.room.payload,
+        anchorPos: STUDY_ROOM_POS,
+        holeCenter: ORIGIN,
+        lite,
+        reducedMotion: still,
+        onFocusChange: options.room.onFocusChange,
+        onHover: options.room.onHover,
+        onBookOpening: options.room.onBookOpening,
+        onBookOpened: options.room.onBookOpened,
+        onBookClosed: options.room.onBookClosed,
+        onEnterScope: () => enterStudyScope(),
+        onApproachBlackHole: () => approachStudyBlackHole(),
+        onReady: options.room.onRoomReady,
+      })
+    : null;
 
   function setDiskTilt(rx = 0, rz = 0) {
     diskTiltQuat.setFromEuler(diskTiltEuler.set(rx, 0, rz));
@@ -508,8 +640,16 @@ export function mountDoor(options: DoorOptions): () => void {
 
   function baseFov() {
     // 竖屏放宽视野；基地取 41° 增强甲板与轨道透视宏阔感，斯隆长城俯瞰取 42°，星系黑洞近景取 58° 放大巨物压迫感
-    if (camera.aspect < 1) return mode === 'galaxy' || mode === 'flyingGalaxy' ? 66 : 62;
+    if (camera.aspect < 1) {
+      if (mode === 'galaxy' || mode === 'flyingGalaxy' || mode === 'flyingStudyToBh') return 64;
+      if (mode === 'study') return 48;
+      if (mode === 'studyScope') return 22;
+      return 62;
+    }
     if (mode === 'galaxy' || mode === 'flyingGalaxy') return 58;
+    if (mode === 'flyingStudyToBh') return 54;
+    if (mode === 'studyScope') return 17;
+    if (mode === 'study') return STUDY_OVERVIEW_PRESET.fov;
     if (mode === 'starmap' || mode === 'enteringMap') return 42;
     return 41;
   }
@@ -531,7 +671,16 @@ export function mountDoor(options: DoorOptions): () => void {
     const h = canvas.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    if (mode !== 'diving' && mode !== 'warping') camera.fov = baseFov();
+    if (
+      mode !== 'diving' &&
+      mode !== 'warping' &&
+      mode !== 'study' &&
+      mode !== 'studyScope' &&
+      mode !== 'flyingStudy' &&
+      mode !== 'flyingStudyToBh'
+    ) {
+      camera.fov = baseFov();
+    }
     camera.updateProjectionMatrix();
     holeUniforms.uAspect.value = camera.aspect;
     measureLabels();
@@ -564,6 +713,11 @@ export function mountDoor(options: DoorOptions): () => void {
     leavingMap: '',
     flyingGalaxy: '星际跃迁',
     galaxy: '星系奇点',
+    flyingStudy: '飞向基地书房',
+    study: '基地书房',
+    studyScope: '望远镜观测',
+    flyingStudyToBh: '抵近书房黑洞',
+    leavingStudyToMap: '',
   };
 
   function selectStarNode(node: StarNodeSpec | null) {
@@ -592,6 +746,7 @@ export function mountDoor(options: DoorOptions): () => void {
     from.mapOpacity = mapOpacity;
     from.scaleU = scaleU;
     leavePhi = spherical.setFromVector3(offset.copy(camera.position).sub(controls.target)).phi;
+    document.documentElement.dataset.doorMode = next;
     hud.view.textContent = viewNames[next];
     hud.guide.dataset.mode = next;
     if (sm) {
@@ -604,6 +759,7 @@ export function mountDoor(options: DoorOptions): () => void {
         selectStarNode(activeGalaxy);
       }
     }
+    options.room?.onModeChange?.(next);
   }
 
   // 甲板上一拖动，就开始慢慢退出空间站。只认拖动期间和松手后 0.4 秒：
@@ -668,7 +824,7 @@ export function mountDoor(options: DoorOptions): () => void {
     const rect = canvas.getBoundingClientRect();
     let best: StarNodeSpec | null = null;
     let bestD = 28;
-    for (const node of STAR_NODES) {
+    for (const node of DOOR_STAR_NODES) {
       const pos = starPosVec.get(node.id)!;
       const v = offsetTmp.copy(pos).project(camera);
       if (v.z > 1) continue;
@@ -693,7 +849,14 @@ export function mountDoor(options: DoorOptions): () => void {
 
   // 镜头被脚本接管、用户不能拖的模式
   function scripted() {
-    return mode !== 'deck' && mode !== 'free' && mode !== 'leaving' && mode !== 'starmap' && mode !== 'galaxy';
+    return (
+      mode !== 'deck' &&
+      mode !== 'free' &&
+      mode !== 'leaving' &&
+      mode !== 'starmap' &&
+      mode !== 'galaxy' &&
+      mode !== 'study'
+    );
   }
 
   // 俯冲进黑洞：基地黑洞去首页，探测器去对应分类，画廊/游戏星系中心黑洞去画廊或游戏大厅
@@ -708,6 +871,7 @@ export function mountDoor(options: DoorOptions): () => void {
     settleControls();
     controls.enabled = false;
     canvas.style.cursor = '';
+    veil.style.transition = '';
     setMode('diving');
   }
 
@@ -715,10 +879,25 @@ export function mountDoor(options: DoorOptions): () => void {
     if (mode === 'diving' || mode === 'warping') return;
     closeTerminal();
     if (mode === 'galaxy' && activeGalaxy?.href) {
-      startDive(activeGalaxy.href, `正在穿越视界 · 前往「${activeGalaxy.targetLabel ?? activeGalaxy.name}」`);
+      const diveTitle =
+        activeGalaxy.id === 'base'
+          ? '正在穿越视界 · 前往基地'
+          : `正在穿越视界 · 前往「${activeGalaxy.targetLabel ?? activeGalaxy.name}」`;
+      startDive(activeGalaxy.href, diveTitle);
       return;
     }
-    if (mode === 'starmap' || mode === 'enteringMap' || mode === 'leavingMap' || mode === 'flyingGalaxy') return;
+    if (
+      mode === 'starmap' ||
+      mode === 'enteringMap' ||
+      mode === 'leavingMap' ||
+      mode === 'flyingGalaxy' ||
+      mode === 'flyingStudy' ||
+      mode === 'study' ||
+      mode === 'studyScope' ||
+      mode === 'flyingStudyToBh' ||
+      mode === 'leavingStudyToMap'
+    )
+      return;
     startDive(target, '正在穿越视界 · 前往基地');
   }
 
@@ -727,6 +906,8 @@ export function mountDoor(options: DoorOptions): () => void {
   const leaveMapTo = new THREE.Vector3();
   const galaxyGoalPos = new THREE.Vector3();
   const galaxyGoalTarget = new THREE.Vector3();
+  const studyBhGoalPos = new THREE.Vector3();
+  const studyBhGoalTarget = new THREE.Vector3();
 
   function openStarMap(goalPos = MAP_OVERVIEW_POS) {
     if (!sm || mode === 'starmap' || mode === 'enteringMap' || mode === 'diving' || mode === 'warping') return;
@@ -888,9 +1069,201 @@ export function mountDoor(options: DoorOptions): () => void {
     setMode('enteringMap');
   }
 
+  function applyStudySpaceState() {
+    activeGalaxy = {
+      ...STUDY_NODE,
+      href: '/',
+      targetLabel: '书房奇点 · 紫粉黑洞',
+      scaleLabel: '34 MPC · 事件视界前',
+      holeTheme: 1,
+      holeScale: 1.55,
+      diskTilt: [0.22, -0.14],
+    };
+    selectedStar = STUDY_NODE;
+    mapFocus = null;
+    holeCenter.copy(ORIGIN);
+    holeTheme = 1;
+    holeScale = 1.55;
+    setDiskTilt(0.22, -0.14);
+    holeAlpha = 1;
+    dustAlpha = 0;
+    mapOpacity = 0;
+    cosmosMix = 0;
+    nucleusGlow = 0;
+  }
+
+  function configureStudyControls() {
+    controls.enableZoom = true;
+    controls.enablePan = false;
+    controls.minDistance = 2.0;
+    controls.maxDistance = 12.0;
+    controls.minPolarAngle = 0.25;
+    controls.maxPolarAngle = Math.PI * 0.62;
+    controls.enabled = true;
+  }
+
+  function restoreOrbitLimits() {
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = Math.PI;
+  }
+
+  function enterStudyRoomNow() {
+    applyStudySpaceState();
+    veil.style.transition = '';
+    veil.style.opacity = '0';
+    lastVeilOpacity = '0';
+    if (studyRoom) {
+      studyRoom.setVisible(true);
+      studyRoom.resetStateForEntry();
+      const ov = studyRoom.getWorldView(STUDY_OVERVIEW_PRESET, true);
+      camera.position.copy(ov.pos);
+      controls.target.copy(ov.target);
+      camera.fov = ov.fov;
+      camera.updateProjectionMatrix();
+    }
+    configureStudyControls();
+    settleControls();
+    setMode('study');
+  }
+
+  function flyToStudy() {
+    activeGalaxy = null;
+    selectedStar = STUDY_NODE;
+    mapFocus = null;
+    studyFlyCrossed = false;
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = '';
+    veil.style.transition = '';
+    if (still) {
+      enterStudyRoomNow();
+      return;
+    }
+    setMode('flyingStudy');
+  }
+
+  function enterStudyScope() {
+    if (disposed || mode !== 'study' || !studyRoom) return;
+    studyRoom.cancelActiveFly();
+    studyRoom.handlePointerLeave();
+    restoreOrbitLimits();
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = 'crosshair';
+    scopeParallaxGoalX = 0;
+    scopeParallaxGoalY = 0;
+    scopeParallaxCurX = 0;
+    scopeParallaxCurY = 0;
+
+    const posDist = camera.position.distanceTo(scopeAlignWorld);
+    camera.getWorldDirection(scopeForwardTmp);
+    const angErr = scopeForwardTmp.angleTo(scopeBarrelDir);
+    scopeAlignMs =
+      posDist < 0.75 && angErr < 0.22
+        ? 200
+        : Math.min(980, Math.max(520, Math.round(posDist * 135 + angErr * 280)));
+    scopeAlignArc = Math.min(0.85, posDist * 0.14);
+    scopeEnteredEyepiece = false;
+
+    const targetFov = camera.aspect < 1 ? 22 : 17;
+    if (still) {
+      studyRoom.setVisible(false);
+      camera.position.copy(scopeWorldPos);
+      controls.target.copy(ORIGIN);
+      camera.fov = targetFov;
+      camera.updateProjectionMatrix();
+      dustAlpha = 0.85;
+      veil.style.transition = '';
+      veil.style.opacity = '0';
+      lastVeilOpacity = '0';
+      setScopePhase('eyepiece');
+      setMode('studyScope');
+      return;
+    }
+    setScopePhase('aligning');
+    setMode('studyScope');
+  }
+
+  function exitStudyScope() {
+    if (disposed || mode !== 'studyScope') return;
+    const wasInEyepiece = scopeEnteredEyepiece;
+    setScopePhase('hidden');
+    scopeEnteredEyepiece = false;
+    veil.style.transition = '';
+    veil.style.opacity = '0';
+    lastVeilOpacity = '0';
+    studyRoom?.setVisible(true);
+    dustAlpha = 0;
+    if (wasInEyepiece) {
+      camera.position.copy(scopeEyepieceWorld);
+      controls.target.copy(scopeAlignTarget);
+      camera.fov = camera.aspect < 1 ? 46 : 38;
+      camera.updateProjectionMatrix();
+    }
+    canvas.style.cursor = '';
+    configureStudyControls();
+    setMode('study');
+    studyRoom?.focus('overview');
+  }
+
+  function approachStudyBlackHole() {
+    if (disposed || (mode !== 'study' && mode !== 'studyScope')) return;
+    const fromScope = mode === 'studyScope';
+    setScopePhase('hidden');
+    scopeEnteredEyepiece = false;
+    studyRoom?.cancelActiveFly();
+    studyRoom?.handlePointerLeave();
+    restoreOrbitLimits();
+    try {
+      if (location.hash === '#study') history.replaceState(null, '', location.pathname);
+    } catch {
+      /* ignore */
+    }
+    applyStudySpaceState();
+    holeTextEl.textContent = '通过黑洞跃迁到基地';
+    labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
+
+    const sc = 1.55;
+    const dist = (camera.aspect < 1 ? 7.2 : 4.9) * sc;
+    const radialDir = offsetTmp.copy(STUDY_ROOM_POS).normalize();
+    studyBhGoalPos.copy(radialDir).multiplyScalar(dist);
+    studyBhGoalPos.y += 0.34 * sc;
+    studyBhGoalTarget.set(0, -0.05 * sc, 0);
+    studyBhFromScope = fromScope;
+
+    settleControls();
+    controls.enabled = false;
+    canvas.style.cursor = '';
+    veil.style.transition = '';
+    veil.style.opacity = '0';
+    lastVeilOpacity = '0';
+
+    if (still) {
+      studyRoom?.setVisible(false);
+      holeScale = sc;
+      dustAlpha = 1;
+      camera.position.copy(studyBhGoalPos);
+      controls.target.copy(studyBhGoalTarget);
+      camera.fov = camera.aspect < 1 ? 64 : 54;
+      camera.updateProjectionMatrix();
+      controls.enableZoom = true;
+      controls.enablePan = false;
+      controls.minDistance = 2.9 * sc;
+      controls.maxDistance = 36 * sc;
+      controls.enabled = true;
+      settleControls();
+      setMode('galaxy');
+      measureLabels();
+      return;
+    }
+    setMode('flyingStudyToBh');
+  }
+
   function handleStarNodeClick(node: StarNodeSpec) {
     if (mode !== 'starmap') return;
-    if (node.id === 'base') {
+    if (node.id === 'study') {
+      flyToStudy();
+    } else if (node.id === 'base') {
       closeStarMap();
     } else if (node.kind === 'hub') {
       flyToGalaxy(node);
@@ -1004,6 +1377,10 @@ export function mountDoor(options: DoorOptions): () => void {
   }
 
   function goBack() {
+    if (mode === 'studyScope') {
+      exitStudyScope();
+      return;
+    }
     if (mode === 'galaxy' || mode === 'flyingGalaxy') {
       returnToStarMap();
       return;
@@ -1023,14 +1400,35 @@ export function mountDoor(options: DoorOptions): () => void {
   let hovering = false;
   let down: { x: number; y: number } | null = null;
   const onDown = (e: PointerEvent) => {
+    if (mode === 'study') {
+      studyRoom?.handlePointerDown(e);
+      return;
+    }
+    if (mode === 'studyScope') return;
     down = { x: e.clientX, y: e.clientY };
   };
   const onLeave = () => {
+    if (mode === 'study') {
+      studyRoom?.handlePointerLeave();
+      return;
+    }
     hovering = false;
     dockPointerX = 0;
     dockPointerY = 0;
   };
   const onMove = (e: PointerEvent) => {
+    if (mode === 'study') {
+      studyRoom?.handlePointerMove(e);
+      return;
+    }
+    if (mode === 'studyScope') {
+      if (e.pointerType === 'mouse') {
+        const n = toNdc(e);
+        scopeParallaxGoalX = THREE.MathUtils.clamp(n.x, -1, 1);
+        scopeParallaxGoalY = THREE.MathUtils.clamp(n.y, -1, 1);
+      }
+      return;
+    }
     if (down && mode === 'docked' && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) {
       undock();
       return;
@@ -1059,6 +1457,11 @@ export function mountDoor(options: DoorOptions): () => void {
     canvas.style.cursor = hovering || onProbe ? 'pointer' : down ? 'grabbing' : 'grab';
   };
   const onUp = (e: PointerEvent) => {
+    if (mode === 'study') {
+      studyRoom?.handlePointerUp(e);
+      return;
+    }
+    if (mode === 'studyScope') return;
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     down = null;
@@ -1247,7 +1650,11 @@ export function mountDoor(options: DoorOptions): () => void {
 
   // 滚轮触及尺度边界时平滑双向跨越（基地最远 240 Rs 往外拉出斯隆长城；斯隆长城原点拉近至 42 Mpc 回归基地）
   const onWheel = (e: WheelEvent) => {
-    if (draggingScale || scripted()) return;
+    if (mode === 'study') {
+      studyRoom?.handleWheel();
+      return;
+    }
+    if (mode === 'studyScope' || draggingScale || scripted()) return;
     if (mode === 'free' && e.deltaY > 0 && camera.position.distanceTo(controls.target) >= BASE_MAX_DIST - 8) {
       openStarMap();
     } else if (
@@ -1281,8 +1688,12 @@ export function mountDoor(options: DoorOptions): () => void {
   }
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') goBack();
-    else if (e.key === 'Enter' && document.activeElement === canvas) dive();
+    if (e.key === 'Escape') {
+      if (mode === 'study') return;
+      goBack();
+    } else if (e.key === 'Enter' && document.activeElement === canvas) {
+      dive();
+    }
   };
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
@@ -1375,9 +1786,15 @@ export function mountDoor(options: DoorOptions): () => void {
       rim.copy(holeCenter).addScaledVector(right, 2.9 * holeScale).project(camera);
       const radiusPx = Math.abs((rim.x * 0.5 + 0.5) * canvas.clientWidth - s.x);
       if (mode === 'galaxy') {
-        const dotX = THREE.MathUtils.clamp(s.x + radiusPx * 0.16, 56, canvas.clientWidth * 0.30);
-        const dotY = THREE.MathUtils.clamp(s.y - radiusPx * 0.08, 200, canvas.clientHeight * 0.50);
-        drawTag(options.hole, dotX, dotY, 24);
+        if (activeGalaxy?.id === 'base' || activeGalaxy?.id === 'study') {
+          const dotX = THREE.MathUtils.clamp(s.x - radiusPx * 0.36, 64, canvas.clientWidth - 260);
+          const dotY = THREE.MathUtils.clamp(s.y + radiusPx * 0.44, canvas.clientHeight * 0.46, canvas.clientHeight - 175);
+          drawTag(options.hole, dotX, dotY, 22);
+        } else {
+          const dotX = THREE.MathUtils.clamp(s.x + radiusPx * 0.16, 56, canvas.clientWidth * 0.30);
+          const dotY = THREE.MathUtils.clamp(s.y - radiusPx * 0.08, 200, canvas.clientHeight * 0.50);
+          drawTag(options.hole, dotX, dotY, 24);
+        }
       } else {
         drawTag(options.hole, s.x + radiusPx * 0.72, Math.max(s.y - radiusPx * 0.72, 110), 46);
       }
@@ -1474,6 +1891,10 @@ export function mountDoor(options: DoorOptions): () => void {
   }
 
   function frame() {
+    if (disposed || navigating) {
+      raf = 0;
+      return;
+    }
     raf = requestAnimationFrame(frame);
     const now = performance.now();
     const dt = Math.min((now - last) / 1000, 0.05);
@@ -1748,6 +2169,226 @@ export function mountDoor(options: DoorOptions): () => void {
       mapOpacity = 0;
       cosmosMix = 0;
       nucleusGlow = 0;
+    } else if (mode === 'flyingStudy') {
+      // 从斯隆长城顺滑俯冲进入「书房」扇区，中段跨尺度融接并推开真实紫粉黑洞窗外景的 3D 书房
+      const k = clamp01(t / STUDY_FLY_MS);
+      if (k < 0.5) {
+        const k1 = clamp01(k / 0.5);
+        const posEase = asymmetricCruise(k1);
+        const aimPos = offsetTmp.copy(studyPos).add(sideTmp.set(1.8, 1.0, 2.6));
+        camera.position.lerpVectors(from.pos, aimPos, posEase);
+        controls.target.lerpVectors(from.target, studyPos, smoother(clamp01(k1 / 0.78)));
+        const warpPulse = Math.pow(Math.sin(Math.PI * k1), 1.5) * 4.2;
+        camera.fov = THREE.MathUtils.lerp(from.fov, 26, smoother(k1)) + warpPulse;
+        camera.updateProjectionMatrix();
+        mapOpacity = from.mapOpacity * (1 - smoother(clamp01(k1 / 0.92)));
+        cosmosMix = 1 - smooth(clamp01((k1 - 0.16) / 0.84));
+        nucleusGlow = Math.pow(Math.sin(clamp01((k1 - 0.08) / 0.88) * Math.PI), 1.4) * 0.56;
+        beta = 0.16 * Math.pow(Math.sin(k1 * Math.PI), 1.4);
+        veil.style.transition = '';
+        veil.style.background = '#06040f';
+        const studyVeil = String(smooth(clamp01((k - 0.32) / 0.18)) * 0.94);
+        lastVeilOpacity = studyVeil;
+        veil.style.opacity = studyVeil;
+      } else {
+        if (!studyFlyCrossed) {
+          studyFlyCrossed = true;
+          applyStudySpaceState();
+          beta = 0;
+          if (studyRoom) {
+            studyRoom.setVisible(true);
+            studyRoom.resetStateForEntry();
+            const ov = studyRoom.getWorldView(STUDY_OVERVIEW_PRESET, true);
+            studyFlyGoalPos.copy(ov.pos);
+            studyFlyGoalTarget.copy(ov.target);
+            studyFlyGoalFov = ov.fov;
+            studyFlyStartPos.copy(ov.pos).add(sideTmp.set(3.4, 2.1, 4.2));
+            studyFlyStartTarget.copy(ov.target);
+            studyFlyStartFov = Math.min(62, ov.fov + 12);
+          } else {
+            studyFlyGoalPos.copy(STUDY_ROOM_POS).add(sideTmp.set(5.25, 3.15, 5.45));
+            studyFlyGoalTarget.copy(STUDY_ROOM_POS).add(sideTmp.set(-0.4, 1.28, -0.35));
+            studyFlyGoalFov = 40;
+            studyFlyStartPos.copy(studyFlyGoalPos).add(sideTmp.set(3.4, 2.1, 4.2));
+            studyFlyStartTarget.copy(studyFlyGoalTarget);
+            studyFlyStartFov = 52;
+          }
+        }
+        const k2 = smoother(clamp01((k - 0.5) / 0.5));
+        camera.position.lerpVectors(studyFlyStartPos, studyFlyGoalPos, k2);
+        controls.target.lerpVectors(studyFlyStartTarget, studyFlyGoalTarget, k2);
+        camera.fov = THREE.MathUtils.lerp(studyFlyStartFov, studyFlyGoalFov, k2);
+        camera.updateProjectionMatrix();
+        studyRoom?.setTransform(THREE.MathUtils.lerp(0.92, 1, k2), THREE.MathUtils.lerp(-0.35, 0, k2), 0);
+        veil.style.transition = '';
+        veil.style.background = '#06040f';
+        const fadeVeil = String((1 - smooth(clamp01((k - 0.5) / 0.24))) * 0.94);
+        lastVeilOpacity = fadeVeil;
+        veil.style.opacity = fadeVeil;
+      }
+      if (k >= 1) {
+        beta = 0;
+        veil.style.opacity = '0';
+        lastVeilOpacity = '0';
+        studyRoom?.setTransform(1, 0, 0);
+        camera.position.copy(studyFlyGoalPos);
+        controls.target.copy(studyFlyGoalTarget);
+        camera.fov = studyFlyGoalFov;
+        camera.updateProjectionMatrix();
+        configureStudyControls();
+        settleControls();
+        setMode('study');
+        return;
+      }
+    } else if (mode === 'studyScope') {
+      // 两段式望远镜观测：1) 平滑转到望远镜目镜正后方 -> 2) 俯身贴近眼罩并透视锁定窗外黑洞
+      const targetFov = camera.aspect < 1 ? 22 : 17;
+      const alignFov = camera.aspect < 1 ? 44 : 36;
+      const entryFov = camera.aspect < 1 ? 32 : 26;
+      if (t < scopeAlignMs) {
+        const k1 = clamp01(t / Math.max(scopeAlignMs, 1));
+        const e1 = smoother(k1);
+        camera.position.lerpVectors(from.pos, scopeAlignWorld, e1);
+        camera.position.y += Math.sin(Math.PI * k1) * scopeAlignArc;
+        controls.target.lerpVectors(from.target, scopeAlignTarget, e1);
+        camera.fov = THREE.MathUtils.lerp(from.fov, alignFov, e1);
+        camera.updateProjectionMatrix();
+        dustAlpha = 0;
+        veil.style.transition = '';
+        veil.style.opacity = '0';
+        lastVeilOpacity = '0';
+      } else {
+        const k2 = clamp01((t - scopeAlignMs) / SCOPE_PUSH_MS);
+        veil.style.transition = '';
+        veil.style.background = '#020308';
+        if (k2 < 0.48) {
+          const u = smoother(k2 / 0.48);
+          camera.position.lerpVectors(scopeAlignWorld, scopeEyepieceWorld, u);
+          controls.target.lerpVectors(scopeAlignTarget, ORIGIN, u);
+          camera.fov = THREE.MathUtils.lerp(alignFov, entryFov, u);
+          camera.updateProjectionMatrix();
+          dustAlpha = 0;
+          const vOp = String(smooth(clamp01((k2 - 0.16) / 0.3)) * 0.94);
+          lastVeilOpacity = vOp;
+          veil.style.opacity = vOp;
+        } else {
+          if (!scopeEnteredEyepiece) {
+            scopeEnteredEyepiece = true;
+            studyRoom?.setVisible(false);
+            setScopePhase('eyepiece');
+          }
+          const u = smoother((k2 - 0.48) / 0.52);
+          const pd = 1 - Math.exp(-8 * dt);
+          scopeParallaxCurX += (scopeParallaxGoalX - scopeParallaxCurX) * pd;
+          scopeParallaxCurY += (scopeParallaxGoalY - scopeParallaxCurY) * pd;
+          scopeAimTarget
+            .copy(ORIGIN)
+            .addScaledVector(scopeRightVec, scopeParallaxCurX * 0.42)
+            .addScaledVector(scopeUpVec, scopeParallaxCurY * 0.34);
+          camera.position.copy(scopeWorldPos);
+          controls.target.copy(scopeAimTarget);
+          camera.fov = THREE.MathUtils.lerp(entryFov, targetFov, u);
+          camera.updateProjectionMatrix();
+          dustAlpha = THREE.MathUtils.lerp(0, 0.85, u);
+          const vOp = String((1 - smooth(clamp01((k2 - 0.48) / 0.3))) * 0.94);
+          lastVeilOpacity = vOp;
+          veil.style.opacity = vOp;
+        }
+      }
+    } else if (mode === 'flyingStudyToBh') {
+      // 同场景直飞：从书房窗外平滑滑弧穿越深空，直抵该紫粉黑洞事件视界前方
+      const sc = 1.55;
+      const k = clamp01(t / STUDY_FLY_BH_MS);
+      const e = asymmetricCruise(k);
+      const goalFov = camera.aspect < 1 ? 64 : 54;
+      camera.position.lerpVectors(from.pos, studyBhGoalPos, e);
+      if (!studyBhFromScope) {
+        camera.position.y += Math.sin(Math.PI * k) * 2.2;
+      }
+      controls.target.lerpVectors(from.target, studyBhGoalTarget, smoother(clamp01(k / 0.55)));
+      camera.fov = THREE.MathUtils.lerp(from.fov, goalFov, smoother(k)) + Math.pow(Math.sin(Math.PI * k), 1.5) * 7.5;
+      camera.updateProjectionMatrix();
+
+      holeScale = sc;
+      holeAlpha = 1;
+      dustAlpha = THREE.MathUtils.lerp(studyBhFromScope ? 0.85 : 0, 1, smoother(k));
+      mapOpacity = 0;
+      cosmosMix = 0;
+      nucleusGlow = 0;
+      beta = 0.14 * Math.pow(Math.sin(Math.PI * k), 1.4);
+
+      if (camera.position.distanceTo(ORIGIN) < 22 || (k > 0.38 && camera.position.distanceTo(STUDY_ROOM_POS) > 12)) {
+        studyRoom?.setVisible(false);
+      }
+
+      if (k >= 1) {
+        studyRoom?.setVisible(false);
+        holeScale = sc;
+        dustAlpha = 1;
+        beta = 0;
+        camera.position.copy(studyBhGoalPos);
+        controls.target.copy(studyBhGoalTarget);
+        camera.fov = goalFov;
+        camera.updateProjectionMatrix();
+        controls.enableZoom = true;
+        controls.enablePan = false;
+        controls.minDistance = 2.9 * sc;
+        controls.maxDistance = 36 * sc;
+        restoreOrbitLimits();
+        controls.enabled = true;
+        settleControls();
+        setMode('galaxy');
+        measureLabels();
+      }
+    } else if (mode === 'leavingStudyToMap') {
+      // 从书房同场景平滑拉远回升，重展斯隆长城全览
+      const k = clamp01(t / STUDY_LEAVE_MAP_MS);
+      const e = smoother(k);
+      camera.position.lerpVectors(from.pos, enterMapGoal, e);
+      controls.target.lerpVectors(from.target, ORIGIN, smoother(clamp01(k / 0.72)));
+      camera.fov = THREE.MathUtils.lerp(from.fov, camera.aspect < 1 ? 62 : 42, e);
+      camera.updateProjectionMatrix();
+
+      holeAlpha = 1 - smooth(clamp01(k / 0.36));
+      dustAlpha = holeAlpha * 0.85;
+      mapOpacity = smooth(clamp01((k - 0.16) / 0.84));
+      cosmosMix = smooth(clamp01((k - 0.1) / 0.78));
+      nucleusGlow = Math.pow(Math.sin(clamp01((k - 0.08) / 0.45) * Math.PI), 1.4) * 0.28;
+
+      if (k > 0.34) {
+        studyRoom?.setVisible(false);
+      } else {
+        const kFade = k / 0.34;
+        studyRoom?.setTransform(THREE.MathUtils.lerp(1, 0.55, kFade), THREE.MathUtils.lerp(0, -0.6, kFade), 0);
+      }
+
+      if (k >= 1) {
+        studyRoom?.setVisible(false);
+        studyRoom?.setTransform(1, 0, 0);
+        activeGalaxy = null;
+        holeCenter.copy(ORIGIN);
+        holeScale = 1;
+        holeTheme = 0;
+        setDiskTilt(0, 0);
+        holeAlpha = 0;
+        dustAlpha = 0;
+        mapOpacity = 1;
+        cosmosMix = 1;
+        nucleusGlow = 0;
+        veil.style.opacity = '0';
+        lastVeilOpacity = '0';
+        camera.position.copy(enterMapGoal);
+        controls.target.copy(ORIGIN);
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.minDistance = MAP_MIN_DIST;
+        controls.maxDistance = MAP_MAX_DIST;
+        restoreOrbitLimits();
+        controls.enabled = true;
+        controls.update();
+        setMode('starmap');
+        measureLabels();
+      }
     } else if (mode === 'diving') {
       // 先平滑转正对准当前黑洞中心，再沿测地线加速冲进视界；后半段速度接近光速，星空往前方收拢成隧道
       const k = clamp01(t / DIVE_MS);
@@ -1802,6 +2443,11 @@ export function mountDoor(options: DoorOptions): () => void {
       mode === 'starmap' ||
       mode === 'galaxy' ||
       mode === 'flyingGalaxy' ||
+      mode === 'flyingStudy' ||
+      mode === 'study' ||
+      mode === 'studyScope' ||
+      mode === 'flyingStudyToBh' ||
+      mode === 'leavingStudyToMap' ||
       mapOpacity > 0.55 ||
       (mode === 'enteringMap' && (activeGalaxy !== null || holeAlpha < 0.25)) ||
       (mode === 'diving' && activeGalaxy !== null);
@@ -1817,6 +2463,32 @@ export function mountDoor(options: DoorOptions): () => void {
       rocks.group.visible = false;
     }
 
+    const studyVisible =
+      Boolean(studyRoom?.group.visible) &&
+      (mode === 'study' ||
+        mode === 'studyScope' ||
+        mode === 'flyingStudyToBh' ||
+        mode === 'leavingStudyToMap' ||
+        (mode === 'flyingStudy' && studyFlyCrossed));
+    const studyEarlyZ =
+      Boolean(studyRoom?.group.visible) && (mode === 'study' || (mode === 'studyScope' && !scopeEnteredEyepiece));
+    const wantHoleMat = studyEarlyZ ? studyHoleMat : mainHoleMat;
+    if (hole.material !== wantHoleMat) hole.material = wantHoleMat;
+    hole.renderOrder = studyEarlyZ ? 1 : -1;
+
+    if (studyVisible) {
+      // 真空宇宙高对比光比：关闭全局大灯避免双重叠加与地毯炫紫反光，仅由 studyRoom 局域灯 + 柔化窗光照明
+      skyLight.intensity = 0;
+      diskLight.intensity = 0;
+      coronaLight.intensity = 0;
+      studyRoom?.tick(dt, now, simTime, mode === 'study');
+    } else {
+      skyLight.intensity = 0.38;
+      diskLight.intensity = 2.55;
+      diskLight.color.setHex(0xffc894);
+      coronaLight.intensity = 0.52;
+    }
+
     holeUniforms.uBeta.value = beta;
     warpBeta.value = beta;
     warpCenter.value.copy(holeCenter);
@@ -1825,9 +2497,18 @@ export function mountDoor(options: DoorOptions): () => void {
     holeUniforms.uHoleAlpha.value = holeAlpha;
     holeUniforms.uHoleTheme.value = holeTheme;
     holeUniforms.uCosmosMix.value =
-      mode === 'flyingGalaxy' || mode === 'enteringMap' || dragScaleU !== null || mapOpacity > 0.005 ? cosmosMix : mapOpacity;
+      mode === 'flyingGalaxy' ||
+      mode === 'enteringMap' ||
+      mode === 'flyingStudy' ||
+      mode === 'leavingStudyToMap' ||
+      dragScaleU !== null ||
+      mapOpacity > 0.005
+        ? cosmosMix
+        : mapOpacity;
     holeUniforms.uNucleusGlow.value =
-      mode === 'flyingGalaxy' || mode === 'enteringMap' ? nucleusGlow : 0;
+      mode === 'flyingGalaxy' || mode === 'enteringMap' || mode === 'flyingStudy' || mode === 'leavingStudyToMap'
+        ? nucleusGlow
+        : 0;
     dustUniforms.uDustAlpha.value = dustAlpha;
     dustUniforms.uHoleTheme.value = holeTheme;
     dustUniforms.uSize.value = holeScale > 1.25 ? 14 : 18;
@@ -1835,14 +2516,18 @@ export function mountDoor(options: DoorOptions): () => void {
     starMap.setOpacity(mapOpacity, simTime, ratio);
     updateStreaks(beta, dt);
 
-    if (scripted() || scaleDampingActive) camera.lookAt(controls.target);
-    else controls.update();
+    if (scripted() || scaleDampingActive || (mode === 'study' && studyRoom?.isCameraFlying())) {
+      camera.lookAt(controls.target);
+    } else {
+      controls.update();
+    }
     if (mode === 'diving') shakeCamera(diveRush, beta, dt);
     camera.updateMatrixWorld();
     lastQuat.copy(stationQuat);
 
-    // 平时保持完全透明（开场由加载层直接渐隐揭开），仅在坠入视界末尾置黑转场
-    if (mode !== 'diving' && lastVeilOpacity !== '0') {
+    // 平时保持完全透明（开场由加载层直接渐隐揭开），转场与深空入场阶段由对应状态控制遮幕
+    const ownsVeil = mode === 'diving' || mode === 'flyingStudy' || mode === 'studyScope';
+    if (!ownsVeil && lastVeilOpacity !== '0') {
       lastVeilOpacity = '0';
       veil.style.opacity = '0';
     }
@@ -1922,6 +2607,8 @@ export function mountDoor(options: DoorOptions): () => void {
         scaleU = mapDistToU(camera.position.distanceTo(controls.target));
       } else if (mode === 'enteringMap') {
         scaleU = THREE.MathUtils.lerp(from.scaleU, mapDistToU(enterMapGoal.length()), smoother(clamp01(t / MAP_ENTER_MS)));
+      } else if (mode === 'leavingStudyToMap') {
+        scaleU = THREE.MathUtils.lerp(0.35, mapDistToU(enterMapGoal.length()), smoother(clamp01(t / STUDY_LEAVE_MAP_MS)));
       } else if (mode === 'leavingMap') {
         scaleU = THREE.MathUtils.lerp(from.scaleU, baseDistToU(leaveMapTo.length()), smoother(clamp01(t / MAP_LEAVE_MS)));
       } else if (mode === 'deck' || mode === 'leaving' || mode === 'free' || mode === 'returning') {
@@ -1937,9 +2624,12 @@ export function mountDoor(options: DoorOptions): () => void {
     const pitch = THREE.MathUtils.radToDeg(Math.asin(forward.y));
     if (mode !== 'diving') {
       let distText: string;
-      if (mode === 'starmap' || mode === 'enteringMap' || mode === 'leavingMap') {
+      if (mode === 'starmap' || mode === 'enteringMap' || mode === 'leavingMap' || mode === 'leavingStudyToMap') {
         const mpc = camera.position.distanceTo(controls.target);
         distText = `观测半径 ${mpc.toFixed(0)} Mpc`;
+      } else if (mode === 'flyingStudyToBh') {
+        const rs = Math.max(camera.position.distanceTo(holeCenter) / Math.max(holeScale, 1e-4) - 1, 0.1);
+        distText = `距「书房奇点 · 紫粉黑洞」视界 ${rs.toFixed(1)} Rs`;
       } else if (mode === 'flyingGalaxy') {
         const k = clamp01(t / GALAXY_FLY_MS);
         const label = activeGalaxy?.targetLabel ?? '星系';
@@ -1983,12 +2673,14 @@ export function mountDoor(options: DoorOptions): () => void {
         mode === 'free' ||
         mode === 'returning' ||
         mode === 'galaxy' ||
-        mode === 'flyingGalaxy') &&
+        mode === 'flyingGalaxy' ||
+        mode === 'flyingStudyToBh') &&
       now - miniAt >= (lite ? 80 : 50)
     ) {
       miniAt = now;
-      const pinId = mode === 'galaxy' || mode === 'flyingGalaxy' ? activeGalaxy?.id ?? null : null;
-      renderMiniMap(sm.miniCanvas, starMap.miniPoints, simTime, pinId);
+      const pinId =
+        mode === 'galaxy' || mode === 'flyingGalaxy' || mode === 'flyingStudyToBh' ? activeGalaxy?.id ?? null : null;
+      renderMiniMap(sm.miniCanvas, starMap.miniPoints, simTime, pinId, undefined, DOOR_STAR_NODES);
     }
 
     renderer.render(scene, camera);
@@ -1999,17 +2691,19 @@ export function mountDoor(options: DoorOptions): () => void {
     // - 切走标签页再回来，那一帧间隔是好几秒；这种窗口整段作废，不能拿来降档
     // - 在哪一档掉过帧就记住，之后最多升到它下面一点，免得在两档之间来回抖
     if (now - frameStart > 100) longFrame = true;
-    if (++frames === 40) {
+    if (++frames === 30) {
       const avg = spent / frames;
-      if (!longFrame) {
+      const interacting = Boolean(down || draggingScale || studyRoom?.isInteracting());
+      if (!longFrame && (!interacting || avg > 38)) {
+        const minRatio = lite ? 0.5 : 0.6;
         let next = ratio;
-        if (avg > 26) {
-          ceiling = ratio - 0.05;
-          next = ratio - 0.15;
+        if (avg > 23) {
+          ceiling = Math.max(minRatio, ratio - 0.06);
+          next = ratio - 0.16;
         } else if (avg < 18.5) {
-          next = Math.min(ratio + 0.1, ceiling);
+          next = Math.min(ratio + 0.08, ceiling);
         }
-        const clamped = Math.min(Math.max(next, lite ? 0.5 : 0.6), maxRatio);
+        const clamped = Math.min(Math.max(next, minRatio), maxRatio);
         if (Math.abs(clamped - ratio) > 0.01) {
           ratio = clamped;
           renderer.setPixelRatio(ratio);
@@ -2030,15 +2724,34 @@ export function mountDoor(options: DoorOptions): () => void {
     spent = 0;
     longFrame = false;
     last = performance.now();
+    if (!disposed && !navigating && !raf) {
+      raf = requestAnimationFrame(frame);
+    }
   };
   document.addEventListener('visibilitychange', onVisible);
 
   // 开场：所有景物与星图已提前挂载，等待所有着色器异步编译与字体就绪，完成首轮完整渲染合成后再交棒收起加载画面
   veil.style.opacity = '0';
-  copy.style.opacity = '1';
-  lastCopyOpacity = '1';
-  setMode('deck');
+  const initialStudy = options.initialMode === 'study' && !!studyRoom;
+  copy.style.opacity = initialStudy ? '0' : '1';
+  lastCopyOpacity = initialStudy ? '0' : '1';
+  if (initialStudy && studyRoom) {
+    applyStudySpaceState();
+    studyRoom.setVisible(true);
+    studyRoom.resetStateForEntry();
+    hole.material = studyHoleMat;
+    hole.renderOrder = 1;
+    const ov = studyRoom.getWorldView(STUDY_OVERVIEW_PRESET, true);
+    camera.position.copy(ov.pos);
+    controls.target.copy(ov.target);
+    camera.fov = ov.fov;
+    camera.updateProjectionMatrix();
+    configureStudyControls();
+    settleControls();
+  }
+  setMode(initialStudy ? 'study' : 'deck');
   let disposed = false;
+  let navigating = false;
   let readyRaf1 = 0;
   let readyRaf2 = 0;
   const snapTags = (noTransition: boolean) => {
@@ -2069,38 +2782,140 @@ export function mountDoor(options: DoorOptions): () => void {
   };
   options.onProgress?.(0.68, 0.86);
   const fontsReady = document.fonts ? document.fonts.ready.catch(() => {}) : Promise.resolve();
-  Promise.all([renderer.compileAsync(scene, camera), fontsReady]).then(begin, begin);
-
-  return () => {
-    disposed = true;
-    cancelAnimationFrame(readyRaf1);
-    cancelAnimationFrame(readyRaf2);
-    cancelAnimationFrame(raf);
-    observer.disconnect();
-    controls.dispose();
-    canvas.removeEventListener('pointerdown', onDown);
-    canvas.removeEventListener('pointermove', onMove);
-    canvas.removeEventListener('pointerup', onUp);
-    canvas.removeEventListener('pointerleave', onLeave);
-    canvas.removeEventListener('wheel', onWheel);
-    canvas.removeEventListener('dblclick', goBack);
-    options.hole.label.removeEventListener('click', onHoleLabel);
-    probes.forEach((p, i) => {
-      p.tag.label.removeEventListener('click', handlers[i].onLabel);
-      p.terminal.removeEventListener('click', handlers[i].onScreen);
-    });
-    if (sm) {
-      sm.miniBtn.removeEventListener('click', onMiniClick);
-      sm.scaleRoot.removeEventListener('pointerdown', onScaleDown);
-      sm.scaleRoot.removeEventListener('pointermove', onScaleMove);
-      sm.scaleRoot.removeEventListener('pointerup', onScaleUp);
-      sm.scaleRoot.removeEventListener('pointercancel', onScaleUp);
-      starTagHandlers.forEach((h) => h.el.removeEventListener('click', h.fn));
+  const precompileAll = async () => {
+    const savedMat = hole.material;
+    const savedOrder = hole.renderOrder;
+    try {
+      await renderer.compileAsync(scene, camera);
+      const altMat = savedMat === studyHoleMat ? mainHoleMat : studyHoleMat;
+      hole.material = altMat;
+      hole.renderOrder = altMat === studyHoleMat ? 1 : -1;
+      await renderer.compileAsync(scene, camera);
+    } finally {
+      hole.material = savedMat;
+      hole.renderOrder = savedOrder;
     }
-    window.removeEventListener('keydown', onKey);
-    document.removeEventListener('visibilitychange', onVisible);
-    starMap.dispose();
-    rocks.dispose();
-    renderer.dispose();
+  };
+  Promise.all([precompileAll(), fontsReady]).then(begin, begin);
+
+  return {
+    travelTo(href, title) {
+      if (disposed || navigating) return;
+      navigating = true;
+      cancelAnimationFrame(raf);
+      raf = 0;
+      travel(href, title, options.loader);
+    },
+    enterStudyDirect() {
+      if (disposed) return;
+      enterStudyRoomNow();
+    },
+    openStarMapFromStudy() {
+      if (disposed || !sm) return;
+      if (mode !== 'study' && mode !== 'studyScope') return;
+      setScopePhase('hidden');
+      scopeEnteredEyepiece = false;
+      studyRoom?.cancelActiveFly();
+      studyRoom?.handlePointerLeave();
+      restoreOrbitLimits();
+      try {
+        if (location.hash === '#study') history.replaceState(null, '', location.pathname);
+      } catch {
+        /* ignore */
+      }
+      activeGalaxy = null;
+      selectedStar = STUDY_NODE;
+      mapFocus = null;
+      holeCenter.copy(ORIGIN);
+      holeTextEl.textContent = baseHoleText;
+      labelWidth.set(options.hole.label, options.hole.label.offsetWidth);
+      veil.style.transition = '';
+      veil.style.opacity = '0';
+      lastVeilOpacity = '0';
+
+      enterMapGoal.copy(MAP_OVERVIEW_POS);
+      if (camera.aspect < 1) enterMapGoal.multiplyScalar(1.22);
+
+      if (still) {
+        studyRoom?.setVisible(false);
+        holeAlpha = 0;
+        dustAlpha = 0;
+        nucleusGlow = 0;
+        holeTheme = 0;
+        holeScale = 1;
+        setDiskTilt(0, 0);
+        mapOpacity = 1;
+        cosmosMix = 1;
+        camera.position.copy(enterMapGoal);
+        controls.target.copy(ORIGIN);
+        camera.fov = camera.aspect < 1 ? 62 : 42;
+        camera.updateProjectionMatrix();
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.minDistance = MAP_MIN_DIST;
+        controls.maxDistance = MAP_MAX_DIST;
+        controls.enabled = true;
+        settleControls();
+        setMode('starmap');
+        measureLabels();
+      } else {
+        controls.enabled = false;
+        settleControls();
+        setMode('leavingStudyToMap');
+      }
+    },
+    approachStudyBlackHole() {
+      approachStudyBlackHole();
+    },
+    focusRoom(targetFocus) {
+      if (disposed || mode !== 'study') return;
+      studyRoom?.focus(targetFocus);
+    },
+    closeRoomBook() {
+      if (disposed) return;
+      studyRoom?.closeBook();
+    },
+    enterStudyScope() {
+      enterStudyScope();
+    },
+    exitStudyScope() {
+      exitStudyScope();
+    },
+    dispose() {
+      disposed = true;
+      cancelAnimationFrame(readyRaf1);
+      cancelAnimationFrame(readyRaf2);
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      controls.dispose();
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointerleave', onLeave);
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('dblclick', goBack);
+      options.hole.label.removeEventListener('click', onHoleLabel);
+      probes.forEach((p, i) => {
+        p.tag.label.removeEventListener('click', handlers[i].onLabel);
+        p.terminal.removeEventListener('click', handlers[i].onScreen);
+      });
+      if (sm) {
+        sm.miniBtn.removeEventListener('click', onMiniClick);
+        sm.scaleRoot.removeEventListener('pointerdown', onScaleDown);
+        sm.scaleRoot.removeEventListener('pointermove', onScaleMove);
+        sm.scaleRoot.removeEventListener('pointerup', onScaleUp);
+        sm.scaleRoot.removeEventListener('pointercancel', onScaleUp);
+        starTagHandlers.forEach((h) => h.el.removeEventListener('click', h.fn));
+      }
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onVisible);
+      mainHoleMat.dispose();
+      studyHoleMat.dispose();
+      hole.geometry.dispose();
+      studyRoom?.dispose();
+      starMap.dispose();
+      rocks.dispose();
+      renderer.dispose();
+    },
   };
 }

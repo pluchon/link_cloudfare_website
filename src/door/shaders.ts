@@ -8,7 +8,7 @@ export const holeVertex = /* glsl */ `
   varying vec2 vNdc;
   void main() {
     vNdc = position.xy;
-    gl_Position = vec4(position.xy, 1.0, 1.0);
+    gl_Position = vec4(position.xy, 0.9999, 1.0);
   }
 `;
 
@@ -306,7 +306,11 @@ export const holeFragment = /* glsl */ `
     vec3 col = mix(bgBase, vec3(0.0007, 0.0012, 0.0028), uCosmosMix);
 
     if (band > 0.008 && galacticMask > 0.32) {
+      #ifdef STUDY_FAST
+      float clouds = fbm3lo(d * 3.4);
+      #else
       float clouds = fbm3(d * 3.4);
+      #endif
       float grain = fbm3lo(d * 15.0 + 3.0);
       float dust = smoothstep(0.38, 0.66, fbm3lo(d * 6.8 + 9.0)) * exp(-lat * lat * 210.0);
       float milky = band * (0.14 + 0.86 * clouds * clouds) * (0.45 + 0.55 * grain) * (1.0 - 0.86 * dust) * (0.38 + 1.12 * coreGlow);
@@ -317,6 +321,7 @@ export const holeFragment = /* glsl */ `
       col += mix(bandEdge, bandCore, coreGlow) * milky * (t0 * 0.18 + (1.0 - t0) * 0.19) * galacticMask;
     }
 
+    #ifndef STUDY_FAST
     if (galacticMask > 0.32) {
       vec3 nebD1 = normalize(
         t0 * vec3(-0.7035, 0.3518, -0.6172)
@@ -361,6 +366,7 @@ export const holeFragment = /* glsl */ `
       col += nebula(d, vec3(-0.3002, -0.2502, 0.9207), nebA1 * 0.9 + 0.1, nebB2, 31.0) * galacticMask * 0.85;
       #endif
     }
+    #endif
 
     // 远处伴星系（依星域变换方向与形态，保持着色器体积极简）
     vec3 galD1 = normalize(
@@ -379,7 +385,7 @@ export const holeFragment = /* glsl */ `
     );
     col += galaxy(d, galD1, 0.028, 0.56, 2.4, 0.24);
     col += barredGalaxy(d, galD2, 0.036, -0.52, 1.6, 0.25);
-    #ifndef LITE
+    #if !defined(LITE) && !defined(STUDY_FAST)
     col += ringGalaxy(d, vec3(-0.3714, 0.4457, 0.8146), 0.022, 0.42, 1.5, 0.25);
     col += galaxy(d, vec3(0.2981, -0.3875, 0.8724), 0.036, 0.28, 5.8, 0.21);
     col += starCluster(d, vec3(0.6644, 0.2488, -0.7049), 0.030, 0.28);
@@ -431,15 +437,41 @@ export const holeFragment = /* glsl */ `
   }
 
   // ---- 吸积盘 ----
+  float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+
+  float noise2(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash12(i), hash12(i + vec2(1.0, 0.0)), u.x),
+      mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), u.x),
+      u.y
+    );
+  }
+
   float fbm2(vec2 p) {
     float v = 0.0;
     float a = 0.5;
-    for (int i = 0; i < 4; i++) {
-      v += a * noise3(vec3(p, 0.5));
+    #if defined(LITE) || defined(STUDY_FAST)
+    const int OCT = 3;
+    #else
+    const int OCT = 4;
+    #endif
+    for (int i = 0; i < OCT; i++) {
+      v += a * noise2(p);
       p = p * 2.03 + 7.1;
       a *= 0.5;
     }
     return v;
+  }
+
+  float fbm2lo(vec2 p) {
+    return 0.5 * noise2(p) + 0.25 * noise2(p * 2.03 + 7.1);
   }
 
   // 多普勒相对论聚束（Relativistic Beaming）：朝镜头转过来的一侧更亮、偏蓝白，远离的一侧深邃偏红
@@ -459,7 +491,7 @@ export const holeFragment = /* glsl */ `
     float a = atan(q.y, q.x);
     float spiral = a + 2.2 * log(max(r / RIN, 1.001));
     float streak = fbm2(vec2(r * 2.8, 0.0) + vec2(cos(spiral), sin(spiral)) * 1.55 + q * 0.25);
-    float fine = fbm2(q * 2.4 + seedOffset * 3.7);
+    float fine = fbm2lo(q * 2.4 + seedOffset * 3.7);
     return pow(streak, 1.35) * (0.52 + 0.62 * fine);
   }
 
@@ -566,14 +598,23 @@ export const holeFragment = /* glsl */ `
     float hitDist = -1.0;
 
     float b = sqrt(h2);
-    bool far = hideHole || b > 16.5;
+    float r0 = length(pos);
+    bool away = r0 > 16.5 && dot(pos, rd) >= 0.0;
+    bool far = hideHole || b > 16.5 || away;
     if (!hideHole && far) {
       vec3 toHole = normalize(-pos);
-      float bend = (1.0 + dot(rd, toHole)) / b;
-      vec3 perp = toHole - rd * dot(toHole, rd);
+      float c = dot(rd, toHole);
+      float bend = away ? b / (r0 * r0 * max(1.0 - c, 1.0)) : (1.0 + c) / b;
+      vec3 perp = toHole - rd * c;
       float pl = length(perp);
       if (pl > 1e-5) rd = normalize(rd * cos(bend) + perp / pl * sin(bend));
-      minR = b;
+      minR = away ? r0 : b;
+    }
+
+    // 解析边界球快进：若摄像机在 16.5 Rs 强引力球外，直接沿射线跳到球面入口，省去十余步真空步进
+    if (!far && r0 > 16.5) {
+      float tEnter = max(-dot(pos, rd) - sqrt(max(16.5 * 16.5 - h2, 0.0)), 0.0);
+      pos += rd * tEnter;
     }
 
     for (int i = 0; i < STEPS; i++) {
@@ -585,7 +626,11 @@ export const holeFragment = /* glsl */ `
         minR = r;
         closestPos = pos;
       }
+      #ifdef STUDY_FAST
+      float dt = r > 12.0 ? clamp(0.14 * r, 0.65, 3.2) : clamp(0.088 * r, 0.035, 1.6);
+      #else
       float dt = r > 14.5 ? clamp(0.12 * r, 0.5, 4.5) : clamp(0.068 * r, 0.02, 1.6);
+      #endif
       vec3 next = pos + rd * dt;
       float invR2 = invR * invR;
       rd += -1.5 * h2 * pos * (invR2 * invR2 * invR) * dt;
@@ -622,7 +667,12 @@ export const holeFragment = /* glsl */ `
         swallowed = true;
         break;
       }
-      if (r > 24.0 && dot(pos, rd) > 0.0 && rr > width * 3.5) {
+      #if defined(STUDY_FAST) || defined(LITE)
+      float escR = 17.5;
+      #else
+      float escR = 19.5;
+      #endif
+      if (r > escR && dot(pos, rd) > 0.0 && rr > width * 3.5) {
         rd -= 0.5 * h2 * pos * (invR2 * invR2);
         break;
       }
@@ -706,6 +756,7 @@ export const holeFragment = /* glsl */ `
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
 
+    #ifndef NO_FRAG_DEPTH
     float holeDist = length((uCamPos - uHoleCenter) / holeScale);
     float blockDist = (swallowed || minR < 1.75)
       ? (hitDist > 0.0 ? min(hitDist + 1.2, holeDist) : holeDist)
@@ -716,6 +767,7 @@ export const holeFragment = /* glsl */ `
     } else {
       gl_FragDepth = 1.0;
     }
+    #endif
   }
 `;
 

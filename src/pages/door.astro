@@ -3,9 +3,30 @@
 // 空间站、变成绕黑洞的自由视角（可以一直转到正上方俯视）；双击回到甲板。
 // 点黑洞（或引线上的文字）俯冲进去，落到思维导图首页；五个分类各是一个绕黑洞运行的探测器，点了直接去那个分类。
 // 每个会话第一次打开首页时会被送到这里（判断写在 BaseLayout 的首帧脚本里）
-import { site, branches } from '../config/site';
-import { getPublished, formatDate, entryCover, thumbUrl, type ContentKind } from '../lib/content';
-import { AZIMUTH_LABELS, STAR_NODES } from '../door/starmap';
+import { getCollection } from 'astro:content';
+import { site, branches, games as fallbackGames, palettes, profile } from '../config/site';
+import KindIcon from '../components/KindIcon.astro';
+import {
+  getPublished,
+  getAllPublished,
+  getGames,
+  getNotices,
+  getLatestNotice,
+  formatDate,
+  entryCover,
+  entryHref,
+  isPinned,
+  noticeHref,
+  noticeType,
+  plainText,
+  tagCounts,
+  thumbUrl,
+  type ContentKind,
+} from '../lib/content';
+import { AZIMUTH_LABELS, DOOR_STAR_NODES } from '../door/starmap';
+import galleryRaw from '../content/gallery.json';
+import bookColorsRaw from '../room/book-colors.json';
+import type { BranchKey, HotspotId, RoomPayload } from '../room/types';
 import '../styles/warp.css';
 
 // 五个探测器的信标色与轨道遥测参数（与 scene.ts 的 PROBE_ORBITS / PROBE_BEACONS 严格对应）
@@ -46,6 +67,175 @@ const tags = [
   { id: 'hole', text: '穿越黑洞来到基地', href: '/', sub: 'EVENT HORIZON' },
   { id: 'base', text: '基地', href: '', sub: 'BASE' },
   ...branches.map((b) => ({ id: b.key, text: b.label, href: b.href, sub: b.key.toUpperCase() })),
+];
+
+// ---- 嵌入 3D 基地书房构建期数据（文章 1:1 实体书本 + 游戏大厅 + 公告 + 画廊 + 标签 + 关于） ----
+const bookColors = bookColorsRaw as Record<string, string>;
+
+const SHELF_HOTSPOT_MAP: Record<ContentKind, HotspotId> = {
+  project: 'shelf-project',
+  tool: 'shelf-tool',
+  explore: 'shelf-explore',
+  daily: 'shelf-daily',
+  xiaomeng: 'shelf-xiaomeng',
+};
+
+const FALLBACK_COLORS: Record<ContentKind, string> = {
+  project: '#4e6b8a',
+  tool: '#5e7a68',
+  explore: '#6c5b8c',
+  daily: '#b87a56',
+  xiaomeng: '#c985a8',
+};
+
+function extractHeadings(body = ''): string[] {
+  const out: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    const m = line.match(/^\s*##\s+(.+?)\s*$/);
+    if (m) {
+      out.push(m[1].replace(/[*_`~]/g, '').trim());
+      if (out.length >= 6) break;
+    }
+  }
+  return out;
+}
+
+function buildExcerpt(body = ''): string {
+  const cleaned = body
+    .replace(/^\s*#\s+.*$/m, '')
+    .replace(/^\s*>\s*.*$/gm, '')
+    .trim();
+  const txt = plainText(cleaned);
+  return txt.length > 260 ? `${txt.slice(0, 260)}……` : txt;
+}
+
+const roomBranches = await Promise.all(
+  branches.map(async (b) => {
+    const kind = b.key as ContentKind;
+    const entries = await getPublished(kind);
+    return {
+      key: b.key as BranchKey,
+      hotspotId: SHELF_HOTSPOT_MAP[kind],
+      label: b.label,
+      desc: b.desc,
+      href: b.href,
+      total: entries.length,
+      books: entries.map((entry) => {
+        const key = `${kind}/${entry.data.slug}`;
+        const rawCover = entryCover(entry);
+        return {
+          id: key,
+          kind: kind as BranchKey,
+          categoryLabel: b.label,
+          title: entry.data.title,
+          summary: entry.data.summary,
+          excerpt: buildExcerpt(entry.body),
+          headings: extractHeadings(entry.body),
+          date: formatDate(entry.data.publishedAt),
+          at: entry.data.publishedAt.toISOString(),
+          href: entryHref(kind, entry.data.slug),
+          cover: thumbUrl(rawCover),
+          coverColor: bookColors[key] ?? FALLBACK_COLORS[kind],
+          tags: [...entry.data.tags.slice(0, 4)],
+        };
+      }),
+    };
+  }),
+);
+
+const collectionGames = await getGames();
+const roomGames =
+  collectionGames.length > 0
+    ? collectionGames.map((entry, idx) => ({
+        id: String(idx + 1).padStart(2, '0'),
+        title: entry.data.title,
+        summary: entry.data.summary,
+        tag: entry.data.tags.slice(0, 2).join(' / ') || '小游戏',
+        href: entry.data.play ?? '/game/',
+      }))
+    : fallbackGames.map((g) => ({
+        id: g.id,
+        title: g.title,
+        summary: g.summary,
+        tag: g.tag,
+        href: g.href || '/game/',
+      }));
+
+const roomNoticeEntries = await getNotices();
+const latestNotice = await getLatestNotice();
+const roomNotices = roomNoticeEntries.slice(0, 6).map((entry) => ({
+  title: entry.data.title,
+  summary: entry.data.summary,
+  date: formatDate(entry.data.publishedAt),
+  at: entry.data.publishedAt.toISOString(),
+  href: noticeHref(entry.data.slug),
+  pinned: isPinned(entry),
+  type: noticeType(entry),
+}));
+
+const roomGallery = galleryRaw.map((item) => ({
+  id: item.id,
+  title: item.title,
+  summary: item.summary,
+  category: item.category,
+  src: item.src,
+  thumb: thumbUrl(item.src) ?? item.src,
+  cutout: 'cutout' in item ? Boolean(item.cutout) : false,
+}));
+
+const allPublished = await getAllPublished();
+const roomTags = tagCounts(allPublished.map((x) => x.entry))
+  .slice(0, 18)
+  .map((item) => ({
+    tag: item.tag,
+    count: item.count,
+    href: `/tags/${encodeURIComponent(item.tag)}/`,
+  }));
+
+const profileDocs = await getCollection('profile');
+const introDoc = profileDocs.find((d) => d.id === 'my_introduction') ?? profileDocs[0];
+const introText = plainText(
+  (introDoc?.body ?? '')
+    .replace(/^\s*#\s+.*$/m, '')
+    .replace(/^\s*>\s*.*$/gm, '')
+    .trim(),
+).slice(0, 140);
+
+const roomPayload: RoomPayload = {
+  branches: roomBranches,
+  games: roomGames,
+  notices: roomNotices,
+  latestNoticeAt: latestNotice?.data.publishedAt.toISOString(),
+  gallery: roomGallery,
+  tags: roomTags,
+  profile: {
+    name: profile.name,
+    bio: profile.bio,
+    avatar: thumbUrl(profile.avatar) ?? profile.avatar,
+    skills: [...(introDoc?.data.skills ?? [])],
+    links: profile.links.map((l) => ({ label: l.label })),
+    intro: introText,
+  },
+  site: {
+    name: site.name,
+    tagline: site.tagline,
+  },
+};
+
+const shelfNav: { target: HotspotId; label: string; icon: 'project' | 'tool' | 'explore' | 'daily' | 'xiaomeng' }[] = [
+  { target: 'shelf-project', label: '项目', icon: 'project' },
+  { target: 'shelf-tool', label: '工具', icon: 'tool' },
+  { target: 'shelf-explore', label: '探究', icon: 'explore' },
+  { target: 'shelf-daily', label: '日常', icon: 'daily' },
+  { target: 'shelf-xiaomeng', label: '小萌', icon: 'xiaomeng' },
+];
+
+const featureNav: { target: HotspotId; label: string; icon: 'game' | 'notice' | 'gallery' | 'tags' | 'about' }[] = [
+  { target: 'tv-game', label: '游戏', icon: 'game' },
+  { target: 'calendar-notice', label: '公告', icon: 'notice' },
+  { target: 'gallery-wall', label: '画廊', icon: 'gallery' },
+  { target: 'board-tags', label: '标签', icon: 'tags' },
+  { target: 'desk-about', label: '关于', icon: 'about' },
 ];
 
 // 开场天球星图背景（构建期确定性生成，运行期零重绘开销）
@@ -323,6 +513,12 @@ const warpGalaxies = [
       } catch (e) {
         /* 隐私模式写不进去也无妨，最多下次再看一遍门户 */
       }
+      try {
+        var savedPal = localStorage.getItem('nn-palette');
+        document.documentElement.dataset.palette = savedPal || 'ink';
+      } catch (e) {
+        document.documentElement.dataset.palette = 'ink';
+      }
     </script>
   </head>
   <body>
@@ -585,7 +781,7 @@ const warpGalaxies = [
     <div class="starmap-layer" data-starmap-layer data-mode="deck">
       <svg class="callout starmap-callout" aria-hidden="true">
         {
-          STAR_NODES.map((n) => (
+          DOOR_STAR_NODES.map((n) => (
             <g>
               <polyline class="callout__line" data-star-line={n.id} points="0,0 0,0" style={`stroke: ${n.color}`} />
               <circle class="callout__dot" data-star-dot={n.id} r={n.kind === 'hub' ? 4.5 : 3} style={`stroke: ${n.color}`} />
@@ -594,7 +790,7 @@ const warpGalaxies = [
         }
       </svg>
       {
-        STAR_NODES.map((n) => (
+        DOOR_STAR_NODES.map((n) => (
           <button
             type="button"
             class:list={['callout__label', 'starmap-label', n.kind === 'hub' && 'starmap-label--hub']}
@@ -919,6 +1115,7 @@ const warpGalaxies = [
       .veil {
         position: fixed;
         inset: 0;
+        z-index: 25;
         background: #000;
         opacity: 0;
         pointer-events: none;
@@ -1102,11 +1299,16 @@ const warpGalaxies = [
         background: rgba(143, 212, 255, 0.8);
       }
 
-      /* 斯隆长城主星图视图右上角留空；其余过渡/停靠/跃迁状态收起微缩窗 */
+      /* 斯隆长城主星图视图右上角留空；其余过渡/停靠/跃迁/书房状态收起微缩窗 */
       .starmap-mini[data-mode='starmap'],
       .starmap-mini[data-mode='enteringMap'],
       .starmap-mini[data-mode='leavingMap'],
+      .starmap-mini[data-mode='leavingStudyToMap'],
+      .starmap-mini[data-mode='flyingStudyToBh'],
       .starmap-mini[data-mode='flyingGalaxy'],
+      .starmap-mini[data-mode='flyingStudy'],
+      .starmap-mini[data-mode='study'],
+      .starmap-mini[data-mode='studyScope'],
       .starmap-mini[data-mode='docking'],
       .starmap-mini[data-mode='docked'],
       .starmap-mini[data-mode='undocking'],
@@ -1206,6 +1408,11 @@ const warpGalaxies = [
       .starmap-scale[data-mode='warping'],
       .starmap-scale[data-mode='diving'],
       .starmap-scale[data-mode='flyingGalaxy'],
+      .starmap-scale[data-mode='flyingStudy'],
+      .starmap-scale[data-mode='study'],
+      .starmap-scale[data-mode='studyScope'],
+      .starmap-scale[data-mode='flyingStudyToBh'],
+      .starmap-scale[data-mode='leavingStudyToMap'],
       .starmap-scale[data-mode='galaxy'] {
         opacity: 0;
         pointer-events: none;
@@ -1473,6 +1680,7 @@ const warpGalaxies = [
       .callout__label--hole {
         font-size: 0.95rem;
         letter-spacing: 0.22em;
+        text-shadow: 0 1px 10px rgba(2, 4, 12, 0.92);
       }
 
       .callout__label--quiet {
@@ -2423,10 +2631,21 @@ const warpGalaxies = [
         transition: opacity var(--door-dur);
       }
 
-      /* 穿越视界时不留在画面上 */
+      /* 穿越视界与书房/望远镜模式时不留在画面上 */
       .guide[data-mode='diving'],
-      .guide[data-mode='warping'] {
+      .guide[data-mode='warping'],
+      .guide[data-mode='flyingStudy'],
+      .guide[data-mode='study'],
+      .guide[data-mode='studyScope'] {
         opacity: 0;
+        pointer-events: none;
+      }
+
+      :global(html[data-door-mode='flyingStudy']) .hud,
+      :global(html[data-door-mode='study']) .hud,
+      :global(html[data-door-mode='studyScope']) .hud {
+        opacity: 0;
+        pointer-events: none;
       }
 
       .guide__item {
@@ -2485,26 +2704,34 @@ const warpGalaxies = [
 
       .guide[data-mode='starmap'] .guide__desc--base,
       .guide[data-mode='enteringMap'] .guide__desc--base,
+      .guide[data-mode='leavingStudyToMap'] .guide__desc--base,
       .guide[data-mode='starmap'] .guide__title--base,
       .guide[data-mode='enteringMap'] .guide__title--base,
+      .guide[data-mode='leavingStudyToMap'] .guide__title--base,
       .guide[data-mode='galaxy'] .guide__desc--base,
       .guide[data-mode='flyingGalaxy'] .guide__desc--base,
+      .guide[data-mode='flyingStudyToBh'] .guide__desc--base,
       .guide[data-mode='galaxy'] .guide__title--base,
-      .guide[data-mode='flyingGalaxy'] .guide__title--base {
+      .guide[data-mode='flyingGalaxy'] .guide__title--base,
+      .guide[data-mode='flyingStudyToBh'] .guide__title--base {
         display: none;
       }
 
       .guide[data-mode='starmap'] .guide__desc--map,
       .guide[data-mode='enteringMap'] .guide__desc--map,
+      .guide[data-mode='leavingStudyToMap'] .guide__desc--map,
       .guide[data-mode='starmap'] .guide__title--map,
-      .guide[data-mode='enteringMap'] .guide__title--map {
+      .guide[data-mode='enteringMap'] .guide__title--map,
+      .guide[data-mode='leavingStudyToMap'] .guide__title--map {
         display: block;
       }
 
       .guide[data-mode='galaxy'] .guide__desc--galaxy,
       .guide[data-mode='flyingGalaxy'] .guide__desc--galaxy,
+      .guide[data-mode='flyingStudyToBh'] .guide__desc--galaxy,
       .guide[data-mode='galaxy'] .guide__title--galaxy,
-      .guide[data-mode='flyingGalaxy'] .guide__title--galaxy {
+      .guide[data-mode='flyingGalaxy'] .guide__title--galaxy,
+      .guide[data-mode='flyingStudyToBh'] .guide__title--galaxy {
         display: block;
       }
 
@@ -2844,17 +3071,250 @@ const warpGalaxies = [
       }
     </style>
 
-    <script>
-      import { mountDoor, supportsWebGL2 } from '../door/scene';
-      import { AZIMUTH_LABELS, STAR_NODES } from '../door/starmap';
+    <!-- 嵌入的 3D 基地书房 UI 浮层（共享门户同一条 WebGL 渲染管线与背景紫粉黑洞，零双画布） -->
+    <section class="room" data-room-stage hidden aria-label="诺诺的 3D 基地书房">
+      <!-- 望远镜光学目镜 HUD：聚焦观测窗外同一尊紫粉黑洞 -->
+      <div class="scope-hud" data-scope-hud hidden data-phase="hidden" role="region" aria-label="望远镜光学目镜">
+        <div class="scope-hud__mask" aria-hidden="true"></div>
+        <div class="scope-hud__reticle" aria-hidden="true">
+          <span class="scope-hud__ring scope-hud__ring--outer"></span>
+          <span class="scope-hud__ring scope-hud__ring--inner"></span>
+          <span class="scope-hud__axis scope-hud__axis--h"></span>
+          <span class="scope-hud__axis scope-hud__axis--v"></span>
+        </div>
+        <div class="scope-hud__actions">
+          <button class="scope-hud__btn" type="button" data-scope-exit>← 离开目镜</button>
+          <button class="scope-hud__btn scope-hud__btn--accent" type="button" data-scope-approach>抵近黑洞跃迁 →</button>
+        </div>
+      </div>
 
-      // 开场加载画面的进度（定义在页面开头的内联脚本里）。
-      // 跑到这里说明 three.js 和场景脚本已经下载并执行了
+      <!-- 极简深空悬浮提示条：家具仅写纯功能名，单本书仅写单行截断文章标题 -->
+      <div class="room-tip" data-room-tip hidden aria-hidden="true">
+        <span class="room-tip__c room-tip__c--tl"></span>
+        <span class="room-tip__c room-tip__c--tr"></span>
+        <span class="room-tip__c room-tip__c--bl"></span>
+        <span class="room-tip__c room-tip__c--br"></span>
+        <span class="room-tip__dot" data-tip-dot></span>
+        <span class="room-tip__text" data-tip-text></span>
+      </div>
+
+      <!-- 3D 纸质墨色摊开书本阅读册（左页含 50/50 合上与查看按钮，右页零滚动条呈现封面与摘要节选） -->
+      <div class="book-modal" data-book-modal hidden role="dialog" aria-modal="true" aria-labelledby="book-spread-title">
+        <div class="book-modal__scrim" data-book-close></div>
+        <article class="book-spread" data-book-spread>
+          <span class="book-spread__corner book-spread__corner--tl" aria-hidden="true"></span>
+          <span class="book-spread__corner book-spread__corner--tr" aria-hidden="true"></span>
+          <span class="book-spread__corner book-spread__corner--bl" aria-hidden="true"></span>
+          <span class="book-spread__corner book-spread__corner--br" aria-hidden="true"></span>
+          <button class="book-close-x" type="button" data-book-close aria-label="合上书本">×</button>
+
+          <div class="book-page book-page--left">
+            <div class="book-endpaper-band" data-book-band aria-hidden="true"></div>
+            <div class="book-left-inner">
+              <div class="book-seal-row">
+                <span class="book-seal" data-book-cat></span>
+                <time class="book-date" data-book-date></time>
+              </div>
+
+              <h2 class="book-title" id="book-spread-title" data-book-title></h2>
+
+              <div class="book-tags" data-book-tags></div>
+
+              <div class="book-toc">
+                <div class="book-toc__head">
+                  <span class="book-toc__label">CONTENTS // 目录</span>
+                  <span class="book-toc__rule" aria-hidden="true"></span>
+                </div>
+                <ol class="book-toc__list" data-book-toc></ol>
+              </div>
+
+              <footer class="book-left-foot">
+                <button class="book-action book-action--back" type="button" data-book-close>
+                  ← 合上放回书架
+                </button>
+                <a class="book-action book-action--read" data-book-href href="/">
+                  查看完整内容 →
+                </a>
+              </footer>
+            </div>
+          </div>
+
+          <div class="book-spine-crease" aria-hidden="true"></div>
+
+          <div class="book-page book-page--right">
+            <div class="book-right-content">
+              <figure class="book-cover-wrap" data-book-cover-wrap>
+                <img class="book-cover" data-book-cover alt="" />
+              </figure>
+
+              <blockquote class="book-summary" data-book-summary></blockquote>
+
+              <div class="book-excerpt-wrap">
+                <p class="book-excerpt" data-book-excerpt></p>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- 聚焦家具时的极简深空一行直达条（点击家具/底栏后停留在目标视角展示此入口） -->
+      <div class="room-go" data-room-go hidden>
+        <button class="room-go__back" type="button" data-room-go-back>⇠ 返回房间全景</button>
+        <a class="room-go__link" data-room-go-link href="/">进入 →</a>
+      </div>
+
+      <!-- 黑暗宇宙主题底部功能导航栏（纯功能切换 + 色板 + 斯隆长城 + 观测甲板 + 思维导图） -->
+      <nav class="room-dock" aria-label="书房功能导航">
+        <span class="room-dock__c room-dock__c--tl" aria-hidden="true"></span>
+        <span class="room-dock__c room-dock__c--tr" aria-hidden="true"></span>
+        <span class="room-dock__c room-dock__c--bl" aria-hidden="true"></span>
+        <span class="room-dock__c room-dock__c--br" aria-hidden="true"></span>
+
+        <div class="room-dock__nav">
+          <button
+            class="room-dock__item"
+            type="button"
+            data-room-focus="overview"
+            aria-pressed="true"
+          >
+            <svg class="room-dock__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 7.5 12 3l8 4.5V17l-8 4.5L4 17z"></path>
+              <path d="M12 3v9.5M12 12.5 4 17M12 12.5l8 4.5"></path>
+            </svg>
+            <span>全景</span>
+          </button>
+
+          <span class="room-dock__sep" aria-hidden="true"></span>
+
+          {
+            shelfNav.map((item) => (
+              <button
+                class="room-dock__item"
+                type="button"
+                data-room-focus={item.target}
+                aria-pressed="false"
+              >
+                <KindIcon name={item.icon} class="room-dock__icon" />
+                <span>{item.label}</span>
+              </button>
+            ))
+          }
+
+          <span class="room-dock__sep" aria-hidden="true"></span>
+
+          {
+            featureNav.map((item) => (
+              <button
+                class="room-dock__item"
+                type="button"
+                data-room-focus={item.target}
+                aria-pressed="false"
+              >
+                <KindIcon name={item.icon} class="room-dock__icon" />
+                <span>{item.label}</span>
+                {item.target === 'calendar-notice' && latestNotice && (
+                  <span class="room-dock__dot" data-new-since={latestNotice.data.publishedAt.toISOString()} hidden />
+                )}
+              </button>
+            ))
+          }
+        </div>
+
+        <div class="room-dock__tools">
+          <div class="room-dock__palette">
+            <button
+              class="room-dock__tool"
+              data-room-palette-toggle
+              type="button"
+              aria-label="切换主题色"
+              title="切换主题色"
+              aria-expanded="false"
+              aria-controls="room-palette-menu"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4H19a2 2 0 0 0 2-2 9 9 0 0 0-9-8z"></path>
+                <circle cx="7.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                <circle cx="10.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"></circle>
+                <circle cx="15" cy="8.5" r="1.1" fill="currentColor" stroke="none"></circle>
+              </svg>
+            </button>
+
+            <div class="room-palette__menu" id="room-palette-menu" data-room-palette-menu role="menu" hidden>
+              <span class="room-palette__caret" aria-hidden="true"></span>
+              {
+                palettes.map((item) => (
+                  <button
+                    class="room-palette__item"
+                    type="button"
+                    role="menuitemradio"
+                    data-room-palette-set={item.key}
+                    aria-checked="false"
+                  >
+                    <span class="room-palette__dot" style={`--dot: ${item.dot}`} aria-hidden="true" />
+                    <span class="room-palette__name">{item.label}</span>
+                    <svg class="room-palette__tick" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 8.5 6.5 12 13 4"></path>
+                    </svg>
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+
+          <button class="room-dock__tool" type="button" data-room-to-starmap aria-label="返回斯隆长城星图" title="返回斯隆长城星图">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="6" cy="7" r="1.5" fill="currentColor" stroke="none"></circle>
+              <circle cx="18" cy="6" r="1.5" fill="currentColor" stroke="none"></circle>
+              <circle cx="13" cy="14" r="1.8" fill="currentColor" stroke="none"></circle>
+              <circle cx="7" cy="18" r="1.4" fill="currentColor" stroke="none"></circle>
+              <path d="M6 7l7 7 5-8M13 14l-6 4"></path>
+            </svg>
+          </button>
+
+          <button class="room-dock__tool" type="button" data-room-to-deck aria-label="观测甲板 · 前往黑洞跃迁" title="观测甲板 · 前往黑洞">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="6.4"></circle>
+              <path d="M1.6 12a10.4 3.4 0 0 0 20.8 0" transform="rotate(-22 12 12)"></path>
+            </svg>
+          </button>
+
+          <span class="room-dock__sep room-dock__sep--tight" aria-hidden="true"></span>
+
+          <a class="room-dock__tool" data-room-to-home href="/" aria-label="切换为思维导图主页" title="切换为思维导图主页">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="9" width="5.5" height="6" rx="1.2"></rect>
+              <rect x="15.5" y="3.5" width="5.5" height="4" rx="1"></rect>
+              <rect x="15.5" y="10" width="5.5" height="4" rx="1"></rect>
+              <rect x="15.5" y="16.5" width="5.5" height="4" rx="1"></rect>
+              <path d="M8.5 12h7M12 12V5.5h3.5M12 12v6.5h3.5"></path>
+            </svg>
+          </a>
+        </div>
+      </nav>
+
+      <script id="room-payload" type="application/json" is:inline set:html={JSON.stringify(roomPayload)} />
+    </section>
+
+    <script>
+      import { travel } from '../door/loader';
+      import { mountDoor, supportsWebGL2, type DoorController } from '../door/scene';
+      import { AZIMUTH_LABELS, DOOR_STAR_NODES } from '../door/starmap';
+      import type { FocusTarget, HotspotMeta, HoverPayload, RoomBook, RoomPayload } from '../room/types';
+
       type Boot = { reach: (value: number, nextCap?: number) => void; done: () => void };
       const boot = (window as unknown as { __boot?: Boot }).__boot;
       boot?.reach(0.45, 0.66);
 
       const pick = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
+      const loaderUI = {
+        root: pick<HTMLElement>('[data-warp]'),
+        fill: pick<HTMLElement>('[data-warp-fill]'),
+        label: pick<HTMLElement>('[data-warp-label]'),
+        pct: pick<HTMLElement>('[data-warp-pct]'),
+        stage: pick<HTMLElement>('[data-warp-stage]'),
+        telemetry: pick<HTMLElement>('[data-warp-telemetry]'),
+        status: pick<HTMLElement>('[data-warp-status]'),
+      };
       const tag = (id: string) => ({
         line: pick<SVGPolylineElement>(`[data-tag-line="${id}"]`),
         dot: pick<SVGCircleElement>(`[data-tag-dot="${id}"]`),
@@ -2865,7 +3325,6 @@ const warpGalaxies = [
         dot: pick<SVGCircleElement>(`[data-star-dot="${id}"]`),
         label: pick<HTMLElement>(`[data-star-label="${id}"]`),
       });
-      // 顺序要和 scene.ts 里的 PROBE_ORBITS 对应：由近到远
       const probes = ['project', 'tool', 'explore', 'daily', 'xiaomeng'].map((key) => ({
         key,
         label: pick<HTMLElement>(`[data-terminal="${key}"] .terminal__title`).textContent ?? key,
@@ -2874,8 +3333,315 @@ const warpGalaxies = [
         terminal: pick<HTMLElement>(`[data-terminal="${key}"]`),
       }));
 
+      const roomStage = pick<HTMLElement>('[data-room-stage]');
+      const roomDock = roomStage.querySelector<HTMLElement>('.room-dock');
+      const scopeHud = roomStage.querySelector<HTMLElement>('[data-scope-hud]');
+      const startInStudy = location.hash === '#study';
+      let doorReady = false;
+      let roomReady = !startInStudy;
+
+      let doorController: DoorController | null = null;
+      let focusedTarget: FocusTarget = 'overview';
+
+      const checkBootReady = () => {
+        if (doorReady && roomReady) {
+          boot?.done();
+        }
+      };
+
+      const escapeHtml = (text: string): string =>
+        text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+      const tipEl = roomStage.querySelector<HTMLElement>('[data-room-tip]');
+      const tipText = roomStage.querySelector<HTMLElement>('[data-tip-text]');
+      const goWrap = roomStage.querySelector<HTMLElement>('[data-room-go]');
+      const goBackBtn = roomStage.querySelector<HTMLButtonElement>('[data-room-go-back]');
+      const goLink = roomStage.querySelector<HTMLAnchorElement>('[data-room-go-link]');
+
+      const bookModal = roomStage.querySelector<HTMLElement>('[data-book-modal]');
+      const bookSpread = roomStage.querySelector<HTMLElement>('[data-book-spread]');
+      const bookCat = roomStage.querySelector<HTMLElement>('[data-book-cat]');
+      const bookDate = roomStage.querySelector<HTMLElement>('[data-book-date]');
+      const bookTitle = roomStage.querySelector<HTMLElement>('[data-book-title]');
+      const bookTags = roomStage.querySelector<HTMLElement>('[data-book-tags]');
+      const bookToc = roomStage.querySelector<HTMLElement>('[data-book-toc]');
+      const bookCoverWrap = roomStage.querySelector<HTMLElement>('[data-book-cover-wrap]');
+      const bookCover = roomStage.querySelector<HTMLImageElement>('[data-book-cover]');
+      const bookSummary = roomStage.querySelector<HTMLElement>('[data-book-summary]');
+      const bookExcerpt = roomStage.querySelector<HTMLElement>('[data-book-excerpt]');
+      const bookHref = roomStage.querySelector<HTMLAnchorElement>('[data-book-href]');
+      const bookCloseEls = [...roomStage.querySelectorAll<HTMLElement>('[data-book-close]')];
+      const dockBtns = [...roomStage.querySelectorAll<HTMLButtonElement>('[data-room-focus]')];
+
+      // 公告红点 24h 内亮起
+      const noticeDot = roomStage.querySelector<HTMLElement>('[data-new-since]');
+      if (noticeDot?.dataset.newSince) {
+        const ts = Date.parse(noticeDot.dataset.newSince);
+        noticeDot.hidden = !(ts > 0 && Date.now() - ts < 24 * 60 * 60 * 1000);
+      }
+
+      const updateDockActive = (targetId: FocusTarget) => {
+        focusedTarget = targetId;
+        dockBtns.forEach((btn) => {
+          btn.setAttribute('aria-pressed', btn.dataset.roomFocus === targetId ? 'true' : 'false');
+        });
+      };
+
+      const showGoPill = (meta: HotspotMeta | null) => {
+        if (!goWrap || !goLink) return;
+        if (!meta) {
+          goWrap.hidden = true;
+          delete goLink.dataset.label;
+          return;
+        }
+        goLink.href = meta.id === 'scope-door' ? '#scope' : meta.href;
+        goLink.textContent = meta.id === 'scope-door' ? '望远镜观测黑洞 →' : `进入${meta.label} →`;
+        goLink.dataset.label = meta.label;
+        goWrap.hidden = false;
+      };
+
+      const syncHover = (info: HoverPayload | null, clientX: number, clientY: number) => {
+        if (!tipEl || !tipText) return;
+        if (!info) {
+          tipEl.hidden = true;
+          return;
+        }
+        tipText.textContent = info.label;
+        if (info.color) {
+          tipEl.style.setProperty('--tip-color', info.color);
+        } else {
+          tipEl.style.removeProperty('--tip-color');
+        }
+        const x = Math.min(window.innerWidth - 240, Math.max(12, clientX + 14));
+        const y = Math.min(window.innerHeight - 60, Math.max(12, clientY - 36));
+        tipEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+        tipEl.hidden = false;
+      };
+
+      let closeBookTimer = 0;
+      const populateBookModal = (book: RoomBook) => {
+        if (
+          !bookSpread ||
+          !bookCat ||
+          !bookDate ||
+          !bookTitle ||
+          !bookTags ||
+          !bookToc ||
+          !bookCoverWrap ||
+          !bookCover ||
+          !bookSummary ||
+          !bookExcerpt ||
+          !bookHref
+        ) {
+          return;
+        }
+        bookSpread.style.setProperty('--book-color', book.coverColor);
+        bookCat.textContent = book.categoryLabel;
+        bookDate.textContent = book.date;
+        bookTitle.textContent = book.title;
+        bookTags.innerHTML = book.tags
+          .map((t) => `<span class="book-tag"># ${escapeHtml(t)}</span>`)
+          .join('');
+
+        if (book.headings.length > 0) {
+          bookToc.innerHTML = book.headings
+            .map(
+              (h, idx) => `<li class="book-toc__item">
+                <span class="book-toc__idx">${String(idx + 1).padStart(2, '0')}</span>
+                <span>${escapeHtml(h)}</span>
+              </li>`,
+            )
+            .join('');
+        } else {
+          bookToc.innerHTML = `<li class="book-toc__item">
+            <span class="book-toc__idx">01</span>
+            <span>正文手记 · 全文一章</span>
+          </li>`;
+        }
+
+        if (book.cover) {
+          bookCover.src = book.cover;
+          bookCover.alt = book.title;
+          bookCoverWrap.hidden = false;
+        } else {
+          bookCoverWrap.hidden = true;
+        }
+
+        bookSummary.textContent = book.summary || book.title;
+        bookExcerpt.textContent = book.excerpt || '点击「查看完整内容」阅读全篇正文与配图。';
+        bookHref.href = book.href;
+      };
+
+      const openBookModal = (book: RoomBook) => {
+        if (!bookModal || !bookSpread) return;
+        if (closeBookTimer) window.clearTimeout(closeBookTimer);
+        populateBookModal(book);
+        bookModal.hidden = false;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            bookSpread.dataset.state = 'open';
+          });
+        });
+      };
+
+      const closeBookModalUI = () => {
+        if (!bookModal || !bookSpread || bookModal.hidden) return;
+        delete bookSpread.dataset.state;
+        if (closeBookTimer) window.clearTimeout(closeBookTimer);
+        closeBookTimer = window.setTimeout(() => {
+          bookModal.hidden = true;
+        }, 260);
+      };
+
+      // 底栏 4 套调色板开关
+      const palToggle = roomStage.querySelector<HTMLButtonElement>('[data-room-palette-toggle]');
+      const palMenu = roomStage.querySelector<HTMLElement>('[data-room-palette-menu]');
+      const palItems = [...roomStage.querySelectorAll<HTMLButtonElement>('[data-room-palette-set]')];
+
+      const syncPaletteMenu = () => {
+        const cur = document.documentElement.dataset.palette || 'ink';
+        palItems.forEach((btn) => {
+          btn.setAttribute('aria-checked', btn.dataset.roomPaletteSet === cur ? 'true' : 'false');
+        });
+      };
+      syncPaletteMenu();
+
+      palToggle?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!palMenu) return;
+        const next = !palMenu.hidden;
+        palMenu.hidden = next;
+        palToggle.setAttribute('aria-expanded', next ? 'false' : 'true');
+      });
+
+      palItems.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.roomPaletteSet || 'ink';
+          document.documentElement.dataset.palette = key;
+          try {
+            localStorage.setItem('nn-palette', key);
+          } catch {
+            /* ignore */
+          }
+          syncPaletteMenu();
+          if (palMenu) palMenu.hidden = true;
+          palToggle?.setAttribute('aria-expanded', 'false');
+        });
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!palMenu || palMenu.hidden) return;
+        if (!roomStage.querySelector('.room-dock__palette')?.contains(e.target as Node)) {
+          palMenu.hidden = true;
+          palToggle?.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      roomStage.querySelector<HTMLButtonElement>('[data-room-to-deck]')?.addEventListener('click', () => {
+        closeBookModalUI();
+        doorController?.approachStudyBlackHole();
+      });
+
+      roomStage.querySelector<HTMLButtonElement>('[data-room-to-starmap]')?.addEventListener('click', () => {
+        closeBookModalUI();
+        doorController?.openStarMapFromStudy();
+      });
+
+      roomStage.querySelector<HTMLButtonElement>('[data-scope-exit]')?.addEventListener('click', () => {
+        doorController?.exitStudyScope();
+      });
+
+      roomStage.querySelector<HTMLButtonElement>('[data-scope-approach]')?.addEventListener('click', () => {
+        doorController?.approachStudyBlackHole();
+      });
+
+      const isPlainClick = (e: MouseEvent) =>
+        e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+
+      let warpingOut = false;
+      const navigateWithWarp = (href: string, title: string) => {
+        if (warpingOut) return;
+        warpingOut = true;
+        closeBookModalUI();
+        if (doorController) {
+          doorController.travelTo(href, title);
+        } else {
+          travel(href, title, loaderUI);
+        }
+      };
+
+      roomStage.querySelector<HTMLAnchorElement>('[data-room-to-home]')?.addEventListener('click', (e) => {
+        if (!isPlainClick(e)) return;
+        e.preventDefault();
+        navigateWithWarp('/', '正在穿越视界 · 前往基地');
+      });
+
+      goBackBtn?.addEventListener('click', () => {
+        closeBookModalUI();
+        doorController?.focusRoom('overview');
+      });
+
+      goLink?.addEventListener('click', (e) => {
+        if (focusedTarget === 'scope-door') {
+          e.preventDefault();
+          doorController?.enterStudyScope();
+          return;
+        }
+        if (!isPlainClick(e)) return;
+        e.preventDefault();
+        const href = goLink.getAttribute('href') || '/';
+        const label = goLink.dataset.label || '目标页';
+        navigateWithWarp(href, href === '/' ? '正在穿越视界 · 前往基地' : `正在穿越视界 · 前往「${label}」`);
+      });
+
+      bookHref?.addEventListener('click', (e) => {
+        if (!isPlainClick(e)) return;
+        e.preventDefault();
+        const href = bookHref.getAttribute('href') || '/';
+        const rawTitle = (bookTitle?.textContent || '').trim();
+        const shortTitle = rawTitle.length > 16 ? `${rawTitle.slice(0, 16)}…` : rawTitle;
+        const label = shortTitle ? `正在穿越视界 · 前往「${shortTitle}」` : '正在穿越视界 · 打开手记';
+        navigateWithWarp(href, label);
+      });
+
+      dockBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const f = btn.dataset.roomFocus as FocusTarget | undefined;
+          if (!f) return;
+          closeBookModalUI();
+          doorController?.focusRoom(f);
+        });
+      });
+
+      bookCloseEls.forEach((el) => {
+        el.addEventListener('click', () => {
+          closeBookModalUI();
+          doorController?.closeRoomBook();
+        });
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && bookModal && !bookModal.hidden) {
+          closeBookModalUI();
+          doorController?.closeRoomBook();
+        }
+      });
+
+      const payloadScript = roomStage.querySelector<HTMLScriptElement>('#room-payload');
+      const roomPayload = payloadScript?.textContent ? (JSON.parse(payloadScript.textContent) as RoomPayload) : null;
+
       if (supportsWebGL2()) {
-        mountDoor({
+        if (startInStudy) {
+          roomStage.hidden = false;
+          if (roomDock) roomDock.hidden = false;
+        }
+
+        doorController = mountDoor({
           canvas: pick<HTMLCanvasElement>('[data-stage]'),
           target: '/',
           veil: pick<HTMLElement>('[data-veil]'),
@@ -2883,11 +3649,62 @@ const warpGalaxies = [
           hole: tag('hole'),
           base: tag('base'),
           probes,
+          initialMode: startInStudy ? 'study' : 'deck',
+          room: roomPayload
+            ? {
+                payload: roomPayload,
+                container: roomStage,
+                onFocusChange: (f, meta) => {
+                  updateDockActive(f);
+                  showGoPill(meta);
+                },
+                onHover: syncHover,
+                onBookOpening: () => {
+                  showGoPill(null);
+                },
+                onBookOpened: (book) => {
+                  openBookModal(book);
+                },
+                onBookClosed: () => {
+                  closeBookModalUI();
+                },
+                onRoomReady: () => {
+                  roomReady = true;
+                  checkBootReady();
+                },
+                onScopePhase: (phase) => {
+                  if (!scopeHud) return;
+                  if (phase === 'eyepiece') {
+                    scopeHud.hidden = false;
+                    scopeHud.dataset.phase = 'eyepiece';
+                  } else {
+                    scopeHud.dataset.phase = phase;
+                    scopeHud.hidden = true;
+                  }
+                },
+                onModeChange: (mode) => {
+                  const showStage = mode === 'flyingStudy' || mode === 'study' || mode === 'studyScope';
+                  roomStage.hidden = !showStage;
+                  if (scopeHud && mode !== 'studyScope') {
+                    scopeHud.dataset.phase = 'hidden';
+                    scopeHud.hidden = true;
+                  }
+                  if (roomDock) roomDock.hidden = mode !== 'study';
+                  if (mode !== 'study') {
+                    closeBookModalUI();
+                    showGoPill(null);
+                    syncHover(null, 0, 0);
+                    if (palMenu) palMenu.hidden = true;
+                    palToggle?.setAttribute('aria-expanded', 'false');
+                  }
+                },
+              }
+            : undefined,
           starmap: {
             miniBtn: pick<HTMLButtonElement>('[data-starmap-mini]'),
             miniCanvas: pick<HTMLCanvasElement>('[data-starmap-preview]'),
             layer: pick<HTMLElement>('[data-starmap-layer]'),
-            nodeTags: STAR_NODES.map((n) => ({ id: n.id, tag: starTag(n.id) })),
+            nodeTags: DOOR_STAR_NODES.map((n) => ({ id: n.id, tag: starTag(n.id) })),
             azimuthLabels: AZIMUTH_LABELS.map((_, i) => pick<HTMLElement>(`[data-azimuth-label="${i}"]`)),
             scaleRoot: pick<HTMLElement>('[data-starmap-scale]'),
             scaleTrack: pick<HTMLElement>('[data-starmap-track]'),
@@ -2896,15 +3713,7 @@ const warpGalaxies = [
             barTitle: pick<HTMLElement>('[data-star-bar-title]'),
             barMeta: pick<HTMLElement>('[data-star-bar-meta]'),
           },
-          loader: {
-            root: pick<HTMLElement>('[data-warp]'),
-            fill: pick<HTMLElement>('[data-warp-fill]'),
-            label: pick<HTMLElement>('[data-warp-label]'),
-            pct: pick<HTMLElement>('[data-warp-pct]'),
-            stage: pick<HTMLElement>('[data-warp-stage]'),
-            telemetry: pick<HTMLElement>('[data-warp-telemetry]'),
-            status: pick<HTMLElement>('[data-warp-status]'),
-          },
+          loader: loaderUI,
           hud: {
             distance: pick<HTMLElement>('[data-distance]'),
             heading: pick<HTMLElement>('[data-heading]'),
@@ -2913,15 +3722,1142 @@ const warpGalaxies = [
             pitchTape: pick<HTMLElement>('[data-pitch-tape]'),
             guide: pick<HTMLElement>('[data-guide]'),
           },
-          // 真实进度里程碑：场景构筑与着色器编译完均上限 95%，待首轮完整画面合成提交后再走完 100% 并揭开
           onProgress: (floor, cap) => boot?.reach(floor, cap),
-          onReady: () => boot?.done(),
+          onReady: () => {
+            doorReady = true;
+            checkBootReady();
+          },
+        });
+
+        window.addEventListener('hashchange', () => {
+          if (location.hash === '#study') {
+            doorController?.enterStudyDirect();
+          }
         });
       } else {
-        // 不支持 WebGL2：没有场景，引线文字原地变成进入链接
         document.documentElement.classList.add('flat');
         boot?.done();
       }
     </script>
+
+    <style>
+      /* ================================================================
+         嵌入的 3D 基地书房与 3D 纸质阅读册样式（黑暗宇宙深空观测站统一视觉）
+         ================================================================ */
+      .room {
+        --room-bg: #04060d;
+        --room-surface: rgba(7, 11, 22, 0.82);
+        --room-surface-solid: #0a1020;
+        --room-ink: #eef3ff;
+        --room-muted: rgba(214, 224, 245, 0.72);
+        --room-faint: rgba(164, 184, 220, 0.5);
+        --room-line: rgba(143, 212, 255, 0.22);
+        --room-line-strong: rgba(143, 212, 255, 0.38);
+        --room-accent: #e0674f;
+        --room-accent-wash: rgba(224, 103, 79, 0.16);
+        --hair: 1px;
+        --dur-1: 160ms;
+        --dur-2: 260ms;
+        --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+        --font-sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+        --font-serif: var(--door-serif);
+        --font-mono: var(--door-mono);
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        overflow: hidden;
+        background: transparent;
+        pointer-events: none;
+        color: var(--room-ink);
+        user-select: none;
+        opacity: 1;
+        transition: opacity 650ms var(--ease-out);
+      }
+
+      :global(:root[data-palette='moss']) .room {
+        --room-accent: #79c496;
+        --room-accent-wash: rgba(121, 196, 150, 0.16);
+      }
+      :global(:root[data-palette='wood']) .room {
+        --room-accent: #e0a15c;
+        --room-accent-wash: rgba(224, 161, 92, 0.16);
+      }
+      :global(:root[data-palette='mist']) .room {
+        --room-accent: #7ba7d8;
+        --room-accent-wash: rgba(123, 167, 216, 0.16);
+      }
+
+      [data-room-stage][hidden],
+      .room [hidden] {
+        display: none !important;
+      }
+
+      .room a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      /* ---- 望远镜光学目镜 HUD ---- */
+      .scope-hud {
+        position: fixed;
+        inset: 0;
+        z-index: 26;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity var(--dur-2) var(--ease-out);
+      }
+
+      .scope-hud[hidden] {
+        display: none;
+      }
+
+      .scope-hud[data-phase='eyepiece'] {
+        opacity: 1;
+      }
+
+      .scope-hud__mask {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at center,
+          transparent 0%,
+          transparent 33%,
+          rgba(3, 4, 10, 0.72) 48%,
+          rgba(2, 3, 8, 0.96) 64%
+        );
+      }
+
+      .scope-hud__reticle {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      .scope-hud__ring {
+        position: absolute;
+        border-radius: 50%;
+        border: var(--hair) solid rgba(216, 180, 254, 0.42);
+      }
+
+      .scope-hud__ring--outer {
+        width: min(64vh, 64vw);
+        height: min(64vh, 64vw);
+      }
+
+      .scope-hud__ring--inner {
+        width: min(26vh, 26vw);
+        height: min(26vh, 26vw);
+        border-style: dashed;
+        border-color: rgba(249, 168, 212, 0.36);
+      }
+
+      .scope-hud__axis {
+        position: absolute;
+        background: rgba(216, 180, 254, 0.22);
+      }
+
+      .scope-hud__axis--h {
+        width: min(74vh, 74vw);
+        height: 1px;
+      }
+
+      .scope-hud__axis--v {
+        width: 1px;
+        height: min(74vh, 74vw);
+      }
+
+      .scope-hud__actions {
+        position: absolute;
+        left: 50%;
+        bottom: 1.6rem;
+        transform: translateX(-50%);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        pointer-events: auto;
+      }
+
+      .scope-hud__btn {
+        padding: 0.52rem 1.05rem;
+        border: var(--hair) solid rgba(216, 180, 254, 0.42);
+        background: rgba(6, 9, 20, 0.84);
+        backdrop-filter: blur(12px);
+        color: var(--room-ink);
+        font-family: var(--font-sans);
+        font-size: 0.82rem;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background var(--dur-1) var(--ease-out),
+          border-color var(--dur-1) var(--ease-out);
+      }
+
+      .scope-hud__btn:hover {
+        border-color: #d8b4fe;
+        background: rgba(216, 180, 254, 0.16);
+      }
+
+      .scope-hud__btn--accent {
+        border-color: var(--room-accent);
+        background: var(--room-accent-wash);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .scope-hud__btn--accent:hover {
+        background: var(--room-accent);
+        border-color: var(--room-accent);
+      }
+
+      /* ---- 极简深空悬浮提示条（家具仅功能名 / 书本仅单行截断标题） ---- */
+      .room-tip {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 32;
+        pointer-events: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        max-width: min(19rem, calc(100vw - 2rem));
+        padding: 0.36rem 0.72rem;
+        border: var(--hair) solid var(--room-line-strong);
+        background: var(--room-surface);
+        backdrop-filter: blur(12px);
+      }
+
+      .room-tip__c {
+        position: absolute;
+        width: 0.34rem;
+        height: 0.34rem;
+        border-color: var(--room-accent);
+        border-style: solid;
+        border-width: 0;
+      }
+      .room-tip__c--tl { top: -1px; left: -1px; border-top-width: 1.5px; border-left-width: 1.5px; }
+      .room-tip__c--tr { top: -1px; right: -1px; border-top-width: 1.5px; border-right-width: 1.5px; }
+      .room-tip__c--bl { bottom: -1px; left: -1px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+      .room-tip__c--br { bottom: -1px; right: -1px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
+      .room-tip__dot {
+        width: 0.42rem;
+        height: 0.42rem;
+        flex: none;
+        background: var(--tip-color, var(--room-accent));
+      }
+
+      .room-tip__text {
+        font-family: var(--font-serif);
+        font-size: 0.84rem;
+        font-weight: 600;
+        line-height: 1.3;
+        color: var(--room-ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ---- 聚焦功能区域时悬于底栏上方的单行操作条（停留在视角中，左侧返回全景、右侧直达详情） ---- */
+      .room-go {
+        position: absolute;
+        left: 50%;
+        bottom: 4.55rem;
+        transform: translateX(-50%);
+        z-index: 22;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        max-width: calc(100vw - 1.5rem);
+        pointer-events: auto;
+      }
+
+      .room-go[hidden] {
+        display: none;
+      }
+
+      .room-go__back,
+      .room-go__link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.9rem;
+        border: var(--hair) solid var(--room-hair-strong);
+        background: var(--room-surface);
+        backdrop-filter: blur(12px);
+        color: var(--room-ink);
+        font-family: var(--font-sans);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background var(--dur-1) var(--ease-out),
+          border-color var(--dur-1) var(--ease-out),
+          color var(--dur-1) var(--ease-out);
+      }
+
+      .room-go__link {
+        border-color: var(--room-accent);
+      }
+
+      .room-go__back:hover {
+        border-color: var(--room-ink);
+        background: var(--room-accent-soft);
+      }
+
+      .room-go__link:hover {
+        background: var(--room-accent);
+        border-color: var(--room-accent);
+        color: #fff;
+      }
+
+      /* ---- 3D 纸质墨色摊开书本阅读册 ---- */
+      .book-modal {
+        position: absolute;
+        inset: 0;
+        z-index: 30;
+        pointer-events: auto;
+        display: grid;
+        place-items: center;
+        padding: 1.4rem 1.25rem 4.9rem;
+        perspective: 1700px;
+      }
+
+      .book-modal__scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 4, 12, 0.56);
+        backdrop-filter: blur(4px);
+      }
+
+      .book-spread {
+        --paper: #f6efe2;
+        --paper-edge: #eadfce;
+        --ink-main: #1b1a17;
+        --ink-sub: #4f4b42;
+        --ink-faint: #847d72;
+        --ink-rule: #d5cbb8;
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) 12px minmax(0, 1.15fr);
+        grid-template-rows: minmax(0, 1fr);
+        width: min(55rem, calc(100vw - 2.5rem));
+        height: min(35.5rem, calc(100dvh - 6.75rem));
+        border: 4px solid var(--book-color, var(--room-accent));
+        outline: var(--hair) solid rgba(255, 255, 255, 0.22);
+        background-color: var(--paper-edge);
+        color: var(--ink-main);
+        user-select: text;
+        transform-style: preserve-3d;
+        transform: rotateX(22deg) scale(0.86) translateY(20px);
+        opacity: 0;
+        transition:
+          transform 380ms var(--ease-out),
+          opacity 260ms var(--ease-out);
+      }
+
+      /* 书口多页叠层切纸纹理 */
+      .book-spread::before,
+      .book-spread::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        bottom: 2px;
+        width: 7px;
+        z-index: 5;
+        pointer-events: none;
+        background: repeating-linear-gradient(to right, #e8decd 0 1px, #cbbda4 1px 2px);
+        opacity: 0.9;
+      }
+
+      .book-spread::before {
+        left: 0;
+        border-right: var(--hair) solid rgba(92, 76, 54, 0.34);
+      }
+
+      .book-spread::after {
+        right: 0;
+        border-left: var(--hair) solid rgba(92, 76, 54, 0.34);
+      }
+
+      .book-spread[data-state='open'] {
+        transform: rotateX(7deg) scale(1) translateY(0);
+        opacity: 1;
+      }
+
+      .book-spread__corner {
+        position: absolute;
+        z-index: 6;
+        width: 0.72rem;
+        height: 0.72rem;
+        border-color: var(--book-color, var(--room-accent));
+        border-style: solid;
+        border-width: 0;
+        pointer-events: none;
+      }
+      .book-spread__corner--tl { top: 0.45rem; left: 0.65rem; border-top-width: 1.5px; border-left-width: 1.5px; }
+      .book-spread__corner--tr { top: 0.45rem; right: 0.65rem; border-top-width: 1.5px; border-right-width: 1.5px; }
+      .book-spread__corner--bl { bottom: 0.45rem; left: 0.65rem; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+      .book-spread__corner--br { bottom: 0.45rem; right: 0.65rem; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
+      .book-page {
+        position: relative;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+      }
+
+      /* 真实纸张棉浆纤维质感噪点叠加层（纯内联 SVG 渲染，零外部文件依赖） */
+      .book-page::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        opacity: 0.065;
+        mix-blend-mode: multiply;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.9'/%3E%3C/svg%3E");
+      }
+
+      /* 左页：微倾 3D 书页弧面 + 书壳内页折边 + 底部 50/50 双按钮 */
+      .book-page--left {
+        flex-direction: row;
+        transform-origin: right center;
+        transform: rotateY(4.5deg);
+        background-color: var(--paper-edge);
+        background-image:
+          linear-gradient(to left, rgba(42, 34, 22, 0.16) 0%, rgba(42, 34, 22, 0.03) 14%, transparent 32%),
+          repeating-linear-gradient(0deg, rgba(90, 76, 54, 0.024) 0 1px, transparent 1px 28px);
+      }
+
+      .book-endpaper-band {
+        width: 0.55rem;
+        flex: none;
+        margin-left: 7px;
+        background: var(--book-color, var(--room-accent));
+        border-right: var(--hair) solid var(--ink-rule);
+      }
+
+      .book-left-inner {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 1.45rem 1.4rem 1.2rem;
+      }
+
+      .book-seal-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .book-seal {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.12rem 0.52rem;
+        border: var(--hair) solid var(--room-accent);
+        color: var(--room-accent);
+        font-family: var(--font-serif);
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+      }
+
+      .book-date {
+        font-family: var(--font-mono);
+        font-size: 0.74rem;
+        color: var(--ink-faint);
+      }
+
+      .book-title {
+        margin: 0.8rem 0 0;
+        font-family: var(--font-serif);
+        font-size: 1.24rem;
+        font-weight: 600;
+        line-height: 1.42;
+        color: var(--ink-main);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .book-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.7rem;
+      }
+
+      :global(.book-tag) {
+        padding: 0.1rem 0.42rem;
+        border: var(--hair) solid var(--ink-rule);
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        color: var(--ink-sub);
+      }
+
+      .book-toc {
+        margin-top: 1.1rem;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .book-toc::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+
+      .book-toc__head {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        margin-bottom: 0.6rem;
+      }
+
+      .book-toc__label {
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.16em;
+        color: var(--ink-faint);
+        white-space: nowrap;
+      }
+
+      .book-toc__rule {
+        flex: 1;
+        height: var(--hair);
+        background: var(--ink-rule);
+      }
+
+      .book-toc__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      :global(.book-toc__item) {
+        display: flex;
+        align-items: baseline;
+        gap: 0.55rem;
+        font-size: 0.82rem;
+        line-height: 1.42;
+        color: var(--ink-sub);
+        padding-bottom: 0.3rem;
+        border-bottom: 1px dashed rgba(132, 125, 114, 0.38);
+      }
+
+      :global(.book-toc__idx) {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        color: var(--ink-faint);
+        flex: none;
+      }
+
+      /* 左页底栏：合上放回书架 与 查看完整内容 对半分占一行 */
+      .book-left-foot {
+        margin-top: 0.95rem;
+        padding-top: 0.85rem;
+        border-top: var(--hair) solid var(--ink-rule);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.65rem;
+      }
+
+      .book-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem;
+        width: 100%;
+        padding: 0.5rem 0.55rem;
+        border: var(--hair) solid var(--ink-rule);
+        background: transparent;
+        color: var(--ink-sub);
+        font-family: var(--font-serif);
+        font-size: 0.82rem;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          color var(--dur-1) var(--ease-out),
+          border-color var(--dur-1) var(--ease-out),
+          background var(--dur-1) var(--ease-out);
+      }
+
+      .book-action--back:hover {
+        color: var(--ink-main);
+        border-color: var(--ink-main);
+      }
+
+      .book-action--read {
+        border-color: var(--room-accent);
+        background: var(--room-accent-wash);
+        color: var(--room-accent);
+        font-weight: 600;
+      }
+
+      .book-action--read:hover {
+        background: var(--room-accent);
+        color: #fff;
+      }
+
+      /* 3D 中缝装订凹槽 */
+      .book-spine-crease {
+        background: linear-gradient(
+          to right,
+          rgba(34, 26, 16, 0.16),
+          var(--paper-edge) 32%,
+          rgba(28, 22, 14, 0.26) 50%,
+          var(--paper) 68%,
+          rgba(34, 26, 16, 0.14)
+        );
+        position: relative;
+      }
+
+      /* 书脊丝带书签头标 */
+      .book-spine-crease::after {
+        content: '';
+        position: absolute;
+        top: -2px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 24px;
+        background: var(--book-color, var(--room-accent));
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
+      }
+
+      /* 右页：微倾 3D 书页，严格 overflow: hidden 绝不出现滚动条 */
+      .book-page--right {
+        flex-direction: column;
+        transform-origin: left center;
+        transform: rotateY(-4.5deg);
+        background-color: var(--paper);
+        background-image:
+          linear-gradient(to right, rgba(42, 34, 22, 0.14) 0%, rgba(42, 34, 22, 0.025) 14%, transparent 32%),
+          repeating-linear-gradient(0deg, rgba(90, 76, 54, 0.024) 0 1px, transparent 1px 28px);
+      }
+
+      .book-close-x {
+        position: absolute;
+        top: 0.78rem;
+        right: 0.95rem;
+        z-index: 6;
+        width: 1.75rem;
+        height: 1.75rem;
+        display: grid;
+        place-items: center;
+        border: var(--hair) solid var(--ink-rule);
+        background: var(--paper);
+        color: var(--ink-sub);
+        font-size: 1.05rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+      }
+
+      .book-close-x:hover {
+        color: var(--room-accent);
+        border-color: var(--room-accent);
+      }
+
+      .book-right-content {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        padding: 1.55rem 1.75rem 1.35rem 1.6rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.88rem;
+      }
+
+      .book-cover-wrap {
+        flex: 0 0 auto;
+        margin: 0;
+        border: var(--hair) solid var(--ink-rule);
+        background: var(--paper-edge);
+        overflow: hidden;
+      }
+
+      .book-cover {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        max-height: 11.4rem;
+        object-fit: cover;
+        display: block;
+      }
+
+      .book-summary {
+        flex: 0 0 auto;
+        margin: 0;
+        padding: 0.22rem 0 0.22rem 0.85rem;
+        border-left: 2px solid var(--room-accent);
+        font-family: var(--font-serif);
+        font-size: 0.92rem;
+        line-height: 1.62;
+        color: var(--ink-main);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .book-excerpt-wrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .book-excerpt {
+        margin: 0;
+        font-size: 0.85rem;
+        line-height: 1.8;
+        color: var(--ink-sub);
+        text-align: justify;
+        display: -webkit-box;
+        -webkit-line-clamp: 6;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      /* ---- 黑暗深空观测站底部导航栏 ---- */
+      .room-dock {
+        position: absolute;
+        left: 50%;
+        bottom: 0.95rem;
+        transform: translateX(-50%);
+        z-index: 24;
+        pointer-events: auto;
+        display: flex;
+        align-items: center;
+        max-width: calc(100vw - 1.25rem);
+        border: var(--hair) solid var(--room-line-strong);
+        background: var(--room-surface);
+        backdrop-filter: saturate(160%) blur(16px);
+        transition:
+          opacity 560ms ease 240ms,
+          transform 560ms var(--ease-out) 240ms;
+      }
+
+      .room--entering .room-dock {
+        opacity: 0;
+        transform: translate(-50%, 14px);
+      }
+
+      .room--exiting .room-dock {
+        opacity: 0;
+        transform: translate(-50%, 14px);
+        pointer-events: none;
+        transition:
+          opacity 280ms ease,
+          transform 280ms ease;
+      }
+
+      .room-dock__c {
+        position: absolute;
+        width: 0.42rem;
+        height: 0.42rem;
+        border-color: var(--room-accent);
+        border-style: solid;
+        border-width: 0;
+        pointer-events: none;
+      }
+      .room-dock__c--tl { top: -1px; left: -1px; border-top-width: 1.5px; border-left-width: 1.5px; }
+      .room-dock__c--tr { top: -1px; right: -1px; border-top-width: 1.5px; border-right-width: 1.5px; }
+      .room-dock__c--bl { bottom: -1px; left: -1px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+      .room-dock__c--br { bottom: -1px; right: -1px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
+      .room-dock__nav {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        flex: 1;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        padding-inline: 0.25rem;
+      }
+
+      .room-dock__nav::-webkit-scrollbar {
+        display: none;
+      }
+
+      .room-dock__item {
+        position: relative;
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        padding: 0.56rem 0.62rem;
+        border: 0;
+        background: transparent;
+        color: var(--room-muted);
+        font-family: var(--font-sans);
+        font-size: 0.8125rem;
+        line-height: 1.2;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: color var(--dur-1) var(--ease-out);
+      }
+
+      .room-dock__item::after {
+        content: '';
+        position: absolute;
+        left: 0.55rem;
+        right: 0.55rem;
+        bottom: 0.24rem;
+        height: var(--hair);
+        background: var(--room-accent);
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform var(--dur-1) var(--ease-out);
+      }
+
+      .room-dock__item:hover,
+      .room-dock__item[aria-pressed='true'] {
+        color: var(--room-ink);
+      }
+
+      .room-dock__item[aria-pressed='true'] {
+        color: var(--room-accent);
+      }
+
+      .room-dock__item:hover::after,
+      .room-dock__item[aria-pressed='true']::after {
+        transform: scaleX(1);
+      }
+
+      .room-dock__icon {
+        width: 1em;
+        height: 1em;
+        font-size: 1.05em;
+        flex: none;
+        transition: transform var(--dur-2) var(--ease-out);
+      }
+
+      .room-dock__item:hover .room-dock__icon {
+        transform: rotate(-8deg) scale(1.06);
+      }
+
+      .room-dock__dot {
+        width: 0.36rem;
+        height: 0.36rem;
+        border-radius: 50%;
+        background: #ff4d4f;
+        flex: none;
+      }
+
+      .room-dock__sep {
+        flex: none;
+        width: var(--hair);
+        height: 0.9rem;
+        margin-inline: 0.2rem;
+        background: var(--room-line-strong);
+      }
+
+      .room-dock__sep--tight {
+        margin-inline: 0.08rem;
+      }
+
+      .room-dock__tools {
+        flex: none;
+        display: flex;
+        align-items: center;
+        padding: 0 0.25rem 0 0.3rem;
+        border-left: var(--hair) solid var(--room-line);
+      }
+
+      .room-dock__tool {
+        display: inline-grid;
+        place-items: center;
+        width: 2.05rem;
+        height: 2.1rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--room-muted);
+        cursor: pointer;
+        transition: color var(--dur-1) var(--ease-out);
+      }
+
+      .room-dock__tool:hover {
+        color: var(--room-accent);
+      }
+
+      .room-dock__tool svg {
+        width: 1.06rem;
+        height: 1.06rem;
+      }
+
+      /* 向上弹出的深空色板菜单 */
+      .room-dock__palette {
+        position: relative;
+      }
+
+      .room-palette__menu {
+        position: absolute;
+        right: -0.4rem;
+        bottom: calc(100% + 0.65rem);
+        min-width: 7.4rem;
+        padding: 0.35rem;
+        border: var(--hair) solid var(--room-line-strong);
+        background: var(--room-surface-solid);
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        z-index: 30;
+      }
+
+      .room-palette__caret {
+        position: absolute;
+        right: 1.05rem;
+        bottom: calc(-0.32rem - var(--hair));
+        width: 0.56rem;
+        height: 0.56rem;
+        transform: rotate(45deg);
+        background: var(--room-surface-solid);
+        border-right: var(--hair) solid var(--room-line-strong);
+        border-bottom: var(--hair) solid var(--room-line-strong);
+      }
+
+      .room-palette__item {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.34rem 0.48rem;
+        border: 0;
+        background: transparent;
+        color: var(--room-muted);
+        font-family: var(--font-sans);
+        font-size: 0.78rem;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .room-palette__item:hover,
+      .room-palette__item[aria-checked='true'] {
+        color: var(--room-ink);
+        background: rgba(143, 212, 255, 0.08);
+      }
+
+      .room-palette__dot {
+        width: 0.55rem;
+        height: 0.55rem;
+        border-radius: 50%;
+        background: var(--dot);
+        flex: none;
+      }
+
+      .room-palette__name {
+        flex: 1;
+      }
+
+      .room-palette__tick {
+        width: 0.85rem;
+        height: 0.85rem;
+        opacity: 0;
+        color: var(--room-accent);
+      }
+
+      .room-palette__item[aria-checked='true'] .room-palette__tick {
+        opacity: 1;
+      }
+
+      /* ---- 移动端竖屏适配（含 375px / 320px 零溢出与清晰书页排版） ---- */
+      @media (max-width: 52rem) {
+        .book-modal {
+          padding: 0.7rem 0.625rem 4.25rem;
+        }
+
+        .book-spread {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-rows: auto 1px minmax(0, 1fr);
+          width: calc(100vw - 1.25rem);
+          height: auto;
+          max-height: calc(100dvh - 5rem);
+          transform: none;
+        }
+
+        .book-spread[data-state='open'] {
+          transform: none;
+        }
+
+        .book-page--left,
+        .book-page--right {
+          transform: none;
+        }
+
+        .book-spine-crease {
+          background: var(--ink-rule);
+          height: 1px;
+        }
+
+        .book-left-inner {
+          padding: 0.9rem 2.55rem 0.75rem 0.9rem;
+        }
+
+        .book-title {
+          margin-top: 0.42rem;
+          font-size: 1.02rem;
+        }
+
+        .book-toc {
+          margin-top: 0.5rem;
+          max-height: 5.4rem;
+        }
+
+        .book-left-foot {
+          margin-top: 0.65rem;
+          padding-top: 0.6rem;
+          gap: 0.45rem;
+        }
+
+        .book-action {
+          padding: 0.42rem 0.35rem;
+          font-size: 0.76rem;
+        }
+
+        .book-close-x {
+          top: 0.55rem;
+          right: 0.55rem;
+        }
+
+        .book-spine-crease::after {
+          display: none;
+        }
+
+        .book-right-content {
+          padding: 0.8rem 1.05rem 0.9rem;
+          gap: 0.55rem;
+        }
+
+        .book-cover {
+          max-height: 7.4rem;
+        }
+
+        .book-summary {
+          font-size: 0.84rem;
+          -webkit-line-clamp: 2;
+        }
+
+        .book-excerpt {
+          font-size: 0.79rem;
+          line-height: 1.65;
+          -webkit-line-clamp: 4;
+        }
+
+        .room-go {
+          bottom: 3.9rem;
+          gap: 0.35rem;
+          max-width: calc(100vw - 1rem);
+        }
+
+        .room-go__back,
+        .room-go__link {
+          padding: 0.38rem 0.65rem;
+          font-size: 0.75rem;
+        }
+
+        .room-dock {
+          bottom: 0.55rem;
+          width: calc(100vw - 1rem);
+          max-width: calc(100vw - 1rem);
+          justify-content: space-between;
+        }
+
+        .room-dock__item {
+          padding: 0.5rem 0.46rem;
+          font-size: 0.76rem;
+        }
+
+        .room-dock__tool {
+          width: 1.85rem;
+          height: 2rem;
+        }
+
+        .scope-hud__ring--outer {
+          width: min(74vw, 74vh);
+          height: min(74vw, 74vh);
+        }
+
+        .scope-hud__ring--inner {
+          width: min(32vw, 32vh);
+          height: min(32vw, 32vh);
+        }
+
+        .scope-hud__actions {
+          bottom: 1.15rem;
+          gap: 0.5rem;
+          max-width: calc(100vw - 1.25rem);
+        }
+
+        .scope-hud__btn {
+          padding: 0.44rem 0.72rem;
+          font-size: 0.76rem;
+        }
+      }
+
+      @media (max-width: 22.5rem) {
+        .room-dock__item {
+          padding: 0.46rem 0.36rem;
+          font-size: 0.72rem;
+          gap: 0.2rem;
+        }
+
+        .room-dock__tool {
+          width: 1.65rem;
+          height: 1.95rem;
+        }
+
+        .room-dock__tool svg {
+          width: 0.92rem;
+          height: 0.92rem;
+        }
+      }
+
+      @media (max-width: 48rem), (pointer: coarse) {
+        .room-dock,
+        .room-go__back,
+        .room-go__link,
+        .room-tip,
+        .scope-hud__btn {
+          backdrop-filter: none;
+          background: rgba(6, 9, 20, 0.92);
+        }
+      }
+
+      @media (hover: none), (pointer: coarse) {
+        .room-tip {
+          display: none !important;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .room,
+        .room-dock,
+        .scope-hud,
+        .book-spread {
+          transition-duration: 120ms !important;
+          transition-delay: 0ms !important;
+        }
+      }
+    </style>
   </body>
 </html>

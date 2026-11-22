@@ -29,3 +29,4 @@ scripts/speech/**/*.wav
 nuonuo_role/**/*.png
 nuonuo_role/**/*.webp
 scripts/game-audio/out/
+scripts/room-blender/out/

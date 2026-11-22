@@ -31,6 +31,7 @@ export interface CosmicTrack {
   railsGroup: THREE.Group;
   finishPos: THREE.Vector3;
   finishDir: THREE.Vector3;
+  studyCabinPos: THREE.Vector3;
   sampleAtS: (s: number, out: TrackSample) => void;
   evaluateHub: (pos: THREE.Vector3) => HubProximity;
   regenerate: () => void;
@@ -40,6 +41,8 @@ export interface CosmicTrack {
 }
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+// 3D 书房相对「书房星系」紫粉黑洞中心的等比例宇宙偏移量（STUDY_ROOM_POS × HOLE_SCALE_MULT）
+const STUDY_CABIN_OFFSET = new THREE.Vector3(78, -9, 121);
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -103,6 +106,10 @@ export function buildCosmicTrack(): CosmicTrack {
     node,
     pos: new THREE.Vector3(...node.position).multiplyScalar(COSMOS_SCALE),
   }));
+  const studyHubEntry = hubPositions.find((h) => h.node.id === 'study');
+  const studyCabinPos = (studyHubEntry ? studyHubEntry.pos.clone() : new THREE.Vector3(56, 20, -10).multiplyScalar(COSMOS_SCALE)).add(
+    STUDY_CABIN_OFFSET,
+  );
 
   const curveState: {
     curve: THREE.CatmullRomCurve3;
@@ -166,7 +173,10 @@ export function buildCosmicTrack(): CosmicTrack {
         .multiplyScalar(Math.cos(flyAngle) * flyDist)
         .addScaledVector(perpUp, Math.sin(flyAngle) * flyDist * 0.52);
 
-      const passPos = hub.pos.clone().add(offset);
+      let passPos = hub.pos.clone().add(offset);
+      if (hub.node.id === 'study' && passPos.distanceTo(studyCabinPos) < 165) {
+        passPos = hub.pos.clone().sub(offset);
+      }
       const tanDir = chord
         .clone()
         .addScaledVector(sideVec, (rand() - 0.5) * 0.35)
@@ -174,7 +184,7 @@ export function buildCosmicTrack(): CosmicTrack {
       return { hub, passPos, tanDir };
     });
 
-    // 每个星系间生成两条随机外弯大跨度遨游弧线向量（含安全避让非当前黑洞机制）
+    // 每个星系间生成两条随机外弯大跨度遨游弧线向量（含安全避让非当前黑洞与 3D 书房实体机制）
     interface DetourMeta {
       midA: THREE.Vector3;
       midB: THREE.Vector3;
@@ -192,6 +202,12 @@ export function buildCosmicTrack(): CosmicTrack {
           if (d < 1e-3) delta.set(1, 0.3, 0);
           p.copy(h.pos).add(delta.normalize().multiplyScalar(295));
         }
+      }
+      const cabinDelta = p.clone().sub(studyCabinPos);
+      const cabinDist = cabinDelta.length();
+      if (cabinDist < 132) {
+        if (cabinDist < 1e-3) cabinDelta.set(0, 1, 0);
+        p.copy(studyCabinPos).add(cabinDelta.normalize().multiplyScalar(145));
       }
       return p;
     };
@@ -437,6 +453,7 @@ export function buildCosmicTrack(): CosmicTrack {
     railsGroup,
     finishPos: curveState.finishPos,
     finishDir: curveState.finishDir,
+    studyCabinPos,
     sampleAtS,
     evaluateHub,
     regenerate,

@@ -310,21 +310,28 @@ img { max-width: 100%; height: auto; display: block; }
 
 /* ---------- 画布式页面：整屏不滚动 ---------- */
 
-body.is-canvas {
+body.is-canvas,
+body.is-stage {
   height: 100dvh;
   overflow: hidden;
 }
 
-body.is-canvas > main {
+body.is-canvas > main,
+body.is-stage > main {
   flex: 1;
   min-height: 0;
   position: relative;
 }
 
-/* 宽屏画布页：顶栏浮在画布上面，背景插画一直铺到顶栏底下，顶栏的半透明才看得出来。
+body.is-stage > main {
+  overflow: hidden;
+}
+
+/* 宽屏画布页与 3D 场景页：顶栏浮在画布上面，背景插画/场景一直铺到顶栏底下，顶栏的半透明才看得出来。
    顶栏留在文档流里的话，它底下只有纯色的 body 背景，透明了也看不出 */
 @media (min-width: 60.01rem) {
-  body.is-canvas > .site-header {
+  body.is-canvas > .site-header,
+  body.is-stage > .site-header {
     position: fixed;
     top: 0;
     left: 0;
@@ -332,7 +339,7 @@ body.is-canvas > main {
   }
 }
 
-/* 窄屏塞不下一屏，退回正常滚动 */
+/* 窄屏思维导图塞不下一屏，退回正常滚动；body.is-stage 保持全视口锁屏供 3D 交互 */
 @media (max-width: 60rem) {
   body.is-canvas {
     height: auto;
@@ -505,6 +512,8 @@ body.is-canvas > main {
 }
 
 .icon-btn:hover svg { transform: rotate(15deg); }
+/* 空间/导图切换属于几何图标，悬浮轻轻放大即可，不歪斜 */
+.icon-btn--view:hover svg { transform: scale(1.08); }
 
 /* 点击那一下图标转半圈再回来 */
 .icon-btn[data-spin='1'] svg { transform: rotate(180deg) scale(0.82); }
@@ -612,11 +621,11 @@ body.is-canvas > main {
   background: var(--dot, var(--accent));
 }
 
-/* 中屏（<= 66.5rem）：右侧工具栏加到五个图标后，全称站名与七项导航同处一行会超宽，
+/* 中屏（<= 72rem）：右侧工具栏增加主页切换图标后，全称站名与七项导航同处一行会超宽，
    先切换成短站名并收紧导航间距，保持单行不溢出 */
 .brand__short { display: none; }
 
-@media (max-width: 69rem) {
+@media (max-width: 72rem) {
   .site-header__inner { gap: 0.75rem; }
   .brand__full { display: none; }
   .brand__short { display: inline; }
@@ -625,8 +634,8 @@ body.is-canvas > main {
   .tools { margin-left: 0.5rem; padding-left: 0.5rem; }
 }
 
-/* 短站名、七个导航项和六个工具图标放不进一行时，导航换到第二行 */
-@media (max-width: 55rem) {
+/* 短站名、七个导航项和七个工具图标放不进一行时，导航换到第二行 */
+@media (max-width: 58rem) {
   .site-header__inner {
     flex-wrap: wrap;
     gap: 0;
@@ -660,12 +669,25 @@ body.is-canvas > main {
   .site-nav a::after { left: 0.12rem; right: 0.12rem; }
 }
 
-/* 再窄（320 一档）连图标也放不下了，只留文字 */
+/* 375 档：工具栏有七枚图标与两道分隔线，略收窄单格宽度保右缘留白 */
+@media (max-width: 26rem) {
+  .tools { gap: 0; }
+  .tools__sep { margin-inline: 0.15rem; }
+  .icon-btn { width: 2.05rem; }
+}
+
+/* 再窄（320 一档）连导航图标也放不下了，只留文字，同时收紧工具按钮保单行不溢出 */
 @media (max-width: 22.5rem) {
+  .brand { gap: 0.35rem; font-size: 0.875rem; }
+  .brand__mark { width: 1.35rem; height: 1.35rem; }
   .site-nav__icon { display: none; }
   .site-nav a { padding: 0.45rem 0.2rem; }
   .site-nav a::after { left: 0.2rem; right: 0.2rem; }
-  .icon-btn { width: 2rem; }
+  .tools__sep { margin-inline: 0.1rem; }
+  .icon-btn { width: 1.72rem; height: 2rem; }
+  .icon-btn svg { width: 0.95rem; height: 0.95rem; }
+  .bell { font-size: 0.95rem; }
+  .bell__dot { top: 0.35rem; right: 0.28rem; }
 }
 
 /* ---------- 页脚 ---------- */

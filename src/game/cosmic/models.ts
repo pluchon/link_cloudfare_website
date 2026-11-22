@@ -183,6 +183,21 @@ function buildProbePair(): SculptedPair {
   return { frame: mergeBuffers(frameParts), core: mergeBuffers(coreParts) };
 }
 
+// 6. 书房星域：观星仪赤道臂与悬窗晶匣
+function buildStudyPair(): SculptedPair {
+  const frameParts: THREE.BufferGeometry[] = [
+    tf(new THREE.TorusGeometry(0.95, 0.055, 8, 24), Math.PI * 0.36, 0.25, 0),
+    tf(new THREE.TorusGeometry(0.68, 0.045, 6, 20), Math.PI * 0.5, 0, 0.45),
+    tf(new THREE.CylinderGeometry(0.11, 0.14, 1.55, 8), 0.15, 0.2, Math.PI * 0.48),
+    tf(new THREE.BoxGeometry(1.1, 0.08, 1.1), 0, 0, 0, 0, -0.78, 0),
+  ];
+  const coreParts: THREE.BufferGeometry[] = [
+    new THREE.OctahedronGeometry(0.32, 0),
+    tf(new THREE.SphereGeometry(0.16, 10, 10), 0, 0, 0, 0, 0.48, 0),
+  ];
+  return { frame: mergeBuffers(frameParts), core: mergeBuffers(coreParts) };
+}
+
 export function buildCollectibleCatalogGeos(): Record<string, SculptedPair> {
   return {
     base: buildCapsulePair(),
@@ -190,6 +205,7 @@ export function buildCollectibleCatalogGeos(): Record<string, SculptedPair> {
     gallery: buildCrystalPair(),
     tags: buildPrismPair(),
     game: buildTesseractPair(),
+    study: buildStudyPair(),
     cosmos: buildProbePair(),
   };
 }
@@ -512,6 +528,11 @@ const SVG_MODELS: Record<string, string> = {
     '<line x1="14" y1="14" x2="5" y2="8.5" />' +
     '<line x1="14" y1="14" x2="23" y2="8.5" />' +
     '<polygon points="14,9.5 18,14 14,18.5 10,14" fill="currentColor" fill-opacity="0.32" />',
+  study:
+    '<circle cx="14" cy="14" r="9" />' +
+    '<ellipse cx="14" cy="14" rx="9" ry="3.5" transform="rotate(-32 14 14)" />' +
+    '<line x1="6" y1="21.5" x2="22" y2="6.5" />' +
+    '<polygon points="14,10 17.5,14 14,18 10.5,14" fill="currentColor" fill-opacity="0.28" />',
   cosmos:
     '<path d="M9,8 Q14,4 19,8 L16.5,11.5 L11.5,11.5 Z" fill="currentColor" fill-opacity="0.18" />' +
     '<rect x="10.5" y="12" width="7" height="7" fill="currentColor" fill-opacity="0.14" />' +
