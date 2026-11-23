@@ -19,8 +19,8 @@ interface Props {
 
 const { name, url, music = name && url ? { name, url } : undefined, speech } = Astro.props;
 const tracks = [
-  ...(music ? [{ kind: 'music' as const, name: music.name, url: music.url, loop: true, volume: 50 }] : []),
-  ...(speech ? [{ kind: 'speech' as const, name: speech.name, url: speech.url, loop: false, volume: 85 }] : []),
+  ...(music ? [{ kind: 'music' as const, name: music.name, url: music.url, loop: true, volume: 20 }] : []),
+  ...(speech ? [{ kind: 'speech' as const, name: speech.name, url: speech.url, loop: false, volume: 90 }] : []),
 ];
 ---
 
