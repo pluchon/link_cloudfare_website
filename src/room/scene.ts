@@ -212,9 +212,9 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
   group.visible = false;
   scene.add(group);
 
-  // 低强度 RoomEnvironment 仅作用于书房内部材质，防止把深空金属阴影洗成灰蓝色
+  // 柔和 RoomEnvironment 仅作用于书房内部材质，提供均匀软环境反射而不洗白深空背景
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.085).texture;
 
   // 复用临时向量
   const raycaster = new THREE.Raycaster();
@@ -225,6 +225,10 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
   const fromTarget = new THREE.Vector3();
   const goalPos = new THREE.Vector3();
   const goalTarget = new THREE.Vector3();
+  const flySpherical = new THREE.Spherical();
+  const flyOffsetTmp = new THREE.Vector3();
+  const savedPosTmp = new THREE.Vector3();
+  const savedTargetTmp = new THREE.Vector3();
   const curLampColor = new THREE.Color(activeTheme.lampColor);
   const goalLampColor = new THREE.Color(activeTheme.lampColor);
   const curBhColor = new THREE.Color(activeTheme.keyLightColor);
@@ -233,8 +237,10 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
   const goalHemiSky = new THREE.Color(activeTheme.hemiSkyColor);
   const curHemiGround = new THREE.Color(activeTheme.hemiGroundColor);
   const goalHemiGround = new THREE.Color(activeTheme.hemiGroundColor);
+  const curFillColor = new THREE.Color(activeTheme.fillLightColor);
+  const goalFillColor = new THREE.Color(activeTheme.fillLightColor);
 
-  // ---- 宇宙真空对比光影：柔和紫粉黑洞外景轮廓光 + 轻柔室内天光 + 桌面/落地局部温暖庇护灯（全程依赖 Cycles 烘焙阴影，零实时 ShadowMap 开销） ----
+  // ---- 建筑级柔光与深空对比：紫粉黑洞斜掠进窗轮廓光 + 室内暖柔补光 + 四盏局部灯（全程依赖 Cycles 烘焙阴影，零实时 ShadowMap 开销） ----
   const roomHemiLight = new THREE.HemisphereLight(
     activeTheme.hemiSkyColor,
     activeTheme.hemiGroundColor,
@@ -243,18 +249,32 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
   group.add(roomHemiLight);
 
   const bhDirLight = new THREE.DirectionalLight(activeTheme.keyLightColor, activeTheme.keyLightIntensity);
-  bhDirLight.position.copy(anchorPos).negate().normalize().multiplyScalar(14.0);
-  bhDirLight.target.position.set(-1.1, 1.0, -1.4);
+  bhDirLight.position.set(-4.8, 5.2, -7.8);
+  bhDirLight.target.position.set(0.4, 0.8, 0.4);
   bhDirLight.castShadow = false;
   group.add(bhDirLight, bhDirLight.target);
 
-  const deskLiveLight = new THREE.PointLight(activeTheme.lampColor, activeTheme.lampIntensity * 0.36, 2.8, 1.7);
-  deskLiveLight.position.set(-2.45, 1.04, -2.74);
+  const indoorFillLight = new THREE.DirectionalLight(activeTheme.fillLightColor, activeTheme.fillLightIntensity);
+  indoorFillLight.position.set(4.2, 5.6, 4.6);
+  indoorFillLight.target.position.set(-1.2, 1.1, -1.2);
+  indoorFillLight.castShadow = false;
+  group.add(indoorFillLight, indoorFillLight.target);
+
+  const deskLiveLight = new THREE.PointLight(activeTheme.lampColor, activeTheme.lampIntensity * 0.36, 3.4, 1.55);
+  deskLiveLight.position.set(-2.18, 1.24, -2.62);
   group.add(deskLiveLight);
 
-  const floorLiveLight = new THREE.PointLight(activeTheme.lampColor, activeTheme.lampIntensity * 0.34, 3.2, 1.7);
-  floorLiveLight.position.set(1.8, 1.72, 0.08);
+  const floorLiveLight = new THREE.PointLight(activeTheme.lampColor, activeTheme.lampIntensity * 0.44, 4.4, 1.55);
+  floorLiveLight.position.set(1.65, 1.72, 0.22);
   group.add(floorLiveLight);
+
+  const shelfLiveLight = new THREE.PointLight(activeTheme.lampColor, activeTheme.lampIntensity * 0.24, 3.2, 1.65);
+  shelfLiveLight.position.set(-2.35, 1.48, -1.05);
+  group.add(shelfLiveLight);
+
+  const galleryLiveLight = new THREE.PointLight(activeTheme.fillLightColor, activeTheme.lampIntensity * 0.20, 3.6, 1.65);
+  galleryLiveLight.position.set(1.65, 2.25, -2.35);
+  group.add(galleryLiveLight);
 
   // ---- 烘焙图与动态画布纹理 ----
   const disposableTextures: THREE.Texture[] = [];
@@ -326,7 +346,7 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
       const std = m.material as THREE.MeshStandardMaterial;
       if (std.isMeshStandardMaterial) {
         std.envMap = envTex;
-        std.envMapIntensity = 0.08;
+        std.envMapIntensity = 0.18;
       }
     }
   });
@@ -408,7 +428,7 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
       for (const m of glowList) {
         m.color.set(theme.emissiveWarm);
         m.emissive.set(theme.emissiveWarm);
-        m.emissiveIntensity = 2.24;
+        m.emissiveIntensity = 1.95;
       }
     }
 
@@ -425,12 +445,12 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
     if (floorLampShadeMat) {
       floorLampShadeMat.color.set(theme.curtain);
       floorLampShadeMat.emissive.set(theme.emissiveWarm);
-      floorLampShadeMat.emissiveIntensity = 0.78;
+      floorLampShadeMat.emissiveIntensity = 0.92;
     }
 
     for (const bm of bakedMats) {
-      bm.lightMapIntensity = 1.15;
-      bm.aoMapIntensity = 0.88;
+      bm.lightMapIntensity = 1.20;
+      bm.aoMapIntensity = 0.84;
     }
   };
 
@@ -475,7 +495,28 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
           namedMats.set(name, list);
 
           mat.envMap = envTex;
-          mat.envMapIntensity = 0.08;
+          if (name === 'Mat_Brass' || name === 'Mat_Steel') {
+            mat.envMapIntensity = 0.48;
+          } else if (name === 'Mat_Ceramic' || name === 'Mat_PinkAccent' || name === 'Mat_Plant') {
+            mat.envMapIntensity = 0.24;
+          } else if (name === 'Mat_Glass') {
+            mat.envMapIntensity = 0.28;
+          } else if (
+            name === 'Mat_Floor' ||
+            name === 'Mat_WoodLight' ||
+            name === 'Mat_WoodMid' ||
+            name === 'Mat_WoodDark' ||
+            name === 'Mat_FaceCork' ||
+            name === 'Mat_FaceCalendar' ||
+            name.startsWith('Mat_Art') ||
+            name.startsWith('Mat_Plate')
+          ) {
+            mat.envMapIntensity = 0.14;
+          } else if (name === 'Mat_ScreenCRT' || name === 'Mat_ScreenMonitor') {
+            mat.envMapIntensity = 0.0;
+          } else {
+            mat.envMapIntensity = 0.09;
+          }
 
           if (name === 'Mat_Glass') {
             isGlass = true;
@@ -495,16 +536,22 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
             mat.color.set('#ffffff');
             mat.map = floorTex.map.texture;
             mat.roughnessMap = floorTex.roughnessMap;
-            mat.roughness = 0.78;
+            mat.bumpMap = floorTex.roughnessMap;
+            mat.bumpScale = 0.007;
+            mat.roughness = 0.80;
             mat.needsUpdate = true;
           } else if (name === 'Mat_WallInner') {
             mat.color.set('#ffffff');
             mat.map = plasterTex.texture;
-            mat.roughness = 0.9;
+            mat.bumpMap = plasterTex.texture;
+            mat.bumpScale = 0.004;
+            mat.roughness = 0.86;
             mat.needsUpdate = true;
           } else if (name === 'Mat_Rug') {
             mat.color.set('#ffffff');
             mat.map = rugTex.texture;
+            mat.bumpMap = rugTex.texture;
+            mat.bumpScale = 0.005;
             mat.roughness = 0.94;
             mat.needsUpdate = true;
           } else if (name === 'Mat_ScreenCRT') {
@@ -557,9 +604,9 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
             name !== 'Mat_ScreenMonitor'
           ) {
             mat.aoMap = aoTex;
-            mat.aoMapIntensity = 0.88;
+            mat.aoMapIntensity = 0.84;
             mat.lightMap = nightLmTex;
-            mat.lightMapIntensity = 1.15;
+            mat.lightMapIntensity = 1.20;
             mat.needsUpdate = true;
             bakedMats.push(mat);
           }
@@ -663,10 +710,36 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
     return t * t * t * (t * (t * 6 - 15) + 10);
   };
 
+  // 清空 OrbitControls 残留阻尼惯性，同时保持当前相机位置与朝向完全不变，避免起飞或落地瞬间的多余偏移
+  const flushControlsVelocity = () => {
+    savedPosTmp.copy(camera.position);
+    savedTargetTmp.copy(controls.target);
+    const prevDamping = controls.enableDamping;
+    controls.enableDamping = false;
+    controls.update();
+    controls.enableDamping = prevDamping;
+    camera.position.copy(savedPosTmp);
+    controls.target.copy(savedTargetTmp);
+  };
+
+  // 预先将目标机位对齐到 OrbitControls 的距离与俯仰约束内，使飞行全程直达最终可控位姿，收尾零强制校准卡顿
+  const clampGoalToControls = (pos: THREE.Vector3, target: THREE.Vector3) => {
+    flyOffsetTmp.copy(pos).sub(target);
+    flySpherical.setFromVector3(flyOffsetTmp);
+    const minDist = Number.isFinite(controls.minDistance) ? controls.minDistance : 0;
+    const maxDist = Number.isFinite(controls.maxDistance) ? controls.maxDistance : Infinity;
+    flySpherical.radius = Math.min(maxDist, Math.max(minDist, flySpherical.radius));
+    flySpherical.phi = Math.min(controls.maxPolarAngle, Math.max(controls.minPolarAngle, flySpherical.phi));
+    flySpherical.makeSafe();
+    pos.copy(target).add(flyOffsetTmp.setFromSpherical(flySpherical));
+  };
+
   const flyToPreset = (preset: CameraPreset, isOverview: boolean, dur = 1150) => {
     const view = getWorldView(preset, isOverview);
+    clampGoalToControls(view.pos, view.target);
     if (reducedMotion) {
       flying = false;
+      flushControlsVelocity();
       camera.position.copy(view.pos);
       controls.target.copy(view.target);
       camera.fov = view.fov;
@@ -675,6 +748,7 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
       controls.update();
       return;
     }
+    flushControlsVelocity();
     fromPos.copy(camera.position);
     fromTarget.copy(controls.target);
     fromFov = camera.fov;
@@ -728,6 +802,10 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
   let curLampIntensity = activeTheme.lampIntensity;
   let goalLampIntensity = activeTheme.lampIntensity;
   let curBhIntensity = activeTheme.keyLightIntensity;
+  let curHemiIntensity = activeTheme.hemiIntensity;
+  let goalHemiIntensity = activeTheme.hemiIntensity;
+  let curFillIntensity = activeTheme.fillLightIntensity;
+  let goalFillIntensity = activeTheme.fillLightIntensity;
 
   const syncTheme = () => {
     const next = readDomTheme();
@@ -742,6 +820,9 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
     goalBhColor.set(cfg.keyLightColor);
     goalHemiSky.set(cfg.hemiSkyColor);
     goalHemiGround.set(cfg.hemiGroundColor);
+    goalHemiIntensity = cfg.hemiIntensity;
+    goalFillColor.set(cfg.fillLightColor);
+    goalFillIntensity = cfg.fillLightIntensity;
 
     for (const mat of edgeMats.values()) {
       mat.color.set(cfg.accent);
@@ -978,7 +1059,7 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
       if (!group.visible) return;
 
       if (flying) {
-        const p = Math.min(1, (now - flyStart) / Math.max(flyDur, 1));
+        const p = Math.min(1, Math.max(0, (now - flyStart) / Math.max(flyDur, 1)));
         const k = smootherstep(p);
         camera.position.lerpVectors(fromPos, goalPos, k);
         controls.target.lerpVectors(fromTarget, goalTarget, k);
@@ -989,8 +1070,12 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
         }
         if (p >= 1) {
           flying = false;
+          if (camera.fov !== goalFov) {
+            camera.fov = goalFov;
+            camera.updateProjectionMatrix();
+          }
           controls.enabled = true;
-          controls.update();
+          camera.lookAt(controls.target);
         }
       }
 
@@ -1001,15 +1086,25 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
       curBhIntensity += (activeTheme.keyLightIntensity - curBhIntensity) * lerpK;
       curHemiSky.lerp(goalHemiSky, lerpK);
       curHemiGround.lerp(goalHemiGround, lerpK);
+      curHemiIntensity += (goalHemiIntensity - curHemiIntensity) * lerpK;
+      curFillColor.lerp(goalFillColor, lerpK);
+      curFillIntensity += (goalFillIntensity - curFillIntensity) * lerpK;
 
       deskLiveLight.color.copy(curLampColor);
       deskLiveLight.intensity = curLampIntensity * 0.36;
       floorLiveLight.color.copy(curLampColor);
-      floorLiveLight.intensity = curLampIntensity * 0.34;
+      floorLiveLight.intensity = curLampIntensity * 0.44;
+      shelfLiveLight.color.copy(curLampColor);
+      shelfLiveLight.intensity = curLampIntensity * 0.24;
+      galleryLiveLight.color.copy(curFillColor);
+      galleryLiveLight.intensity = curLampIntensity * 0.20;
       roomHemiLight.color.copy(curHemiSky);
       roomHemiLight.groundColor.copy(curHemiGround);
+      roomHemiLight.intensity = curHemiIntensity;
       bhDirLight.color.copy(curBhColor);
       bhDirLight.intensity = curBhIntensity;
+      indoorFillLight.color.copy(curFillColor);
+      indoorFillLight.intensity = curFillIntensity;
 
       // 平滑淡入淡出实体边缘轮廓线（悬停高亮，离开隐去）
       for (const [id, mat] of edgeMats) {

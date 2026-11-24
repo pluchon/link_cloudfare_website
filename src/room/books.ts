@@ -25,6 +25,7 @@ interface BookInstance {
   group: THREE.Group;
   frontPivot: THREE.Group;
   coverMat: THREE.MeshStandardMaterial;
+  shadowMat: THREE.MeshBasicMaterial;
   hitMesh: THREE.Mesh;
   homePos: THREE.Vector3;
   homeQuat: THREE.Quaternion;
@@ -65,6 +66,7 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
 
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
+  const textures: THREE.Texture[] = [];
 
   const trackGeo = <T extends THREE.BufferGeometry>(g: T): T => {
     geometries.push(g);
@@ -74,6 +76,48 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
     materials.push(m);
     return m;
   };
+  const trackTex = <T extends THREE.Texture>(t: T): T => {
+    textures.push(t);
+    return t;
+  };
+
+  // 共享书架底部接触阴影贴图（64×64 柔边暗斑，无实时 ShadowMap 开销）
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = 64;
+  shadowCanvas.height = 64;
+  const sCtx = shadowCanvas.getContext('2d')!;
+  const sGrad = sCtx.createRadialGradient(32, 32, 4, 32, 32, 31);
+  sGrad.addColorStop(0, 'rgba(10, 7, 5, 0.92)');
+  sGrad.addColorStop(0.55, 'rgba(10, 7, 5, 0.45)');
+  sGrad.addColorStop(1, 'rgba(10, 7, 5, 0)');
+  sCtx.fillStyle = sGrad;
+  sCtx.fillRect(0, 0, 64, 64);
+  const shadowTex = trackTex(new THREE.CanvasTexture(shadowCanvas));
+
+  // 共享精装布纹凹凸贴图（64×128 轻微十字布纹）
+  const linenCanvas = document.createElement('canvas');
+  linenCanvas.width = 64;
+  linenCanvas.height = 128;
+  const lCtx = linenCanvas.getContext('2d')!;
+  lCtx.fillStyle = '#808080';
+  lCtx.fillRect(0, 0, 64, 128);
+  lCtx.fillStyle = '#929292';
+  for (let y = 0; y < 128; y += 2) lCtx.fillRect(0, y, 64, 1);
+  lCtx.fillStyle = '#6e6e6e';
+  for (let x = 0; x < 64; x += 2) lCtx.fillRect(x, 0, 1, 128);
+  const linenBumpTex = trackTex(new THREE.CanvasTexture(linenCanvas));
+  linenBumpTex.wrapS = THREE.RepeatWrapping;
+  linenBumpTex.wrapT = THREE.RepeatWrapping;
+  linenBumpTex.repeat.set(2, 4);
+
+  const bookendShadowMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      opacity: 0.44,
+      depthWrite: false,
+    }),
+  );
 
   // 共享内页纸块材质、黄铜书立材质与书签金带材质
   const pageMat = trackMat(
@@ -129,8 +173,10 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
       const coverMat = trackMat(
         new THREE.MeshStandardMaterial({
           color: book.coverColor,
-          roughness: 0.62,
+          roughness: 0.56,
           metalness: 0.06,
+          bumpMap: linenBumpTex,
+          bumpScale: 0.0025,
           emissive: book.coverColor,
           emissiveIntensity: 0.0,
         }),
@@ -214,11 +260,27 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
       bookGroup.quaternion.copy(homeQuat);
       root.add(bookGroup);
 
+      const shadowMat = trackMat(
+        new THREE.MeshBasicMaterial({
+          map: shadowTex,
+          transparent: true,
+          opacity: 0.52,
+          depthWrite: false,
+        }),
+      );
+      const shadowGeo = trackGeo(new THREE.PlaneGeometry(depth + 0.036, thickness + 0.030));
+      shadowGeo.rotateX(-Math.PI * 0.5);
+      const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+      shadowMesh.position.set(homePos.x, bay.shelfY + 0.0015, zCenter);
+      shadowMesh.renderOrder = 1;
+      root.add(shadowMesh);
+
       const inst: BookInstance = {
         book,
         group: bookGroup,
         frontPivot,
         coverMat,
+        shadowMat,
         hitMesh,
         homePos,
         homeQuat,
@@ -231,14 +293,19 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
       instances.push(inst);
     }
 
-    // 书排右端放置精巧黄铜 L 型书立，让 2 本 / 4 本书排立得优雅稳当
+    // 书排右端放置精巧黄铜 L 型书立 + 底部接触投影，让 2 本 / 4 本书排立得优雅稳当
     const bookendZ = Math.min(bay.zEnd, cursorZ + 0.018);
     const beVert = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.14, 0.16, 0.008)), brassMat);
     beVert.position.set(bay.xCenter, bay.shelfY + 0.082, bookendZ);
     beVert.castShadow = true;
     const beBase = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.14, 0.008, 0.085)), brassMat);
     beBase.position.set(bay.xCenter, bay.shelfY + 0.004, bookendZ + 0.04);
-    root.add(beVert, beBase);
+    const beShadowGeo = trackGeo(new THREE.PlaneGeometry(0.18, 0.12));
+    beShadowGeo.rotateX(-Math.PI * 0.5);
+    const beShadow = new THREE.Mesh(beShadowGeo, bookendShadowMat);
+    beShadow.position.set(bay.xCenter, bay.shelfY + 0.0015, bookendZ + 0.036);
+    beShadow.renderOrder = 1;
+    root.add(beVert, beBase, beShadow);
   }
 
   // ---- 抽书悬停 & 飞向书桌状态机 ----
@@ -305,9 +372,13 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
       // 1. 书架悬停抽出动画（平滑滑出 + 微微仰角 + 微光）
       const damp = 1 - Math.exp(-12 * Math.min(dt, 0.05));
       for (const inst of instances) {
-        if (inst === activeInst && phase !== 'idle') continue;
+        if (inst === activeInst && phase !== 'idle') {
+          inst.shadowMat.opacity = 0;
+          continue;
+        }
         const want = inst.book.id === hoveredId ? 1 : 0;
         inst.hoverAmt += (want - inst.hoverAmt) * damp;
+        inst.shadowMat.opacity = 0.52 * (1 - inst.hoverAmt);
         if (inst.hoverAmt > 0.001 || want > 0) {
           inst.group.position.set(
             inst.homePos.x + inst.hoverAmt * 0.105,
@@ -384,6 +455,7 @@ export function buildBookshelfBooks(branches: RoomBranch[]): BooksManager {
     dispose() {
       for (const g of geometries) g.dispose();
       for (const m of materials) m.dispose();
+      for (const t of textures) t.dispose();
     },
   };
 }

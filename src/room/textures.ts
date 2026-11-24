@@ -358,7 +358,7 @@ export function createCalendarTexture(
     const hasFresh = latestMs > 0 && Date.now() - latestMs < 24 * 60 * 60 * 1000;
     const latestTitle = payload.notices[0]?.title ?? '基地公告栏';
 
-    ctx.fillStyle = '#202330';
+    ctx.fillStyle = '#2a2e40';
     ctx.fillRect(0, 0, 320, 420);
 
     ctx.fillStyle = theme.accent;
@@ -422,7 +422,7 @@ export function createCalendarTexture(
     }
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#181a24';
+    ctx.fillStyle = '#222636';
     ctx.fillRect(16, 360, 288, 44);
     ctx.strokeStyle = theme.accent;
     ctx.lineWidth = 2;
@@ -677,10 +677,10 @@ export function createCorkBoardTexture(
   const draw = (theme: RoomThemeConfig) => {
     const rand = seededRand(77);
 
-    ctx.fillStyle = '#4e3c2d';
+    ctx.fillStyle = '#68503c';
     ctx.fillRect(0, 0, 512, 360);
     for (let i = 0; i < 1400; i++) {
-      ctx.fillStyle = rand() > 0.5 ? '#614b38' : '#3c2d21';
+      ctx.fillStyle = rand() > 0.5 ? '#7c6048' : '#523e2e';
       ctx.globalAlpha = 0.26;
       ctx.fillRect(rand() * 512, rand() * 360, 2 + rand() * 4, 2 + rand() * 3);
     }
@@ -699,7 +699,7 @@ export function createCorkBoardTexture(
 
     const topTags = payload.tags.slice(0, 9);
     const pinColors = [theme.accent, '#eab308', '#38bdf8', '#4ade80'];
-    const noteBg = ['#222532', '#26231c', '#1c2623'];
+    const noteBg = ['#2b2f40', '#322d24', '#25322e'];
 
     topTags.forEach((item, idx) => {
       const col = idx % 3;
@@ -997,7 +997,7 @@ export function createGalleryFrameTexture(
 
   const draw = (theme: RoomThemeConfig) => {
     currentTheme = theme;
-    ctx.fillStyle = '#dad7cf';
+    ctx.fillStyle = '#e8e5dd';
     ctx.fillRect(0, 0, 512, 384);
 
     const mx = 40;

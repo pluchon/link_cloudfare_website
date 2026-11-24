@@ -34,8 +34,8 @@ FILES = [
 def prepare_baked_webp() -> None:
     """将 Cycles 烘焙出的 PNG 平滑去噪并压成轻量化 WebP。"""
     specs = [
-        ("room_ao.png", "room_ao.webp", 0.9),
-        ("room_night_lm.png", "room_night_lm.webp", 1.35),
+        ("room_ao.png", "room_ao.webp", 0.35),
+        ("room_night_lm.png", "room_night_lm.webp", 0.65),
     ]
     for src_name, dst_name, blur_r in specs:
         src = OUT / src_name

@@ -77,6 +77,8 @@ def set_smooth(mesh: bpy.types.Mesh, smooth: bool = True) -> None:
 
 def apply_box_uv(obj: bpy.types.Object, scale: float = 0.65) -> None:
     """为物体创建平整的米制世界比例盒式 UVMap（uv0），避免贴图拉伸。"""
+    if obj.get("_keep_uv0"):
+        return
     me = obj.data
     if not me.uv_layers:
         me.uv_layers.new(name="UVMap")
@@ -99,6 +101,11 @@ def apply_box_uv(obj: bpy.types.Object, scale: float = 0.65) -> None:
             loop[uv_lay].uv = (u, v)
     bm.to_mesh(me)
     bm.free()
+
+
+def mark_uv_prio(obj: bpy.types.Object, prio: int) -> bpy.types.Object:
+    obj["_uv_prio"] = prio
+    return obj
 
 
 def link_obj(obj: bpy.types.Object) -> bpy.types.Object:
@@ -316,6 +323,7 @@ def add_lathe(
     profile: list[tuple[float, float]],
     mat: bpy.types.Material,
     segs: int = 24,
+    rot_euler: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> bpy.types.Object:
     """围绕垂直轴旋转二维轮廓 [(radius, y_height), ...] 生成光滑陶瓷/植物盆器曲面。"""
     bm = bmesh.new()
@@ -350,6 +358,7 @@ def add_lathe(
     me.materials.append(mat)
     obj = bpy.data.objects.new(name, me)
     obj.location = to_bl(*center)
+    obj.rotation_euler = Euler(rot_euler, "XYZ")
     return link_obj(obj)
 
 
@@ -431,8 +440,8 @@ def add_curtain_drape(
 ) -> bpy.types.Object:
     """雕塑感束带百褶窗帘。"""
     bm = bmesh.new()
-    cols = 8
-    rows = 6
+    cols = 12
+    rows = 8
     grid = []
     for r in range(rows + 1):
         v = r / rows
@@ -579,11 +588,11 @@ def add_botanical_leaf(
     mat: bpy.types.Material,
     arch_cup: float = 0.022,
     thickness: float = 0.004,
+    cols: int = 8,
+    rows: int = 8,
 ) -> bpy.types.Object:
     """雕塑感心形微卷植物叶片（带 V 形主叶脉凹折、自然下垂弧度与实体厚度）。"""
     bm = bmesh.new()
-    cols = 4
-    rows = 5
     ca, sa = math.cos(yaw), math.sin(yaw)
     cp, sp = math.cos(pitch), math.sin(pitch)
     grid: list[list[bmesh.types.BMVert]] = []
@@ -767,33 +776,33 @@ def build_scene() -> None:
     # 1. 悬浮观测书房建筑基座、双墙与开放边缘天文台金属木质围栏
     # ================================================================
     S("Arch_Room", add_box("Floor_Top", (0.0, -0.025, 0.0), (7.02, 0.05, 7.02), mats["floor"], bevel=0.006))
-    S("Arch_Room", add_box("Deck_Plinth_Upper", (0.0, -0.14, 0.0), (7.22, 0.18, 7.22), mats["plinth"], bevel=0.025, bevel_segs=1))
-    S("Arch_Room", add_box("Deck_Brass_Band", (0.0, -0.23, 0.0), (7.06, 0.03, 7.06), mats["brass"], bevel=0.008))
-    S("Arch_Room", add_box("Deck_Plinth_Lower", (0.0, -0.32, 0.0), (6.58, 0.16, 6.58), mats["hull"], bevel=0.04, bevel_segs=1))
+    S("Arch_Room", mark_uv_prio(add_box("Deck_Plinth_Upper", (0.0, -0.14, 0.0), (7.22, 0.18, 7.22), mats["plinth"], bevel=0.025, bevel_segs=1), 0))
+    S("Arch_Room", mark_uv_prio(add_box("Deck_Brass_Band", (0.0, -0.23, 0.0), (7.06, 0.03, 7.06), mats["brass"], bevel=0.008), 0))
+    S("Arch_Room", mark_uv_prio(add_box("Deck_Plinth_Lower", (0.0, -0.32, 0.0), (6.58, 0.16, 6.58), mats["hull"], bevel=0.04, bevel_segs=1), 0))
 
     # 左墙 X = -3.40
     S("Arch_Room", add_box("Wall_Left_Inner", (-3.47, 1.66, 0.0), (0.14, 3.32, 7.02), mats["wall"], bevel=0.006))
-    S("Arch_Room", add_box("Wall_Left_Outer", (-3.61, 1.66, 0.0), (0.14, 3.32, 7.22), mats["hull"], bevel=0.018, bevel_segs=2))
+    S("Arch_Room", mark_uv_prio(add_box("Wall_Left_Outer", (-3.61, 1.66, 0.0), (0.14, 3.32, 7.22), mats["hull"], bevel=0.018, bevel_segs=2), 0))
     S("Arch_Room", add_box("Wall_Left_Cap", (-3.54, 3.34, 0.0), (0.30, 0.05, 7.24), mats["wood_mid"], bevel=0.012))
     S("Arch_Room", add_box("Left_Baseboard", (-3.385, 0.065, 0.04), (0.03, 0.13, 6.92), mats["trim"], bevel=0.005))
     S("Arch_Room", add_box("Left_Crown", (-3.38, 3.26, 0.04), (0.045, 0.10, 6.92), mats["trim"], bevel=0.008))
     for rz in (-2.6, -0.9, 0.9, 2.6):
-        S("Arch_Room", add_box(f"Hull_Left_Rib_{rz:.1f}", (-3.69, 1.66, rz), (0.03, 3.16, 0.08), mats["brass"], bevel=0.006))
+        S("Arch_Room", mark_uv_prio(add_box(f"Hull_Left_Rib_{rz:.1f}", (-3.69, 1.66, rz), (0.03, 3.16, 0.08), mats["brass"], bevel=0.006), 0))
 
     # 后墙 Z = -3.40（围绕宽景观测窗开洞）
     S("Arch_Room", add_box("Wall_Back_Under_In", (-1.975, 0.51, -3.47), (2.85, 1.02, 0.14), mats["wall"], bevel=0.004))
-    S("Arch_Room", add_box("Wall_Back_Under_Out", (-2.05, 0.51, -3.61), (3.10, 1.02, 0.14), mats["hull"], bevel=0.012))
+    S("Arch_Room", mark_uv_prio(add_box("Wall_Back_Under_Out", (-2.05, 0.51, -3.61), (3.10, 1.02, 0.14), mats["hull"], bevel=0.012), 0))
     S("Arch_Room", add_box("Wall_Back_Top_In", (-1.975, 3.09, -3.47), (2.85, 0.46, 0.14), mats["wall"], bevel=0.004))
-    S("Arch_Room", add_box("Wall_Back_Top_Out", (-2.05, 3.09, -3.61), (3.10, 0.46, 0.14), mats["hull"], bevel=0.012))
+    S("Arch_Room", mark_uv_prio(add_box("Wall_Back_Top_Out", (-2.05, 3.09, -3.61), (3.10, 0.46, 0.14), mats["hull"], bevel=0.012), 0))
     S("Arch_Room", add_box("Wall_Back_PierL_In", (-3.075, 1.94, -3.47), (0.65, 1.84, 0.14), mats["wall"], bevel=0.004))
-    S("Arch_Room", add_box("Wall_Back_PierL_Out", (-3.18, 1.94, -3.61), (0.86, 1.84, 0.14), mats["hull"], bevel=0.012))
+    S("Arch_Room", mark_uv_prio(add_box("Wall_Back_PierL_Out", (-3.18, 1.94, -3.61), (0.86, 1.84, 0.14), mats["hull"], bevel=0.012), 0))
     S("Arch_Room", add_box("Wall_Back_Right_In", (1.48, 1.66, -3.47), (4.06, 3.32, 0.14), mats["wall"], bevel=0.006))
-    S("Arch_Room", add_box("Wall_Back_Right_Out", (1.53, 1.66, -3.61), (4.16, 3.32, 0.14), mats["hull"], bevel=0.018))
+    S("Arch_Room", mark_uv_prio(add_box("Wall_Back_Right_Out", (1.53, 1.66, -3.61), (4.16, 3.32, 0.14), mats["hull"], bevel=0.018), 0))
     S("Arch_Room", add_box("Wall_Back_Cap", (-0.02, 3.34, -3.54), (7.26, 0.05, 0.30), mats["wood_mid"], bevel=0.012))
     S("Arch_Room", add_box("Back_Baseboard", (0.04, 0.065, -3.385), (6.92, 0.13, 0.03), mats["trim"], bevel=0.005))
     S("Arch_Room", add_box("Back_Crown", (0.04, 3.26, -3.38), (6.92, 0.10, 0.045), mats["trim"], bevel=0.008))
     for rx in (0.15, 1.75, 3.15):
-        S("Arch_Room", add_box(f"Hull_Back_Rib_{rx:.1f}", (rx, 1.66, -3.69), (0.08, 3.16, 0.03), mats["brass"], bevel=0.006))
+        S("Arch_Room", mark_uv_prio(add_box(f"Hull_Back_Rib_{rx:.1f}", (rx, 1.66, -3.69), (0.08, 3.16, 0.03), mats["brass"], bevel=0.006), 0))
 
     # 1b. 无墙开放边缘天文观测围栏（+X 右缘 x=3.43, +Z 前缘 z=3.43，低矮 0.48m 通透不挡视）
     rail_posts: list[tuple[float, float]] = [
@@ -872,6 +881,8 @@ def build_scene() -> None:
             mat=mats["plant"],
             arch_cup=0.008,
             thickness=0.0025,
+            cols=5,
+            rows=5,
         ))
 
     S("Decor_Lounge", add_lathe(
@@ -934,45 +945,45 @@ def build_scene() -> None:
 
     # 放样流线型人体工学鼠标（真实有机壳面 + 滚花铜轮 + 拇指双键）
     for m_obj in add_ergonomic_mouse((-1.73, 0.769, -2.86), mats):
-        S("Hotspot_Desk_About", m_obj)
+        S("Hotspot_Desk_About", mark_uv_prio(m_obj, 2))
 
-    S("Hotspot_Desk_About", add_cylinder("Pink_Mug_Coaster", (-0.84, 0.767, -2.62), 0.052, 0.054, 0.007, mats["wood_mid"], segs=18, bevel_caps=0.002))
-    S("Hotspot_Desk_About", add_lathe(
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder("Pink_Mug_Coaster", (-0.84, 0.767, -2.62), 0.052, 0.054, 0.007, mats["wood_mid"], segs=22, bevel_caps=0.002), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_lathe(
         "Pink_Mug",
         (-0.84, 0.770, -2.62),
         [(0.0, 0.0), (0.038, 0.0), (0.044, 0.088), (0.039, 0.092), (0.035, 0.084), (0.033, 0.014), (0.0, 0.014)],
         mats["pink"],
-        segs=20,
-    ))
-    S("Hotspot_Desk_About", add_cylinder("Pink_Mug_Latte", (-0.84, 0.842, -2.62), 0.034, 0.034, 0.004, mats["trim"], segs=16))
-    S("Hotspot_Desk_About", add_tube("Pink_Mug_Handle", [(-0.80, 0.840, -2.62), (-0.77, 0.820, -2.62), (-0.80, 0.790, -2.62)], 0.007, mats["pink"]))
+        segs=24,
+    ), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder("Pink_Mug_Latte", (-0.84, 0.842, -2.62), 0.034, 0.034, 0.004, mats["trim"], segs=20), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_tube("Pink_Mug_Handle", [(-0.80, 0.840, -2.62), (-0.77, 0.820, -2.62), (-0.80, 0.790, -2.62)], 0.007, mats["pink"], bevel_res=3), 2))
 
-    S("Hotspot_Desk_About", add_lathe("Desk_PenCup", (-2.50, 0.764, -2.68), [(0.0, 0.0), (0.034, 0.0), (0.038, 0.092), (0.033, 0.094), (0.030, 0.086), (0.030, 0.012), (0.0, 0.012)], mats["ceramic"], segs=20))
+    S("Hotspot_Desk_About", mark_uv_prio(add_lathe("Desk_PenCup", (-2.50, 0.7625, -2.68), [(0.0, 0.0), (0.034, 0.0), (0.038, 0.092), (0.033, 0.094), (0.030, 0.086), (0.030, 0.012), (0.0, 0.012)], mats["ceramic"], segs=24), 2))
     for px, pz, rx, rz, mkey in [
         (-2.51, -2.69, 0.14, 0.08, "pink"),
         (-2.49, -2.67, -0.10, 0.15, "brass"),
         (-2.50, -2.66, 0.06, -0.14, "curtain"),
     ]:
-        S("Hotspot_Desk_About", add_cylinder_between(f"Desk_Pen_{mkey}", (px, 0.78, pz), (px + rx * 0.12, 0.90, pz + rz * 0.12), 0.0045, 0.004, mats[mkey], segs=8))
+        S("Hotspot_Desk_About", mark_uv_prio(add_cylinder_between(f"Desk_Pen_{mkey}", (px, 0.78, pz), (px + rx * 0.12, 0.90, pz + rz * 0.12), 0.0045, 0.004, mats[mkey], segs=8), 2))
 
     lamp_b = (-2.58, 0.780, -3.02)
     lamp_e1 = (-2.64, 1.03, -2.97)
     lamp_w = (-2.51, 1.22, -2.81)
     lamp_cap = (-2.50, 1.18, -2.78)
-    S("Hotspot_Desk_About", add_cylinder("Lamp_Base", (-2.58, 0.776, -3.02), 0.070, 0.078, 0.024, mats["brass"], segs=20, bevel_caps=0.005))
-    S("Hotspot_Desk_About", add_cylinder_between("Lamp_Arm_Lower", lamp_b, lamp_e1, 0.0085, 0.0085, mats["brass"], segs=10))
-    S("Hotspot_Desk_About", add_sphere("Lamp_Joint_Elbow", lamp_e1, 0.015, mats["steel"], segs=10, rings=6))
-    S("Hotspot_Desk_About", add_cylinder_between("Lamp_Arm_Upper", lamp_e1, lamp_w, 0.008, 0.008, mats["brass"], segs=10))
-    S("Hotspot_Desk_About", add_sphere("Lamp_Joint_Wrist", lamp_w, 0.013, mats["steel"], segs=10, rings=6))
-    S("Hotspot_Desk_About", add_cylinder_between("Lamp_Arm_Neck", lamp_w, lamp_cap, 0.0075, 0.0075, mats["brass"], segs=10))
-    S("Hotspot_Desk_About", add_cylinder_between("Lamp_ShadeCap", lamp_cap, (-2.50, 1.155, -2.78), 0.022, 0.025, mats["brass"], segs=14))
-    S("Hotspot_Desk_About", add_lathe(
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder("Lamp_Base", (-2.58, 0.776, -3.02), 0.070, 0.078, 0.024, mats["brass"], segs=22, bevel_caps=0.005), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder_between("Lamp_Arm_Lower", lamp_b, lamp_e1, 0.0085, 0.0085, mats["brass"], segs=12), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_sphere("Lamp_Joint_Elbow", lamp_e1, 0.015, mats["steel"], segs=12, rings=8), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder_between("Lamp_Arm_Upper", lamp_e1, lamp_w, 0.008, 0.008, mats["brass"], segs=12), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_sphere("Lamp_Joint_Wrist", lamp_w, 0.013, mats["steel"], segs=12, rings=8), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder_between("Lamp_Arm_Neck", lamp_w, lamp_cap, 0.0075, 0.0075, mats["brass"], segs=12), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_cylinder_between("Lamp_ShadeCap", lamp_cap, (-2.50, 1.155, -2.78), 0.022, 0.025, mats["brass"], segs=16), 2))
+    S("Hotspot_Desk_About", mark_uv_prio(add_lathe(
         "Lamp_Shade",
         (-2.50, 1.045, -2.78),
-        [(0.094, 0.0), (0.068, 0.088), (0.024, 0.125), (0.0, 0.125)],
+        [(0.094, 0.0), (0.068, 0.088), (0.024, 0.125), (0.0, 0.125), (0.0, 0.119), (0.022, 0.119), (0.064, 0.084), (0.089, 0.0)],
         mats["curtain"],
-        segs=22,
-    ))
+        segs=26,
+    ), 2))
     D(add_sphere("Desk_Lamp_Bulb", (-2.50, 1.075, -2.78), 0.028, mats["glow"], segs=10, rings=6))
 
     # 曲线木壳人体工学书房椅（Decor_Lounge，含微弧侧抱靠背 + 扶手 + 滚轮）
@@ -1000,7 +1011,7 @@ def build_scene() -> None:
         (0.42, 0.42, 0.044),
         mats["wood_light"],
         bevel=0.016,
-        bevel_segs=1,
+        bevel_segs=2,
         rot_y=chair_ry,
         rot_x=0.12,
     ))
@@ -1048,35 +1059,86 @@ def build_scene() -> None:
     for idx, (ly, lz, lw) in enumerate([(2.61, -1.69, 1.14), (2.61, -0.41, 1.14), (1.79, -1.69, 1.14), (1.79, -0.41, 1.14), (0.95, -1.05, 2.40)]):
         D(add_box(f"Shelf_LED_{idx}", (-3.02, ly, lz), (0.016, 0.012, lw), mats["glow"], bevel=0.0))
 
-    S("Decor_Lounge", add_cylinder("Prop_Proj_Cup", (-3.12, 1.94, -1.20), 0.052, 0.048, 0.18, mats["wood_dark"], segs=22))
-    S("Decor_Lounge", add_cylinder("Prop_Proj_Roll", (-3.12, 2.04, -1.20), 0.022, 0.022, 0.32, mats["ceramic"], segs=16, rot_euler=(0.18, 0.1, 0.0)))
-    S("Decor_Lounge", add_box("Prop_Tool_Box", (-3.12, 1.90, 0.08), (0.20, 0.11, 0.18), mats["steel"], bevel=0.012))
-    S("Decor_Lounge", add_cylinder("Prop_Tool_Handle", (-3.12, 1.97, 0.08), 0.008, 0.008, 0.09, mats["brass"], segs=10, rot_euler=(math.pi * 0.5, 0.0, 0.0)))
+    # [项目] 车削空心深胡桃木卷轴筒 + 双卷中空羊皮卷轴（严丝合缝贴合隔板 y=1.84，零穿模）
+    S("Decor_Lounge", mark_uv_prio(add_lathe(
+        "Prop_Proj_Cup",
+        (-3.12, 1.84, -1.20),
+        [
+            (0.0, 0.0),
+            (0.049, 0.0),
+            (0.054, 0.012),
+            (0.056, 0.140),
+            (0.053, 0.155),
+            (0.047, 0.155),
+            (0.044, 0.144),
+            (0.043, 0.018),
+            (0.0, 0.018),
+        ],
+        mats["wood_dark"],
+        segs=28,
+    ), 2))
+    scroll_specs = [
+        ("Prop_Proj_Roll_0", (-3.106, 1.862, -1.212), 0.235, (-0.03, -0.04, 0.0), 0.165),
+        ("Prop_Proj_Roll_1", (-3.132, 1.862, -1.186), 0.195, (0.04, 0.03, 0.0), 0.135),
+    ]
+    for r_name, r_pos, r_h, r_rot, band_h in scroll_specs:
+        S("Decor_Lounge", mark_uv_prio(add_lathe(
+            r_name,
+            r_pos,
+            [
+                (0.0, 0.0),
+                (0.0145, 0.0),
+                (0.0155, r_h * 0.92),
+                (0.0145, r_h),
+                (0.0105, r_h),
+                (0.0095, r_h * 0.72),
+                (0.0, r_h * 0.72),
+            ],
+            mats["ceramic"],
+            segs=20,
+            rot_euler=r_rot,
+        ), 2))
+        S("Decor_Lounge", mark_uv_prio(add_lathe(
+            f"{r_name}_Band",
+            r_pos,
+            [
+                (0.0154, band_h),
+                (0.0166, band_h + 0.002),
+                (0.0166, band_h + 0.012),
+                (0.0154, band_h + 0.014),
+            ],
+            mats["brass"],
+            segs=18,
+            rot_euler=r_rot,
+        ), 2))
+
+    S("Decor_Lounge", mark_uv_prio(add_box("Prop_Tool_Box", (-3.12, 1.895, 0.08), (0.20, 0.11, 0.18), mats["steel"], bevel=0.012), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder("Prop_Tool_Handle", (-3.12, 1.965, 0.08), 0.008, 0.008, 0.09, mats["brass"], segs=12, rot_euler=(math.pi * 0.5, 0.0, 0.0)), 2))
 
     arm_c = (-3.12, 1.12, -1.20)
-    S("Decor_Lounge", add_cylinder("Prop_Exp_Base", (-3.12, 1.018, -1.20), 0.050, 0.062, 0.036, mats["wood_dark"], segs=24))
-    S("Decor_Lounge", add_cylinder_between("Prop_Exp_Stem", (-3.12, 1.034, -1.20), (-3.12, 1.175, -1.20), 0.007, 0.005, mats["brass"], segs=12))
-    S("Decor_Lounge", add_torus("Prop_Exp_RingOuter", arm_c, 0.056, 0.0045, mats["brass"], rot_euler=(math.pi * 0.5, 0.0, 0.0)))
-    S("Decor_Lounge", add_torus("Prop_Exp_RingEq", arm_c, 0.048, 0.004, mats["brass"], rot_euler=(0.38, 0.2, 0.65)))
-    S("Decor_Lounge", add_torus("Prop_Exp_RingMer", arm_c, 0.041, 0.0038, mats["brass"], rot_euler=(math.pi * 0.5, 0.42, -0.4)))
-    S("Decor_Lounge", add_cylinder_between("Prop_Exp_Axis", (-3.12, 1.072, -1.225), (-3.12, 1.168, -1.175), 0.0035, 0.0035, mats["steel"], segs=10))
-    S("Decor_Lounge", add_sphere("Prop_Exp_Core", arm_c, 0.018, mats["brass"], segs=16, rings=12))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder("Prop_Exp_Base", (-3.12, 1.018, -1.20), 0.050, 0.062, 0.036, mats["wood_dark"], segs=24), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder_between("Prop_Exp_Stem", (-3.12, 1.034, -1.20), (-3.12, 1.175, -1.20), 0.007, 0.005, mats["brass"], segs=12), 2))
+    S("Decor_Lounge", mark_uv_prio(add_torus("Prop_Exp_RingOuter", arm_c, 0.056, 0.0045, mats["brass"], rot_euler=(math.pi * 0.5, 0.0, 0.0)), 2))
+    S("Decor_Lounge", mark_uv_prio(add_torus("Prop_Exp_RingEq", arm_c, 0.048, 0.004, mats["brass"], rot_euler=(0.38, 0.2, 0.65)), 2))
+    S("Decor_Lounge", mark_uv_prio(add_torus("Prop_Exp_RingMer", arm_c, 0.041, 0.0038, mats["brass"], rot_euler=(math.pi * 0.5, 0.42, -0.4)), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder_between("Prop_Exp_Axis", (-3.12, 1.072, -1.225), (-3.12, 1.168, -1.175), 0.0035, 0.0035, mats["steel"], segs=10), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Prop_Exp_Core", arm_c, 0.018, mats["brass"], segs=16, rings=12), 2))
 
     # [日常] 光滑陶土多肉盆（36段 + 莲座状多层叶片）
-    S("Decor_Lounge", add_lathe(
+    S("Decor_Lounge", mark_uv_prio(add_lathe(
         "Prop_Daily_Pot",
         (-3.12, 1.00, 0.08),
         [(0.0, 0.0), (0.040, 0.0), (0.052, 0.06), (0.054, 0.086), (0.049, 0.092), (0.043, 0.086), (0.041, 0.075), (0.0, 0.075)],
         mats["pink"],
         segs=36,
-    ))
-    S("Decor_Lounge", add_cylinder("Prop_Daily_Soil", (-3.12, 1.080, 0.08), 0.042, 0.042, 0.010, mats["soil"], segs=20))
+    ), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder("Prop_Daily_Soil", (-3.12, 1.080, 0.08), 0.042, 0.042, 0.010, mats["soil"], segs=20), 2))
     for ring_idx, (num_p, rad_r, y_p, leaf_l, tilt_p) in enumerate([(7, 0.018, 1.088, 0.036, 0.28), (5, 0.007, 1.096, 0.026, 0.72)]):
         for p_i in range(num_p):
             ang = (p_i / num_p) * math.tau + ring_idx * 0.45
             bx = -3.12 + math.cos(ang) * rad_r
             bz = 0.08 + math.sin(ang) * rad_r
-            S("Decor_Lounge", add_botanical_leaf(
+            S("Decor_Lounge", mark_uv_prio(add_botanical_leaf(
                 f"Succ_Leaf_{ring_idx}_{p_i}",
                 (bx, y_p, bz),
                 yaw=-ang + math.pi * 0.5,
@@ -1087,29 +1149,59 @@ def build_scene() -> None:
                 mat=mats["plant"],
                 arch_cup=0.006,
                 thickness=0.003,
-            ))
+                cols=5,
+                rows=5,
+            ), 2))
 
-    # [小萌] 圆润白瓷小猫（32 段精细）
+    # [小萌] 圆润温润白瓷小猫雕塑（24 段顺滑身躯 + 贴合圆耳粉内耳 + 立体蝴蝶结 + 贴合卷尾）
     kitty_z = -0.62
-    S("Decor_Lounge", add_sphere("Kitty_Body", (-3.12, 0.255, kitty_z), 0.09, mats["ceramic"], scale=(0.9, 1.12, 0.94), segs=14, rings=9))
-    S("Decor_Lounge", add_sphere("Kitty_Head", (-3.12, 0.405, kitty_z), 0.094, mats["ceramic"], scale=(0.95, 0.92, 1.06), segs=14, rings=9))
+    S("Decor_Lounge", mark_uv_prio(add_lathe(
+        "Kitty_Body",
+        (-3.12, 0.16, kitty_z),
+        [
+            (0.0, 0.0),
+            (0.056, 0.0),
+            (0.080, 0.032),
+            (0.086, 0.078),
+            (0.074, 0.128),
+            (0.050, 0.162),
+            (0.0, 0.168),
+        ],
+        mats["ceramic"],
+        segs=24,
+    ), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Kitty_Head", (-3.12, 0.398, kitty_z), 0.088, mats["ceramic"], scale=(0.94, 0.90, 1.05), segs=24, rings=16), 2))
     for s in (-1, 1):
-        S("Decor_Lounge", add_cylinder(f"Kitty_Ear_{s}", (-3.12, 0.50, kitty_z + s * 0.054), 0.004, 0.032, 0.068, mats["ceramic"], segs=10, rot_euler=(s * 0.22, 0.0, 0.0)))
-        S("Decor_Lounge", add_sphere(f"Kitty_Cheek_{s}", (-3.035, 0.39, kitty_z + s * 0.048), 0.015, mats["pink"], scale=(0.45, 0.65, 1.2), segs=8, rings=5))
-        S("Decor_Lounge", add_sphere(f"Kitty_Eye_{s}", (-3.028, 0.415, kitty_z + s * 0.032), 0.0085, mats["steel"], scale=(0.55, 1.15, 0.9), segs=8, rings=5))
-    S("Decor_Lounge", add_sphere("Kitty_Nose", (-3.024, 0.395, kitty_z), 0.006, mats["pink"], scale=(0.6, 0.8, 1.2), segs=8, rings=5))
-    S("Decor_Lounge", add_box("Kitty_Bow", (-3.045, 0.328, kitty_z), (0.020, 0.022, 0.052), mats["pink"], bevel=0.0))
-    S("Decor_Lounge", add_sphere("Kitty_Bell", (-3.032, 0.315, kitty_z), 0.011, mats["brass"], segs=8, rings=5))
-    S("Decor_Lounge", add_tube("Kitty_Tail", [(-3.185, 0.205, kitty_z), (-3.24, 0.225, kitty_z + 0.06), (-3.22, 0.295, kitty_z + 0.115)], 0.015, mats["ceramic"]))
-    S("Decor_Lounge", add_box("XM_Gift_Box", (-3.12, 0.23, -0.10), (0.22, 0.14, 0.24), mats["curtain"], bevel=0.01))
-    S("Decor_Lounge", add_box("XM_Gift_Rib", (-3.12, 0.235, -0.10), (0.23, 0.15, 0.03), mats["pink"], bevel=0.0))
+        S("Decor_Lounge", mark_uv_prio(add_lathe(
+            f"Kitty_Ear_{s}",
+            (-3.12, 0.438, kitty_z + s * 0.052),
+            [(0.028, 0.0), (0.026, 0.024), (0.017, 0.052), (0.008, 0.068), (0.0, 0.072)],
+            mats["ceramic"],
+            segs=16,
+            rot_euler=(s * 0.24, 0.0, 0.0),
+        ), 2))
+        S("Decor_Lounge", mark_uv_prio(add_sphere(f"Kitty_EarPad_{s}", (-3.097, 0.465, kitty_z + s * 0.055), 0.016, mats["pink"], scale=(0.42, 0.95, 0.65), segs=12, rings=8, rot_euler=(s * 0.24, 0.0, 0.0)), 2))
+        S("Decor_Lounge", mark_uv_prio(add_sphere(f"Kitty_Paw_{s}", (-3.048, 0.180, kitty_z + s * 0.036), 0.019, mats["ceramic"], scale=(1.15, 0.72, 0.85), segs=12, rings=8), 2))
+        S("Decor_Lounge", mark_uv_prio(add_sphere(f"Kitty_Cheek_{s}", (-3.046, 0.382, kitty_z + s * 0.048), 0.014, mats["pink"], scale=(0.45, 0.62, 1.18), segs=12, rings=8), 2))
+        S("Decor_Lounge", mark_uv_prio(add_sphere(f"Kitty_Eye_{s}", (-3.040, 0.408, kitty_z + s * 0.033), 0.0088, mats["steel"], scale=(0.55, 1.15, 0.92), segs=12, rings=8), 2))
+        S("Decor_Lounge", mark_uv_prio(add_sphere(f"Kitty_Bow_Loop_{s}", (-3.047, 0.319, kitty_z + s * 0.018), 0.013, mats["pink"], scale=(0.55, 0.88, 1.25), segs=12, rings=8, rot_euler=(s * 0.18, 0.0, 0.0)), 2))
+        S("Decor_Lounge", mark_uv_prio(add_box(f"Kitty_Bow_Tail_{s}", (-3.046, 0.299, kitty_z + s * 0.012), (0.007, 0.022, 0.011), mats["pink"], bevel=0.0025, bevel_segs=2, rot_x=s * 0.32), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Kitty_Nose", (-3.035, 0.388, kitty_z), 0.0062, mats["pink"], scale=(0.65, 0.78, 1.25), segs=12, rings=8), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Kitty_Bow_Knot", (-3.044, 0.318, kitty_z), 0.010, mats["pink"], scale=(0.8, 0.9, 1.0), segs=12, rings=8), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Kitty_Bell", (-3.036, 0.298, kitty_z), 0.0105, mats["brass"], segs=12, rings=8), 2))
+    S("Decor_Lounge", mark_uv_prio(add_tube("Kitty_Tail", [(-3.18, 0.20, kitty_z), (-3.22, 0.21, -0.54), (-3.18, 0.26, -0.495), (-3.13, 0.30, -0.505)], 0.014, mats["ceramic"], bevel_res=4, taper_end=0.82), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Kitty_TailTip", (-3.13, 0.30, -0.505), 0.0115, mats["ceramic"], segs=12, rings=8), 2))
+    S("Decor_Lounge", mark_uv_prio(add_box("XM_Gift_Box", (-3.12, 0.23, -0.10), (0.22, 0.14, 0.24), mats["curtain"], bevel=0.01), 2))
+    S("Decor_Lounge", mark_uv_prio(add_box("XM_Gift_Rib", (-3.12, 0.235, -0.10), (0.23, 0.15, 0.03), mats["pink"], bevel=0.002), 2))
+    for s in (-1, 1):
+        S("Decor_Lounge", mark_uv_prio(add_sphere(f"XM_Gift_Bow_{s}", (-3.12, 0.312, -0.10 + s * 0.022), 0.016, mats["pink"], scale=(0.65, 0.72, 1.25), segs=12, rings=8, rot_euler=(s * 0.24, 0.0, 0.0)), 2))
 
     # ================================================================
     # 5. 左墙中段：公告日历（Hotspot_Cal_Notice）+ 月相钟与小木凳
     # ================================================================
-    S("Decor_Lounge", add_torus("Wall_Lunar_Clock", (-3.37, 2.58, 0.78), 0.125, 0.011, mats["brass"], major_segs=18, minor_segs=6, rot_euler=(0.0, math.pi * 0.5, 0.0)))
-    S("Decor_Lounge", add_cylinder_between("Wall_Lunar_Dial", (-3.384, 2.58, 0.78), (-3.372, 2.58, 0.78), 0.114, 0.114, mats["ceramic"], segs=18))
-    S("Decor_Lounge", add_cylinder_between("Wall_Lunar_Moon", (-3.373, 2.58, 0.79), (-3.364, 2.58, 0.79), 0.044, 0.044, mats["brass"], segs=14))
+    S("Decor_Lounge", mark_uv_prio(add_torus("Wall_Lunar_Clock", (-3.37, 2.58, 0.78), 0.125, 0.011, mats["brass"], major_segs=28, minor_segs=10, rot_euler=(0.0, math.pi * 0.5, 0.0)), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder_between("Wall_Lunar_Dial", (-3.384, 2.58, 0.78), (-3.372, 2.58, 0.78), 0.114, 0.114, mats["ceramic"], segs=24), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder_between("Wall_Lunar_Moon", (-3.373, 2.58, 0.79), (-3.364, 2.58, 0.79), 0.044, 0.044, mats["brass"], segs=18), 2))
 
     S("Hotspot_Cal_Notice", add_box("Cal_TopBar", (-3.36, 2.18, 0.78), (0.04, 0.048, 0.52), mats["wood_mid"], bevel=0.008))
     S("Hotspot_Cal_Notice", add_box("Cal_Pad", (-3.365, 1.88, 0.78), (0.026, 0.58, 0.44), mats["trim"], bevel=0.004))
@@ -1240,7 +1332,7 @@ def build_scene() -> None:
     S("Decor_Lounge", add_cylinder("HP_Base", (0.76, 0.798, -3.11), 0.056, 0.062, 0.016, mats["wood_dark"], segs=24))
     S("Decor_Lounge", add_cylinder_between("HP_Stem", (0.76, 0.806, -3.11), (0.76, 1.03, -3.11), 0.007, 0.007, mats["brass"], segs=12))
     S("Decor_Lounge", add_cylinder("HP_CrossRest", (0.76, 1.032, -3.11), 0.014, 0.014, 0.044, mats["brass"], segs=12, rot_euler=(math.pi * 0.5, 0.0, 0.0)))
-    S("Decor_Lounge", add_tube("HP_Headband", [(0.705, 0.955, -3.11), (0.715, 1.028, -3.11), (0.76, 1.050, -3.11), (0.805, 1.028, -3.11), (0.815, 0.955, -3.11)], 0.010, mats["steel"]))
+    S("Decor_Lounge", add_tube("HP_Headband", [(0.705, 0.955, -3.11), (0.715, 1.028, -3.11), (0.76, 1.050, -3.11), (0.805, 1.028, -3.11), (0.815, 0.955, -3.11)], 0.010, mats["steel"], bevel_res=3))
     for s in (-1, 1):
         S("Decor_Lounge", add_sphere(f"HP_Cup_{s}", (0.76 + s * 0.058, 0.925, -3.11), 0.038, mats["curtain"], scale=(0.48, 1.15, 1.02)))
 
@@ -1272,16 +1364,16 @@ def build_scene() -> None:
     for bx in (1.54, 2.54):
         S("Decor_Lounge", add_box(f"Bench_Leg_{bx:.2f}", (bx, 0.20, -3.02), (0.045, 0.40, 0.34), mats["wood_mid"], bevel=0.008))
 
-    # 精细 48 段白瓷接水托盘 + 鼓腰卷口大花盆 + 拱形土壤与石砾 + 9 枝曲线弯茎与心形雕塑龟背竹叶片
-    p_cx, p_cz = 3.06, -2.96
-    S("Decor_Lounge", add_lathe(
+    # 精细 30 段白瓷接水托盘 + 鼓腰卷口大花盆 + 拱形土壤与石砾 + 9 枝曲线弯茎与心形雕塑龟背竹叶片（距墙与围栏留足安全余量）
+    p_cx, p_cz = 2.90, -2.80
+    S("Decor_Lounge", mark_uv_prio(add_lathe(
         "Corner_Saucer",
         (p_cx, 0.0, p_cz),
         [(0.0, 0.0), (0.175, 0.0), (0.205, 0.028), (0.198, 0.032), (0.168, 0.012), (0.0, 0.012)],
         mats["ceramic"],
-        segs=28,
-    ))
-    S("Decor_Lounge", add_lathe(
+        segs=30,
+    ), 2))
+    S("Decor_Lounge", mark_uv_prio(add_lathe(
         "Corner_Planter",
         (p_cx, 0.0, p_cz),
         [
@@ -1297,14 +1389,14 @@ def build_scene() -> None:
             (0.0, 0.335),
         ],
         mats["ceramic"],
-        segs=28,
-    ))
+        segs=30,
+    ), 2))
     S("Decor_Lounge", add_lathe(
         "Corner_Soil",
         (p_cx, 0.0, p_cz),
         [(0.0, 0.365), (0.095, 0.360), (0.165, 0.348), (0.198, 0.336)],
         mats["soil"],
-        segs=20,
+        segs=24,
     ))
     for i, (px, pz, r_peb) in enumerate([(-0.07, 0.05, 0.016), (0.08, -0.04, 0.014), (0.02, 0.09, 0.012), (-0.09, -0.06, 0.013)]):
         S("Decor_Lounge", add_sphere(f"Soil_Pebble_{i}", (p_cx + px, 0.358, p_cz + pz), r_peb, mats["plinth"], scale=(1.3, 0.55, 0.9), segs=8, rings=5))
@@ -1326,8 +1418,8 @@ def build_scene() -> None:
         p0 = (p_cx + ca * 0.025, 0.34, p_cz + sa * 0.025)
         p1 = (p_cx + ca * (r_reach * 0.48), 0.34 + (h_stem - 0.34) * 0.62, p_cz + sa * (r_reach * 0.48))
         tip = (p_cx + ca * r_reach, h_stem, p_cz + sa * r_reach)
-        S("Decor_Lounge", add_tube(f"Monstera_Stem_{i}", [p0, p1, tip], 0.011, mats["plant"], bevel_res=5, taper_end=0.52))
-        S("Decor_Lounge", add_botanical_leaf(
+        S("Decor_Lounge", mark_uv_prio(add_tube(f"Monstera_Stem_{i}", [p0, p1, tip], 0.011, mats["plant"], bevel_res=3, taper_end=0.52), 2))
+        S("Decor_Lounge", mark_uv_prio(add_botanical_leaf(
             f"Monstera_Leaf_{i}",
             tip,
             yaw=-ang + math.pi * 0.5,
@@ -1338,12 +1430,14 @@ def build_scene() -> None:
             mat=mats["plant"],
             arch_cup=0.024,
             thickness=0.0045,
-        ))
+            cols=6,
+            rows=6,
+        ), 2))
 
     # ================================================================
-    # 9. 起居区：星轨地毯、沙发、茶几、弧形落地灯 + 校准望远镜（Hotspot_Scope_Door）
+    # 9. 起居区：星轨地毯（纳入静态烘焙接收茶几/沙发/望远镜阴影）、沙发连续弯折搭毯、茶几、落地灯与望远镜
     # ================================================================
-    rug_obj = add_cylinder("Rug_Main", (0.18, 0.008, 0.86), 1.82, 1.84, 0.016, mats["rug"], segs=32, bevel_caps=0.006)
+    rug_obj = add_cylinder("Rug_Main", (0.18, 0.008, 0.86), 1.82, 1.84, 0.016, mats["rug"], segs=36, bevel_caps=0.006)
     bm = bmesh.new()
     bm.from_mesh(rug_obj.data)
     uv_lay = bm.loops.layers.uv.verify()
@@ -1354,7 +1448,10 @@ def build_scene() -> None:
             loop[uv_lay].uv = (u, v)
     bm.to_mesh(rug_obj.data)
     bm.free()
-    D(rug_obj)
+    if rug_obj.data.uv_layers:
+        rug_obj.data.uv_layers[0].name = "UVMap"
+    rug_obj["_keep_uv0"] = 1
+    S("Decor_Lounge", rug_obj)
 
     sofa_x, sofa_z, sofa_ry = 1.66, 0.34, -0.62
 
@@ -1363,15 +1460,57 @@ def build_scene() -> None:
 
     S("Decor_Lounge", add_box("Sofa_Frame", sofa_pt(0.0, 0.16, 0.0), (0.98, 0.09, 0.90), mats["wood_light"], bevel=0.016, rot_y=sofa_ry))
     for lx, lz in ((-0.40, -0.36), (0.40, -0.36), (-0.40, 0.36), (0.40, 0.36)):
-        S("Decor_Lounge", add_cylinder(f"Sofa_Leg_{lx:.1f}_{lz:.1f}", sofa_pt(lx, 0.075, lz), 0.024, 0.015, 0.15, mats["wood_mid"], segs=14))
+        S("Decor_Lounge", add_cylinder(f"Sofa_Leg_{lx:.1f}_{lz:.1f}", sofa_pt(lx, 0.075, lz), 0.024, 0.015, 0.15, mats["wood_mid"], segs=16))
     S("Decor_Lounge", add_plush_cushion("Sofa_Seat", sofa_pt(0.0, 0.295, 0.02), (0.86, 0.17, 0.78), mats["upholstery"], (0.0, 0.0, sofa_ry)))
     S("Decor_Lounge", add_plush_cushion("Sofa_Back", sofa_pt(0.0, 0.58, -0.30), (0.86, 0.50, 0.20), mats["upholstery"], (-0.14, 0.0, sofa_ry)))
     for s in (-1, 1):
-        S("Decor_Lounge", add_box(f"Sofa_Arm_{s}", sofa_pt(s * 0.45, 0.38, -0.02), (0.11, 0.34, 0.84), mats["wood_light"], bevel=0.022, bevel_segs=1, rot_y=sofa_ry))
+        S("Decor_Lounge", add_box(f"Sofa_Arm_{s}", sofa_pt(s * 0.45, 0.38, -0.02), (0.11, 0.34, 0.84), mats["wood_light"], bevel=0.022, bevel_segs=2, rot_y=sofa_ry))
     S("Decor_Lounge", add_plush_cushion("Sofa_Pillow", sofa_pt(-0.14, 0.51, -0.10), (0.34, 0.30, 0.13), mats["pillow"], (-0.28, 0.16, sofa_ry + 0.24)))
     S("Decor_Lounge", add_plush_cushion("Sofa_Pillow_Pink", sofa_pt(0.18, 0.46, -0.12), (0.24, 0.22, 0.10), mats["pink"], (-0.24, -0.14, sofa_ry - 0.18)))
-    S("Decor_Lounge", add_plush_cushion("Sofa_Blanket_Top", sofa_pt(0.45, 0.565, 0.08), (0.145, 0.036, 0.36), mats["curtain"], (0.02, 0.0, sofa_ry)))
-    S("Decor_Lounge", add_plush_cushion("Sofa_Blanket_Drop", sofa_pt(0.515, 0.43, 0.08), (0.038, 0.27, 0.35), mats["curtain"], (0.0, 0.0, sofa_ry)))
+
+    # 连续平滑弯折的沙发扶手搭毯（单一曲面过渡，彻底消除直棱两片拼接）
+    bm_bl = bmesh.new()
+    blanket_profile = [
+        (0.388, 0.528),
+        (0.408, 0.556),
+        (0.450, 0.564),
+        (0.494, 0.556),
+        (0.514, 0.532),
+        (0.519, 0.486),
+        (0.521, 0.415),
+        (0.522, 0.340),
+        (0.524, 0.275),
+    ]
+    z_segs = 8
+    bl_grid: list[list[bmesh.types.BMVert]] = []
+    for p_idx, (bx, by) in enumerate(blanket_profile):
+        row_v: list[bmesh.types.BMVert] = []
+        fold_scale = max(0.0, (p_idx - 3) / 5.0) * 0.008
+        for zi in range(z_segs + 1):
+            u = zi / z_segs
+            bz = 0.08 + (u - 0.5) * 0.35
+            wave = math.sin(u * math.tau * 1.5) * fold_scale
+            row_v.append(bm_bl.verts.new(to_bl(*sofa_pt(bx + wave, by, bz))))
+        bl_grid.append(row_v)
+    for r in range(len(blanket_profile) - 1):
+        for c in range(z_segs):
+            bm_bl.faces.new((bl_grid[r][c], bl_grid[r][c + 1], bl_grid[r + 1][c + 1], bl_grid[r + 1][c]))
+    bmesh.ops.recalc_face_normals(bm_bl, faces=list(bm_bl.faces))
+    me_bl = bpy.data.meshes.new("Sofa_Blanket")
+    bm_bl.to_mesh(me_bl)
+    bm_bl.free()
+    set_smooth(me_bl, True)
+    me_bl.materials.append(mats["curtain"])
+    bl_obj = link_obj(bpy.data.objects.new("Sofa_Blanket", me_bl))
+    sol_bl = bl_obj.modifiers.new("Solidify", "SOLIDIFY")
+    sol_bl.thickness = 0.016
+    sol_bl.offset = 0.0
+    bpy.context.view_layer.objects.active = bl_obj
+    bl_obj.select_set(True)
+    bpy.ops.object.modifier_apply(modifier=sol_bl.name)
+    bl_obj.select_set(False)
+    set_smooth(bl_obj.data, True)
+    S("Decor_Lounge", bl_obj)
 
     S("Decor_Lounge", add_cylinder("FL_Base", (2.38, 0.02, -0.36), 0.20, 0.21, 0.04, mats["steel"], segs=32, bevel_caps=0.008))
     S("Decor_Lounge", add_tube("FL_Arc", [
@@ -1395,27 +1534,27 @@ def build_scene() -> None:
             mats["brass"],
             segs=8,
         ))
-    D(add_lathe("FL_Shade", (1.80, 1.70, 0.08), [(0.205, 0.0), (0.148, 0.25), (0.142, 0.25), (0.198, 0.0)], mats["trim"], segs=24))
+    D(add_lathe("FL_Shade", (1.80, 1.70, 0.08), [(0.205, 0.0), (0.148, 0.25), (0.142, 0.25), (0.198, 0.0)], mats["trim"], segs=28))
     D(add_sphere("FL_Bulb", (1.80, 1.835, 0.08), 0.042, mats["glow"], segs=12, rings=8))
 
-    S("Decor_Lounge", add_cylinder("Table_Top", (0.20, 0.38, 1.02), 0.54, 0.52, 0.042, mats["wood_light"], segs=28, bevel_caps=0.01))
+    S("Decor_Lounge", add_cylinder("Table_Top", (0.20, 0.38, 1.02), 0.54, 0.52, 0.042, mats["wood_light"], segs=32, bevel_caps=0.01))
     for i in range(3):
         a = (i / 3) * math.tau + 0.4
         top_p = (0.20 + math.cos(a) * 0.28, 0.365, 1.02 + math.sin(a) * 0.28)
         bot_p = (0.20 + math.cos(a) * 0.38, 0.0, 1.02 + math.sin(a) * 0.38)
-        S("Decor_Lounge", add_cylinder_between(f"Table_Leg_{i}", bot_p, top_p, 0.014, 0.024, mats["wood_mid"], segs=10))
-    S("Decor_Lounge", add_cylinder("Tea_Tray", (0.14, 0.405, 1.00), 0.22, 0.21, 0.012, mats["wood_mid"], segs=22, bevel_caps=0.004))
-    S("Decor_Lounge", add_lathe("Teapot", (0.04, 0.411, 0.95), [(0.0, 0.0), (0.062, 0.0), (0.086, 0.055), (0.070, 0.11), (0.036, 0.125), (0.016, 0.145), (0.0, 0.145)], mats["ceramic"], segs=22))
-    S("Decor_Lounge", add_sphere("Teapot_Knob", (0.04, 0.560, 0.95), 0.012, mats["brass"], segs=10, rings=6))
-    S("Decor_Lounge", add_tube("Teapot_Spout", [(0.105, 0.455, 0.95), (0.148, 0.478, 0.95), (0.168, 0.525, 0.95)], 0.011, mats["ceramic"], taper_end=0.58))
-    S("Decor_Lounge", add_tube("Teapot_Handle", [(-0.025, 0.51, 0.95), (-0.078, 0.49, 0.95), (-0.068, 0.44, 0.95), (-0.03, 0.435, 0.95)], 0.009, mats["ceramic"]))
+        S("Decor_Lounge", add_cylinder_between(f"Table_Leg_{i}", bot_p, top_p, 0.014, 0.024, mats["wood_mid"], segs=16))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder("Tea_Tray", (0.14, 0.405, 1.00), 0.22, 0.21, 0.012, mats["wood_mid"], segs=26, bevel_caps=0.004), 2))
+    S("Decor_Lounge", mark_uv_prio(add_lathe("Teapot", (0.04, 0.411, 0.95), [(0.0, 0.0), (0.062, 0.0), (0.086, 0.055), (0.070, 0.11), (0.036, 0.125), (0.016, 0.145), (0.0, 0.145)], mats["ceramic"], segs=24), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Teapot_Knob", (0.04, 0.560, 0.95), 0.012, mats["brass"], segs=12, rings=8), 2))
+    S("Decor_Lounge", mark_uv_prio(add_tube("Teapot_Spout", [(0.105, 0.455, 0.95), (0.148, 0.478, 0.95), (0.168, 0.525, 0.95)], 0.011, mats["ceramic"], bevel_res=3, taper_end=0.58), 2))
+    S("Decor_Lounge", mark_uv_prio(add_tube("Teapot_Handle", [(-0.025, 0.51, 0.95), (-0.078, 0.49, 0.95), (-0.068, 0.44, 0.95), (-0.03, 0.435, 0.95)], 0.009, mats["ceramic"], bevel_res=3), 2))
 
     for idx, (cx, cz, mkey) in enumerate([(0.24, 1.08, "pink"), (0.26, 0.92, "ceramic")]):
-        S("Decor_Lounge", add_cylinder(f"Teacup_Saucer_{idx}", (cx, 0.413, cz), 0.055, 0.046, 0.008, mats["ceramic"], segs=16))
-        S("Decor_Lounge", add_lathe(f"Teacup_{idx}", (cx, 0.417, cz), [(0.0, 0.0), (0.028, 0.0), (0.038, 0.056), (0.034, 0.058), (0.028, 0.01), (0.0, 0.01)], mats[mkey], segs=18))
-    S("Decor_Lounge", add_cylinder("Dessert_Plate", (0.34, 0.405, 1.18), 0.085, 0.072, 0.010, mats["ceramic"], segs=18))
-    S("Decor_Lounge", add_box("Cake_Base", (0.34, 0.430, 1.18), (0.068, 0.042, 0.052), mats["trim"], bevel=0.006, rot_y=0.45))
-    S("Decor_Lounge", add_sphere("Cake_Berry", (0.34, 0.458, 1.18), 0.013, mats["pink"], segs=12, rings=8))
+        S("Decor_Lounge", mark_uv_prio(add_cylinder(f"Teacup_Saucer_{idx}", (cx, 0.413, cz), 0.055, 0.046, 0.008, mats["ceramic"], segs=20), 2))
+        S("Decor_Lounge", mark_uv_prio(add_lathe(f"Teacup_{idx}", (cx, 0.417, cz), [(0.0, 0.0), (0.028, 0.0), (0.038, 0.056), (0.034, 0.058), (0.028, 0.01), (0.0, 0.01)], mats[mkey], segs=20), 2))
+    S("Decor_Lounge", mark_uv_prio(add_cylinder("Dessert_Plate", (0.34, 0.405, 1.18), 0.085, 0.072, 0.010, mats["ceramic"], segs=22), 2))
+    S("Decor_Lounge", mark_uv_prio(add_box("Cake_Base", (0.34, 0.430, 1.18), (0.068, 0.042, 0.052), mats["trim"], bevel=0.006, rot_y=0.45), 2))
+    S("Decor_Lounge", mark_uv_prio(add_sphere("Cake_Berry", (0.34, 0.458, 1.18), 0.013, mats["pink"], segs=12, rings=8), 2))
 
     # 黄铜三脚架天文望远镜（Hotspot_Scope_Door：准确校准朝向统一场景中黑洞原点 (28, -3.6, 44 偏移处)，透过右格玻璃无窗棂遮挡）
     sc_x, sc_z, sc_ry, sc_el = 2.66, 2.08, 0.587, 0.046
@@ -1438,23 +1577,23 @@ def build_scene() -> None:
         top = Vector((sc_x + math.cos(a) * 0.044, 0.885, sc_z + math.sin(a) * 0.044))
         ferrule_end = foot.lerp(top, 0.06)
         mid = foot.lerp(top, 0.50)
-        S("Hotspot_Scope_Door", add_cylinder_between(f"Scope_Foot_{i}", (foot.x, foot.y, foot.z), (ferrule_end.x, ferrule_end.y, ferrule_end.z), 0.015, 0.014, mats["brass"], segs=8))
-        S("Hotspot_Scope_Door", add_cylinder_between(f"Scope_Leg_{i}", (ferrule_end.x, ferrule_end.y, ferrule_end.z), (top.x, top.y, top.z), 0.012, 0.017, mats["wood_dark"], segs=8))
-        S("Hotspot_Scope_Door", add_cylinder_between(f"Scope_Strut_{i}", (sc_x, 0.44, sc_z), (mid.x, mid.y, mid.z), 0.0055, 0.0055, mats["brass"], segs=6))
-    S("Hotspot_Scope_Door", add_cylinder("Scope_SpreaderHub", (sc_x, 0.44, sc_z), 0.024, 0.024, 0.024, mats["brass"], segs=10))
+        S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between(f"Scope_Foot_{i}", (foot.x, foot.y, foot.z), (ferrule_end.x, ferrule_end.y, ferrule_end.z), 0.015, 0.014, mats["brass"], segs=14), 2))
+        S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between(f"Scope_Leg_{i}", (ferrule_end.x, ferrule_end.y, ferrule_end.z), (top.x, top.y, top.z), 0.012, 0.017, mats["wood_dark"], segs=14), 2))
+        S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between(f"Scope_Strut_{i}", (sc_x, 0.44, sc_z), (mid.x, mid.y, mid.z), 0.0055, 0.0055, mats["brass"], segs=8), 2))
+    S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder("Scope_SpreaderHub", (sc_x, 0.44, sc_z), 0.024, 0.024, 0.024, mats["brass"], segs=14), 2))
 
-    S("Hotspot_Scope_Door", add_cylinder("Scope_Hub", (sc_x, 0.90, sc_z), 0.050, 0.058, 0.08, mats["brass"], segs=12))
-    S("Hotspot_Scope_Door", add_cylinder("Scope_YokeBase", (sc_x, 0.952, sc_z), 0.072, 0.056, 0.028, mats["steel"], segs=12))
+    S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder("Scope_Hub", (sc_x, 0.90, sc_z), 0.050, 0.058, 0.08, mats["brass"], segs=18), 2))
+    S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder("Scope_YokeBase", (sc_x, 0.952, sc_z), 0.072, 0.056, 0.028, mats["steel"], segs=18), 2))
     for side in (-1, 1):
         fork_bot = (sc_x + right_dir.x * side * 0.064, 0.955, sc_z + right_dir.z * side * 0.064)
         fork_top = (sc_x + right_dir.x * side * 0.064, 1.078, sc_z + right_dir.z * side * 0.064)
-        S("Hotspot_Scope_Door", add_cylinder_between(f"Scope_ForkArm_{side}", fork_bot, fork_top, 0.013, 0.011, mats["steel"], segs=8))
-        S("Hotspot_Scope_Door", add_sphere(f"Scope_ForkKnob_{side}", (fork_top[0] + right_dir.x * side * 0.012, 1.070, fork_top[2] + right_dir.z * side * 0.012), 0.014, mats["brass"], segs=8, rings=5))
+        S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between(f"Scope_ForkArm_{side}", fork_bot, fork_top, 0.013, 0.011, mats["steel"], segs=12), 2))
+        S("Hotspot_Scope_Door", mark_uv_prio(add_sphere(f"Scope_ForkKnob_{side}", (fork_top[0] + right_dir.x * side * 0.012, 1.070, fork_top[2] + right_dir.z * side * 0.012), 0.014, mats["brass"], segs=10, rings=6), 2))
 
-    S("Hotspot_Scope_Door", add_cylinder_between("Scope_Barrel", scope_pt(-0.30), scope_pt(0.36), 0.036, 0.045, mats["brass"], segs=16))
+    S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between("Scope_Barrel", scope_pt(-0.30), scope_pt(0.36), 0.036, 0.045, mats["brass"], segs=22), 2))
     for rs in (-0.05, 0.05):
-        S("Hotspot_Scope_Door", add_cylinder_between(f"Scope_Ring_{rs:.2f}", scope_pt(rs - 0.014), scope_pt(rs + 0.014), 0.046, 0.046, mats["steel"], segs=14))
-    S("Hotspot_Scope_Door", add_cylinder_between("Scope_Dew", scope_pt(0.34), scope_pt(0.50), 0.047, 0.056, mats["wood_dark"], segs=16))
+        S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between(f"Scope_Ring_{rs:.2f}", scope_pt(rs - 0.014), scope_pt(rs + 0.014), 0.046, 0.046, mats["steel"], segs=20), 2))
+    S("Hotspot_Scope_Door", mark_uv_prio(add_cylinder_between("Scope_Dew", scope_pt(0.34), scope_pt(0.50), 0.047, 0.056, mats["wood_dark"], segs=22), 2))
     D(add_cylinder_between("Scope_ObjLens", scope_pt(0.42), scope_pt(0.432), 0.046, 0.046, mats["glass"], segs=14))
 
     S("Hotspot_Scope_Door", add_cylinder_between("Scope_TailCap", scope_pt(-0.32), scope_pt(-0.295), 0.038, 0.032, mats["steel"], segs=12))
@@ -1472,7 +1611,7 @@ def build_scene() -> None:
         S("Hotspot_Scope_Door", add_cylinder_between(f"Scope_FinderBrk_{bs:.2f}", scope_pt(bs, 0.042), scope_pt(bs, 0.078), 0.005, 0.005, mats["brass"], segs=6))
 
     # ================================================================
-    # 10. 合并到单主网格统一展开无重叠 UVMap_Bake -> Cycles 一次烘焙 -> 按 _grp_id 拆分为语义组导出 GLB
+    # 10. 合并到单主网格按重要性分级打包无重叠 UVMap_Bake -> Cycles 2048 接触 AO 与深空光照烘焙 -> 拆分语义组导出 GLB
     # ================================================================
     bpy.context.view_layer.update()
     group_names = [k for k, v in static_groups.items() if v]
@@ -1480,6 +1619,8 @@ def build_scene() -> None:
     bpy.ops.object.select_all(action="DESELECT")
     for gid, grp_name in enumerate(group_names):
         for obj in static_groups[grp_name]:
+            uv_prio = int(obj.get("_uv_prio", 1))
+            is_floor_top = obj.name == "Floor_Top"
             bpy.context.view_layer.objects.active = obj
             obj.select_set(True)
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
@@ -1488,8 +1629,13 @@ def build_scene() -> None:
             bm = bmesh.new()
             bm.from_mesh(obj.data)
             gl = bm.faces.layers.int.new("_grp_id")
+            pl = bm.faces.layers.int.new("_uv_prio")
             for f in bm.faces:
                 f[gl] = gid
+                if is_floor_top and f.normal.z < -0.9:
+                    f[pl] = 0
+                else:
+                    f[pl] = uv_prio
             bm.to_mesh(obj.data)
             bm.free()
             all_static_objs.append(obj)
@@ -1506,29 +1652,94 @@ def build_scene() -> None:
     master_obj.data.uv_layers.active = bake_uv
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.004, scale_to_bounds=True)
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.003, scale_to_bounds=True)
     bpy.ops.object.mode_set(mode="OBJECT")
 
+    bm_uv = bmesh.new()
+    bm_uv.from_mesh(master_obj.data)
+    uv_bake_lay = bm_uv.loops.layers.uv.get("UVMap_Bake")
+    pl_uv = bm_uv.faces.layers.int.get("_uv_prio")
+    if uv_bake_lay is not None and pl_uv is not None:
+        # 按 UV 连通孤岛整体缩放（严禁按单面中心缩放导致曲面接缝撕裂与顶点数翻倍）
+        bm_uv.faces.ensure_lookup_table()
+        visited = [False] * len(bm_uv.faces)
+        for seed in bm_uv.faces:
+            if visited[seed.index]:
+                continue
+            island: list[bmesh.types.BMFace] = []
+            stack = [seed]
+            visited[seed.index] = True
+            while stack:
+                cf = stack.pop()
+                island.append(cf)
+                for edge in cf.edges:
+                    if len(edge.link_faces) < 2:
+                        continue
+                    c_uvs: dict[bmesh.types.BMVert, Vector] = {}
+                    for l in cf.loops:
+                        if l.vert in edge.verts:
+                            c_uvs[l.vert] = l[uv_bake_lay].uv
+                    for nf in edge.link_faces:
+                        if visited[nf.index]:
+                            continue
+                        n_uvs = {l.vert: l[uv_bake_lay].uv for l in nf.loops if l.vert in edge.verts}
+                        if len(c_uvs) == 2 and len(n_uvs) == 2 and all(
+                            (c_uvs[v] - n_uvs[v]).length_squared < 1e-8 for v in edge.verts
+                        ):
+                            visited[nf.index] = True
+                            stack.append(nf)
+            max_p = max(f[pl_uv] for f in island)
+            s = 0.16 if max_p == 0 else (1.45 if max_p == 2 else 1.0)
+            if s != 1.0:
+                loops = [l for f in island for l in f.loops]
+                if loops:
+                    cx = sum(l[uv_bake_lay].uv.x for l in loops) / len(loops)
+                    cy = sum(l[uv_bake_lay].uv.y for l in loops) / len(loops)
+                    for l in loops:
+                        l[uv_bake_lay].uv.x = cx + (l[uv_bake_lay].uv.x - cx) * s
+                        l[uv_bake_lay].uv.y = cy + (l[uv_bake_lay].uv.y - cy) * s
+        bm_uv.faces.layers.int.remove(pl_uv)
+    bm_uv.to_mesh(master_obj.data)
+    bm_uv.free()
+
     scene = bpy.context.scene
+    scene.tool_settings.use_uv_select_sync = True
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.pack_islands(margin=0.0035, scale=True, rotate=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = 40
+    scene.cycles.use_adaptive_sampling = True
+    scene.cycles.adaptive_threshold = 0.015
+    scene.cycles.sample_clamp_direct = 6.0
+    scene.cycles.sample_clamp_indirect = 2.5
     scene.cycles.use_denoising = True
     scene.cycles.denoiser = "OPENIMAGEDENOISE"
-    scene.cycles.max_bounces = 4
-    scene.cycles.diffuse_bounces = 3
+    scene.cycles.max_bounces = 6
+    scene.cycles.diffuse_bounces = 4
     scene.cycles.glossy_bounces = 1
-    scene.render.bake.margin = 6
+    scene.render.bake.margin = 12
     scene.render.bake.use_clear = True
-    print(f"[Cycles] Baking unified master mesh ({len(group_names)} groups) onto zero-overlap AO & Cosmic Lightmap (40 samples)")
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = 0.0
+    scene.view_settings.gamma = 1.0
+    print(f"[Cycles] Baking unified master mesh ({len(group_names)} groups) onto priority-packed 2048 AO & Cosmic Lightmap")
 
     seen_mats: list[bpy.types.Material] = []
     for mat in master_obj.data.materials:
         if mat and mat.use_nodes and mat not in seen_mats:
             seen_mats.append(mat)
 
-    def setup_bake_image(img_name: str, size: int = 1024) -> tuple[bpy.types.Image, list[tuple[bpy.types.NodeTree, bpy.types.Node]]]:
-        img = bpy.data.images.new(img_name, width=size, height=size, alpha=False, float_buffer=False)
+    def setup_bake_image(
+        img_name: str,
+        size: int = 2048,
+        float_buffer: bool = False,
+    ) -> tuple[bpy.types.Image, list[tuple[bpy.types.NodeTree, bpy.types.Node]]]:
+        img = bpy.data.images.new(img_name, width=size, height=size, alpha=False, float_buffer=float_buffer)
         created = []
         for mat in seen_mats:
             nt = mat.node_tree
@@ -1547,7 +1758,7 @@ def build_scene() -> None:
     master_obj.select_set(True)
     bpy.context.view_layer.objects.active = master_obj
 
-    # ---- Bake 1: Cycles Ambient Occlusion ----
+    # ---- Bake 1: 0.65m 局部接触阴影 Ambient Occlusion（2048×2048，彻底突出体块与角落接触感） ----
     world = bpy.data.worlds.new("BakeWorld")
     scene.world = world
     world.use_nodes = True
@@ -1555,18 +1766,46 @@ def build_scene() -> None:
     bg_node.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     bg_node.inputs["Strength"].default_value = 1.0
 
-    ao_img, ao_nodes = setup_bake_image("Room_AO", 1024)
-    bpy.ops.object.bake(type="AO")
+    saved_surface_links: list[tuple[bpy.types.NodeTree, bpy.types.NodeSocket, bpy.types.NodeSocket, list[bpy.types.Node]]] = []
+    for mat in seen_mats:
+        nt = mat.node_tree
+        out_node = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL"), None)
+        if out_node is None:
+            continue
+        surf_in = out_node.inputs["Surface"]
+        orig_from = surf_in.links[0].from_socket if surf_in.links else None
+        ao_node = nt.nodes.new("ShaderNodeAmbientOcclusion")
+        ao_node.samples = 16
+        ao_node.inputs["Distance"].default_value = 0.65
+        gamma_node = nt.nodes.new("ShaderNodeGamma")
+        gamma_node.inputs["Gamma"].default_value = 1.18
+        emit_node = nt.nodes.new("ShaderNodeEmission")
+        emit_node.inputs["Strength"].default_value = 1.0
+        nt.links.new(ao_node.outputs["AO"], gamma_node.inputs["Color"])
+        nt.links.new(gamma_node.outputs["Color"], emit_node.inputs["Color"])
+        nt.links.new(emit_node.outputs["Emission"], surf_in)
+        saved_surface_links.append((nt, surf_in, orig_from, [ao_node, gamma_node, emit_node]))
+
+    ao_img, ao_nodes = setup_bake_image("Room_AO", 2048)
+    bpy.ops.object.bake(type="EMIT")
     ao_png = OUT_DIR / "room_ao.png"
     ao_img.filepath_raw = str(ao_png)
     ao_img.file_format = "PNG"
     ao_img.save()
     teardown_bake_nodes(ao_nodes)
-    print(f"[Cycles] Baked AO -> {ao_png}")
 
-    # ---- Bake 2: 深空星海暗背景 + 窗外柔紫粉斜掠星光 + 室内庇护暖灯（无地面紫色光斑，墙面与画作细节清晰可读） ----
-    bg_node.inputs["Color"].default_value = (0.032, 0.038, 0.068, 1.0)
-    bg_node.inputs["Strength"].default_value = 0.16
+    for nt, surf_in, orig_from, temp_nodes in saved_surface_links:
+        for lnk in list(surf_in.links):
+            nt.links.remove(lnk)
+        if orig_from is not None:
+            nt.links.new(orig_from, surf_in)
+        for tn in temp_nodes:
+            nt.nodes.remove(tn)
+    print(f"[Cycles] Baked 2048 Contact AO -> {ao_png}")
+
+    # ---- Bake 2: 深空庇护所柔光烘培（移除顶部全局天光回弹，深邃太空基调 + 窗外紫粉黑洞漫射 + 柔和局域暖光岛） ----
+    bg_node.inputs["Color"].default_value = (0.036, 0.042, 0.082, 1.0)
+    bg_node.inputs["Strength"].default_value = 0.19
 
     bake_lights: list[bpy.types.Object] = []
 
@@ -1578,6 +1817,9 @@ def build_scene() -> None:
         color: tuple[float, float, float],
         size: float = 0.15,
         look_at: tuple[float, float, float] | None = None,
+        shape: str = "SQUARE",
+        size_y: float | None = None,
+        spread_deg: float | None = None,
     ) -> None:
         ldata = bpy.data.lights.new(name=lname, type=ltype)
         ldata.energy = energy
@@ -1585,26 +1827,42 @@ def build_scene() -> None:
         if ltype == "POINT":
             ldata.shadow_soft_size = size
         elif ltype == "AREA":
+            ldata.shape = shape
             ldata.size = size
+            if shape == "RECTANGLE" and size_y is not None:
+                ldata.size_y = size_y
+            if spread_deg is not None:
+                ldata.spread = math.radians(spread_deg)
         lobj = bpy.data.objects.new(lname, ldata)
         vp = to_bl(*pos)
         lobj.location = vp
         if look_at is not None:
             vt = to_bl(*look_at)
-            lobj.rotation_euler = (vt - vp).normalized().to_track_quat("-Z", "Y").to_euler("XYZ")
+            direction = (vt - vp).normalized()
+            up_axis = "Y" if abs(direction.z) >= 0.95 else "Z"
+            lobj.rotation_euler = direction.to_track_quat("-Z", up_axis).to_euler("XYZ")
         link_obj(lobj)
         bake_lights.append(lobj)
 
-    add_bake_light("L_BH_Window", "AREA", (-5.2, 2.6, -10.5), 56.0, (0.98, 0.78, 0.92), size=3.2, look_at=(-0.4, 1.1, -1.5))
+    add_bake_light("L_BH_Window", "AREA", (-1.85, 2.05, -4.35), 32.0, (0.94, 0.72, 0.98), size=2.35, look_at=(0.4, 0.85, 0.5), shape="RECTANGLE", size_y=1.75, spread_deg=115.0)
 
-    add_bake_light("L_Desk", "POINT", (-2.48, 1.05, -2.78), 56.0, (1.0, 0.76, 0.48), size=0.10)
-    add_bake_light("L_Floor", "POINT", (1.80, 1.78, 0.08), 84.0, (1.0, 0.78, 0.54), size=0.16)
-    add_bake_light("L_Gal1", "POINT", (1.72, 2.42, -3.08), 44.0, (1.0, 0.82, 0.60), size=0.14)
-    add_bake_light("L_Gal2", "POINT", (2.70, 2.58, -3.08), 44.0, (1.0, 0.82, 0.60), size=0.14)
-    add_bake_light("L_ShelfTop", "POINT", (-2.96, 2.35, -1.05), 28.0, (1.0, 0.78, 0.54), size=0.18)
-    add_bake_light("L_ShelfMid", "POINT", (-2.96, 1.52, -1.05), 26.0, (1.0, 0.78, 0.54), size=0.18)
-    add_bake_light("L_ShelfBot", "POINT", (-2.96, 0.72, -1.05), 22.0, (1.0, 0.78, 0.54), size=0.18)
-    add_bake_light("L_TV", "POINT", (-2.74, 0.86, 2.12), 14.0, (0.58, 0.84, 1.0), size=0.14)
+    add_bake_light("L_Floor_Down", "AREA", (1.80, 1.66, 0.08), 62.0, (1.0, 0.81, 0.56), size=0.55, look_at=(1.35, 0.0, 0.32), shape="DISK", spread_deg=122.0)
+    add_bake_light("L_Floor_Shade", "POINT", (1.80, 1.82, 0.08), 28.0, (1.0, 0.79, 0.54), size=0.45)
+
+    add_bake_light("L_Desk_Down", "AREA", (-2.46, 1.02, -2.76), 28.0, (1.0, 0.82, 0.58), size=0.32, look_at=(-1.95, 0.74, -2.82), shape="DISK", spread_deg=112.0)
+    add_bake_light("L_Desk_Bounce", "POINT", (-2.15, 1.18, -2.62), 14.0, (1.0, 0.80, 0.58), size=0.35)
+
+    add_bake_light("L_Gal1", "AREA", (1.72, 2.46, -3.14), 30.0, (1.0, 0.85, 0.65), size=0.55, look_at=(1.72, 1.82, -3.38), shape="RECTANGLE", size_y=0.14, spread_deg=96.0)
+    add_bake_light("L_Gal2", "AREA", (2.70, 2.65, -3.14), 32.0, (1.0, 0.85, 0.65), size=0.55, look_at=(2.70, 1.92, -3.38), shape="RECTANGLE", size_y=0.14, spread_deg=96.0)
+    add_bake_light("L_Cork", "AREA", (0.28, 2.55, -2.92), 14.0, (1.0, 0.84, 0.66), size=0.72, look_at=(0.28, 1.80, -3.38), shape="RECTANGLE", size_y=0.18, spread_deg=110.0)
+
+    add_bake_light("L_ShelfTop", "AREA", (-3.00, 2.56, -1.05), 26.0, (1.0, 0.82, 0.58), size=0.14, look_at=(-3.14, 1.91, -1.05), shape="RECTANGLE", size_y=2.15, spread_deg=112.0)
+    add_bake_light("L_ShelfMid", "AREA", (-3.00, 1.74, -1.05), 24.0, (1.0, 0.82, 0.58), size=0.14, look_at=(-3.14, 1.09, -1.05), shape="RECTANGLE", size_y=2.15, spread_deg=112.0)
+    add_bake_light("L_ShelfBot", "AREA", (-3.00, 0.90, -1.05), 20.0, (1.0, 0.82, 0.58), size=0.14, look_at=(-3.14, 0.25, -1.05), shape="RECTANGLE", size_y=2.15, spread_deg=112.0)
+
+    add_bake_light("L_LeftWall_Soft", "AREA", (-2.70, 2.62, 1.30), 12.0, (1.0, 0.86, 0.72), size=0.95, look_at=(-3.38, 1.65, 1.20), shape="RECTANGLE", size_y=0.25, spread_deg=118.0)
+    add_bake_light("L_TV", "AREA", (-2.80, 0.84, 2.15), 12.0, (0.58, 0.84, 1.0), size=0.48, look_at=(-1.6, 0.65, 2.00), shape="RECTANGLE", size_y=0.36, spread_deg=118.0)
+    add_bake_light("L_Plant_Rim", "AREA", (2.85, 2.10, -2.25), 9.0, (0.94, 0.86, 0.84), size=0.65, look_at=(2.95, 0.45, -2.85), shape="DISK", spread_deg=125.0)
 
     saved_colors = {}
     for mat in seen_mats:
@@ -1613,8 +1871,21 @@ def build_scene() -> None:
             saved_colors[mat.name] = tuple(bsdf.inputs["Base Color"].default_value)
             bsdf.inputs["Base Color"].default_value = (0.88, 0.88, 0.88, 1.0)
 
-    lm_img, lm_nodes = setup_bake_image("Room_NightLM", 1024)
+    scene.cycles.samples = 72
+    scene.cycles.adaptive_threshold = 0.018
+    lm_img, lm_nodes = setup_bake_image("Room_NightLM", 2048, float_buffer=True)
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
+    import numpy as np
+    arr = np.empty(len(lm_img.pixels), dtype=np.float32)
+    lm_img.pixels.foreach_get(arr)
+    pixels_rgba = arr.reshape((-1, 4))
+    rgb = np.maximum(pixels_rgba[:, :3], 0.0)
+    pixels_rgba[:, :3] = rgb / (1.0 + rgb * 0.50)
+    lm_img.pixels.foreach_set(pixels_rgba.ravel())
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = 0.0
+    scene.view_settings.gamma = 1.0
     lm_png = OUT_DIR / "room_night_lm.png"
     lm_img.filepath_raw = str(lm_png)
     lm_img.file_format = "PNG"
@@ -1697,8 +1968,10 @@ def build_scene() -> None:
     shots = [
         ("preview_overview.png", (5.15, 3.05, 5.25), (-0.2, 0.95, -0.25)),
         ("preview_desk_mouse.png", (-1.52, 0.96, -2.55), (-1.82, 0.78, -2.87)),
-        ("preview_plant.png", (2.15, 1.12, -2.05), (3.04, 0.56, -2.96)),
+        ("preview_plant.png", (2.00, 1.08, -1.90), (2.90, 0.56, -2.80)),
         ("preview_railing_scope.png", (4.55, 1.42, 4.45), (2.25, 0.72, 1.95)),
+        ("preview_kitty.png", (-2.55, 0.46, -0.34), (-3.12, 0.34, -0.62)),
+        ("preview_scroll.png", (-2.74, 2.04, -1.06), (-3.12, 1.94, -1.20)),
     ]
     for fname, pos, look in shots:
         vp = to_bl(*pos)

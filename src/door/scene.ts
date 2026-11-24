@@ -1095,8 +1095,8 @@ export function mountDoor(options: DoorOptions): DoorController {
   function configureStudyControls() {
     controls.enableZoom = true;
     controls.enablePan = false;
-    controls.minDistance = 2.0;
-    controls.maxDistance = 12.0;
+    controls.minDistance = 1.15;
+    controls.maxDistance = 14.5;
     controls.minPolarAngle = 0.25;
     controls.maxPolarAngle = Math.PI * 0.62;
     controls.enabled = true;
