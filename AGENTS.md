@@ -21,7 +21,7 @@
 ## 2. 基建与环境
 
 - Astro 5 静态站（`output: 'static'`），`npm run build` 先跑 `scripts/unshallow.mjs` 再生成 `dist/`（Cloudflare Pages 为浅克隆，补全 git 历史失败则中止构建）。
-- **运行时依赖只有 `astro` 与 `three`**：手写 RSS / sitemap、首页背景 WebGL2 着色器；`three` **仅允许**在门户页 `/door/`（含嵌入式 3D 书房 `/door/#study`）、`pelican-ride` 与 `cosmic-roam` 使用，其他页面禁止 import。
+- **运行时依赖只有 `astro` 与 `three`**：手写 RSS / sitemap、首页背景 WebGL2 着色器；`three` **仅允许**在门户页 `/door/`（含嵌入式 3D 书房 `/door/#study`）、生日小屋 `/birthday/`、`pelican-ride` 与 `cosmic-roam` 使用，其他页面禁止 import。
 - `astro.config.mjs` 的 `vite.optimizeDeps.include` 预构建了 `three` 及全站用到的一批 `three/addons/*` 子模块；若本地 `astro dev` 运行期间执行过 `build` 或重优化导致 `504 Outdated Optimize Dep`，停掉 dev、删 `node_modules/.vite` 再重启即可。
 - `public/_routes.json` 将 `/_astro/*` 等静态资源目录排除在 Pages Functions 之外以节省免费调用额度；新增纯静态资源目录时记得同步加入。
 - **DNS 与 Turnstile 闸门**：阿里云 DNS **NS 不迁入 Cloudflare**（`www` CNAME → Pages，裸域 `@` 301 → `www`，保留 `_dnsauth` TXT）。闸门逻辑全在 `functions/` 内（`functions/_middleware.ts` + `functions/api/turnstile-verify.ts` + `functions/_lib/gate.ts`，签名工具必须留在 `functions/` 内），`src/pages/gate.astro` 只保留居中 Turnstile，无装饰卡片。两项 Secret 未配齐时故意放行；本地 `astro dev` 不跑 Functions。探针：`public/__deploy_probe.txt` → `deploy-ok`。
@@ -37,7 +37,7 @@
 3. **图片 / 音频一律 OSS 图床外链**，不建 `public/uploads/`、不用 R2；Markdown 里写完整 `https://...` URL。
 4. **不加载任何 Web 字体**（含 `/door/` 装饰字母也走系统栈），零 FOUT、零外部字体请求。
 5. **全站发丝线视觉**：仅用 1px 发丝线分隔，禁用卡片阴影、大圆角、大色块、渐变填充；朱红 `#C6462F` 仅用于交互反馈。
-6. **动效仅响应交互或滚动，禁用自循环 `@keyframes`**（仅三处例外：首页连线流光点、首页 `TargetCursor` 空闲慢转、`/door/` 吸积盘旋转）。时长走 `--dur-1/2/3` + `--stagger` token；`prefers-reduced-motion` 下压缩时长而非一刀切 `animation: none`。
+6. **动效仅响应交互或滚动，禁用自循环 `@keyframes`**（仅五处例外：首页连线流光点、首页 `TargetCursor` 空闲慢转、`/door/` 吸积盘旋转、`/birthday/` 火苗网格极轻摆动与吸积盘旋转，烛光强度恒定不闪）。时长走 `--dur-1/2/3` + `--stagger` token；`prefers-reduced-motion` 下压缩时长而非一刀切 `animation: none`。
 7. 不提交密钥、不提交 `ssl/`、不提交 `console.log`；Windows PowerShell 下提交 commit 使用普通 `-m` 或 PowerShell here-string，不用 bash HEREDOC。
 
 ---
@@ -61,7 +61,7 @@
 
 ## 5–6. 首页、门户与 3D 书房（约束摘要；现状详述见 `docs/site-architecture.md`，改这些模块前先读）
 
-- 3D 书房（`/door/#study`）嵌在 `/door/` 的单一 WebGL 场景里：不单设 URL、不开第二块画布；资源清单 `src/room/assets.json`，由 `src/room/*` 载入。
+- 3D 书房（`/door/#study`）嵌在 `/door/` 的单一 WebGL 场景里：不单设 URL、不开第二块画布；资源清单 `src/room/assets.json`，由 `src/room/*` 载入。书房模式 `controls.minDistance = 1.15`，热点机位离目标须 ≥ 1.15m（近景用窄 `fov` 拉近），否则会被钳制推远而偏离构图。
 - 首页 `/`：禁止 `.node > *` 通配子选择器；量坐标用 `offsetLeft` 链（`boxIn`），不用 `getBoundingClientRect`；缩放前先终止进行中的过渡；手风琴收起分支必须在 `fit()` 重算前保存并精确还原展开前视口；封面走 `?x-oss-process=style/thumb`，超过 14 条连线不生成流光点；`TargetCursor` 仅在 `(hover: hover) and (pointer: fine)` 的首页启用。
 - `/door/`：`sky()` 在片元着色器里只保留单一调用点，用无分支权重混色主题；终端数据构建时写入，禁止改用 iframe（`_headers` 的 `X-Frame-Options: DENY`）；像素比升档门槛不低于 `16.7ms`（建议 `>= 18ms`）；灯光必须 `layers.enable(IMAGE_LAYER)`；`STAR_NODES` 由 `/door/` 与 `cosmic-roam` 共用。
 
@@ -78,20 +78,21 @@
 
 ---
 
-## 8. 游戏大厅（`/game/`）与画廊（`/gallery/`）
+## 8. 游戏大厅（`/game/`）、画廊（`/gallery/`）与生日小屋（`/birthday/`）
 
-均仅从顶栏图标进入，不进 `ContentKind`/导图/RSS。
+均仅从顶栏图标进入，不进 `ContentKind`/导图/RSS（生日小屋另不进 sitemap、页面本身不显示顶栏，并可从书房书桌蛋糕热点 `desk-cake` 进入）。
 
 - **游戏与画廊约束**（详述见 `docs/site-architecture.md`）：
   - 游戏成绩仅存 `localStorage`；重生成音频前先关闭本地游戏页；用 `py -3.14` 跑 `scripts/game-audio/upload.py`（星海漫游加 `--game cosmic`）覆盖传 OSS 并带 `?v=`，`scripts/game-audio/out/` 不入库。
   - 鹈鹕骑车：自定义几何体必须有法线；点光源复用 `world.lamp`；画质只降不升。星海漫游：黑洞周边保持真实天体结构，不摆奇幻石碑；星点 `MIN_POINT = 5.0`、不加时间 `shimmer`、`coreSigma >= 0.62` px；手机 DPR 起步 `0.95`、上限 `1.3`（升档门槛 `18ms`）。
+  - 生日小屋：宇宙浮空岛 + 复用 `src/door/shaders.ts` 的黑洞（书房模式 defines，网格后 `LessEqualDepth` 绘制、不加 UnrealBloom）；黑洞须离岛 ≥ 16.5Rs（现约 21Rs），进入着色器强场球会把星点拉成雨丝；镜头自由环绕但不得钻进岛体（`insideIsland` 推离）。贺卡文案只改 `src/config/birthday.ts`；书房书桌与生日场景共用 `build_room.py` 的 `add_birthday_cake()`（改蛋糕需两边都重建烘焙）；场景由 `scripts/birthday-blender/build_birthday.py` 建模烘焙，`py -3.14 scripts/birthday-blender/upload.py` 清理立牌 / 标题 / 贺卡蛋糕插画 Alpha 并上传 OSS `personal_website_other/birthday/`、写 `src/birthday/assets.json`；标题书法字是透明底图片（不加载 Web 字体），改名须重新生成。
   - 画廊：清单 `src/content/gallery.json`，分类限定 `插画`/`漫画`/`海报`/`角色立绘`/`常服设定`/`头像特写`；透明底设定设 `cutout: true`；每条 `summary` 单行（约 24～32 字、不超过 36 字）；角色设定与常服不画「call-out 拆分图」，统一画完整穿戴效果。
 - **角色设定与生图作画规范**（`nuonuo_role/` 与 `xiaomeng_role/`）：
   - **画风底线**：精致日漫 Q 版赛璐璐风（温润细紫描边、干净清透平涂与柔和光影），**零颗粒噪点、零纸纹杂斑、零脏影**。
   - **姐妹锚点**：姐姐诺诺为浅紫白及腰长发、纯紫瞳、仅头顶一对白猫耳（无人类耳）、自身右侧（正面看画面左侧）五瓣粉花夹 + 淡紫发带、白卷尾尖系粉缎带与玫瑰粉圆铃铛；亲妹妹小萌矮半头、及肩微卷发 + 头顶小呆毛、同款白猫耳无人类耳、自身左侧（正面看画面右侧）四瓣小白花夹 + 柔粉发带、尾尖柔粉蝴蝶结 + 浅金星形铃铛；同框严禁画反长幼或串饰。
   - **尾巴自然度**：正/侧/背三视图及场景图中，猫尾巴必须从腰后尾椎、裙摆下缘自然探出（背面由裙摆自然遮住尾根），**严禁像贴纸一样直接粘在衣服表面**。
   - **表情与氛围**：日常插画/漫画/头像优先使用鲜活卡哇伊的猫娘小表情（小得意挑眉、纯紫瞳内星形高光、俏皮小虎牙笑、饱满柔粉腮红、软萌眯眼害羞笑），可少量点缀四角星芒、淡紫猫爪印与小爱心；借鉴外部梗图时**仅参考神态与装饰，严禁混入外部角色特征**（不异瞳、不串角色）。
-  - **生图工作流**：经 OpenRouter `POST /api/v1/images`（密钥读用户环境变量 `OPENROUTER_API_KEY`，不落盘、不打印）调用 GPT Image 2.6：`openai/gpt-image-2.6-flare` 快速出构图草稿，`openai/gpt-image-2.6-sunburst` 出定稿与多轮一致性编辑；角色设定图经 `input_references`（base64 data URL，最多 16 张）作身份锚点，交代简洁自然的中文要求让模型自主构思细节；临时成图放 `test-output/`，记录每张返回的 `usage.cost`；成图须逐张目视复核，透明底设定（`background: transparent` + png/webp）额外校验 RGBA Alpha 通道。
+  - **生图工作流**：用 `py -3.14 scripts/image-gen/openrouter_image.py` 经 OpenRouter `POST /api/v1/images`（密钥读用户环境变量 `OPENROUTER_API_KEY`，不落盘、不打印）调用 GPT Image 2.6：`openai/gpt-image-2.6-flare` 快速出构图草稿，`openai/gpt-image-2.6-sunburst` 出定稿与多轮一致性编辑；角色设定图经 `input_references`（base64 data URL，最多 16 张）作身份锚点，交代简洁自然的中文要求让模型自主构思细节；临时成图放 `test-output/`，记录每张返回的 `usage.cost`；成图须逐张目视复核，透明底设定（`background: transparent` + png/webp）额外校验 RGBA Alpha 通道。
 
 ---
 
@@ -101,7 +102,7 @@
 - [ ] 无痕访问经 `/gate/`（极简居中）验证进站；`__deploy_probe.txt` 为 `deploy-ok`
 - [ ] 四套主题色 × 深浅色完整，首页思维导图拖拽缩放、手风琴展开/收起精确还原、`TargetCursor` 正常
 - [ ] 375px / 320px 窄屏无横向溢出；列表搜索、标签拼音分组、文章目录/Mermaid/MusicBar、公告红点与嵌入卡片正常
-- [ ] `/door/`、三款小游戏桌面与触屏均正常渲染、无控制台与 WebGL 报错，所有图片/音频均为 OSS 外链
+- [ ] `/door/`（含书房蛋糕热点）、`/birthday/` 吹蜡烛与贺卡、三款小游戏桌面与触屏均正常渲染、无控制台与 WebGL 报错，所有图片/音频均为 OSS 外链
 
 ---
 

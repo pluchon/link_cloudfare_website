@@ -12,6 +12,7 @@ export type HotspotId =
   | 'calendar-notice'
   | 'gallery-wall'
   | 'desk-about'
+  | 'desk-cake'
   | 'board-tags'
   | 'scope-door';
 

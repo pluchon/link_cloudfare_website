@@ -1,0 +1,796 @@
+---
+// 生日小屋：悬在紫粉黑洞旁的宇宙浮空岛野餐（three.js 白名单页面之一，不显示顶栏）。
+// 仅从顶栏蛋糕图标与 3D 书房书桌上的蛋糕进入，不进 ContentKind / 导图 / RSS / sitemap。
+// 贺卡文案在 src/config/birthday.ts，OSS 素材清单在 src/birthday/assets.json。
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { birthday } from '../config/birthday';
+import assets from '../birthday/assets.json';
+
+const [y, m, d] = birthday.date.split('-');
+const dateLabel = `${Number(m)} · ${Number(d)} · ${y}`;
+const pageTitle = `生日小屋 · ${birthday.name} 的 ${birthday.age} 岁`;
+const description = `悬在黑洞旁的浮空岛上，吹灭蜡烛，许个愿吧。祝 ${birthday.name} ${birthday.age} 岁生日快乐。`;
+---
+
+<BaseLayout title={pageTitle} description={description} variant="stage" hideHeader>
+  <section
+    class="bd"
+    data-bd
+    data-state="loading"
+    data-scene={assets.scene}
+    data-ao={assets.ao}
+    data-nuonuo={assets.nuonuo}
+  >
+    <canvas
+      class="bd__canvas"
+      data-canvas
+      aria-label="悬在紫粉黑洞旁的浮空岛三维场景：野餐垫上的矮桌摆着点了「21」蜡烛的双层蛋糕，诺诺捧着礼物坐在一旁；可拖动旋转、滚轮缩放"
+    ></canvas>
+
+    <!-- 加载：发丝线进度 -->
+    <div class="bd-load" data-load aria-live="polite">
+      <p class="bd-load__text">正在靠近星海浮岛 <span data-load-pct>0%</span></p>
+      <span class="bd-load__bar"><i data-load-bar></i></span>
+    </div>
+
+    <!-- 左上：寿星与日期 -->
+    <header class="bd-meta">
+      <span class="bd-meta__date">{dateLabel}</span>
+      <h1 class="bd-meta__name">{birthday.name}<span class="bd-meta__sep" aria-hidden="true"></span>{birthday.age}</h1>
+    </header>
+
+    <!-- 底部导航：左侧生日功能，右侧回书房 / 回思维导图（与书房底栏同一套发丝线 + 四角括号） -->
+    <nav class="bd-dock" aria-label="生日小屋导航">
+      <span class="bd-dock__c bd-dock__c--tl" aria-hidden="true"></span>
+      <span class="bd-dock__c bd-dock__c--tr" aria-hidden="true"></span>
+      <span class="bd-dock__c bd-dock__c--bl" aria-hidden="true"></span>
+      <span class="bd-dock__c bd-dock__c--br" aria-hidden="true"></span>
+
+      <div class="bd-dock__nav">
+        <button type="button" class="bd-dock__item" data-view>
+          <svg class="bd-dock__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 20.6h17.2" /><rect x="5" y="14" width="14" height="6.6" rx="1.4" /><path d="M5 16.1c1.2 1.1 2.3 1.1 3.5 0s2.3-1.1 3.5 0 2.3 1.1 3.5 0 2.3-1.1 3.5 0" /><rect x="7.6" y="10" width="8.8" height="4" rx="1.1" /><path d="M12 10V7.4" /><path d="M12 6.6c-1 0-1.6-.7-1.6-1.5 0-.9.8-1.6 1.6-3 .8 1.4 1.6 2.1 1.6 3 0 .8-.6 1.5-1.6 1.5z" /></svg>
+          <span>看蛋糕</span>
+        </button>
+        <span class="bd-dock__sep" aria-hidden="true"></span>
+        <button type="button" class="bd-dock__item" data-blow>
+          <svg class="bd-dock__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5c3.2 0 4.4-2.6 7.6-2.6 2 0 3.2 1.1 3.2 2.5 0 1.2-1 2-2.1 2-.9 0-1.6-.6-1.6-1.4" /><path d="M3 14c4.6 0 6.2-1.5 10.4-1.5 3.6 0 5.6 1.4 5.6 3.4 0 1.5-1.2 2.6-2.7 2.6-1.2 0-2.1-.8-2.1-1.8" /></svg>
+          <span>吹蜡烛</span>
+        </button>
+        <button type="button" class="bd-dock__item" data-relight hidden>
+          <svg class="bd-dock__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-7" /><path d="M12 10.6c-1.7 0-2.8-1.2-2.8-2.7 0-1.6 1.4-2.8 2.8-5.1 1.4 2.3 2.8 3.5 2.8 5.1 0 1.5-1.1 2.7-2.8 2.7z" /></svg>
+          <span>重新点燃</span>
+        </button>
+        <span class="bd-dock__sep" aria-hidden="true"></span>
+        <button type="button" class="bd-dock__item" data-song aria-pressed="false">
+          <svg class="bd-dock__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5.5l10-2V16" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></svg>
+          <span>生日歌</span>
+        </button>
+        <span class="bd-dock__sep" aria-hidden="true"></span>
+        <button type="button" class="bd-dock__item" data-card-open aria-controls="bd-card" aria-expanded="false">
+          <svg class="bd-dock__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5" /><path d="m4 6.5 8 6 8-6" /></svg>
+          <span>贺卡</span>
+        </button>
+      </div>
+
+      <div class="bd-dock__tools">
+        <a class="bd-dock__tool" href="/door/#study" data-astro-reload aria-label="回到 3D 书房" title="回到 3D 书房">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7.5 12 3l8 4.5V17l-8 4.5L4 17z"></path>
+            <path d="M12 3v9.5M12 12.5 4 17M12 12.5l8 4.5"></path>
+            <path d="M14.5 7.4 17.7 9.2v4.2l-3.2-1.8z"></path>
+          </svg>
+        </a>
+        <span class="bd-dock__sep bd-dock__sep--tight" aria-hidden="true"></span>
+        <a class="bd-dock__tool" href="/" aria-label="切换为思维导图主页" title="切换为思维导图主页">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="9" width="5.5" height="6" rx="1.2"></rect>
+            <rect x="15.5" y="3.5" width="5.5" height="4" rx="1"></rect>
+            <rect x="15.5" y="10" width="5.5" height="4" rx="1"></rect>
+            <rect x="15.5" y="16.5" width="5.5" height="4" rx="1"></rect>
+            <path d="M8.5 12h7M12 12V5.5h3.5M12 12v6.5h3.5"></path>
+          </svg>
+        </a>
+      </div>
+    </nav>
+
+    <!-- 贺卡：横版札记，吹灭蜡烛后在画面正中展开 -->
+    <div class="bd-card-layer" data-card-layer hidden>
+      <!-- 点贺卡外的任意空白处（或按 Esc）收起 -->
+      <div class="bd-card-scrim" data-card-close aria-hidden="true"></div>
+      <article class="bd-card" id="bd-card" data-card role="dialog" aria-modal="true" aria-label="生日贺卡">
+        <span class="bd-card__tape bd-card__tape--l" aria-hidden="true"></span>
+        <span class="bd-card__tape bd-card__tape--r" aria-hidden="true"></span>
+        <div class="bd-card__top">
+          <span class="bd-card__date">{dateLabel}</span>
+          <svg class="bd-card__sparks" viewBox="0 0 48 14" aria-hidden="true">
+            <path class="s-gold" d="M6 1.5 7 6l4.5 1L7 8 6 12.5 5 8 .5 7 5 6z" />
+            <path class="s-cream" d="M23 3.5l.6 2.6 2.6.6-2.6.6L23 9.9l-.6-2.6-2.6-.6 2.6-.6z" />
+            <path class="s-sage" d="M40 2.5l.8 3.4 3.4.8-3.4.8-.8 3.4-.8-3.4-3.4-.8 3.4-.8z" />
+          </svg>
+        </div>
+
+        <div class="bd-card__body">
+          <img class="bd-card__art" src={assets.cardCake} alt="" width="807" height="877" decoding="async" />
+          <div class="bd-card__main">
+            <img class="bd-card__title" src={assets.title} alt={birthday.titleAlt} width="1400" height="661" decoding="async" />
+            <dl class="bd-card__rows">
+              {
+                birthday.rows.map((row) => (
+                  <div class="bd-card__row">
+                    <dt>{row.label}</dt>
+                    <dd>{row.value}</dd>
+                  </div>
+                ))
+              }
+            </dl>
+          </div>
+        </div>
+
+        <div class="bd-card__foot">
+          <p class="bd-card__wish">{birthday.wish}</p>
+        </div>
+      </article>
+    </div>
+
+    <p class="bd-nogl" data-nogl hidden>
+      当前浏览器不支持 WebGL2，看不到星海浮岛了。不过贺卡还在：点下方「贺卡」就能打开。
+    </p>
+  </section>
+</BaseLayout>
+
+<script>
+  import { mountBirthday, supportsWebGL2, type BirthdayController } from '../birthday/scene';
+  import { createMusicBox, type MusicBox } from '../birthday/audio';
+
+  let teardown: (() => void) | null = null;
+
+  function boot() {
+    const root = document.querySelector<HTMLElement>('[data-bd]');
+    if (!root || root.dataset.mounted) return;
+    root.dataset.mounted = '1';
+
+    const $ = <T extends HTMLElement>(sel: string) => root.querySelector<T>(sel)!;
+    const canvas = $<HTMLCanvasElement>('[data-canvas]');
+    const viewBtn = $<HTMLButtonElement>('[data-view]');
+    const blowBtn = $<HTMLButtonElement>('[data-blow]');
+    const relightBtn = $<HTMLButtonElement>('[data-relight]');
+    const songBtn = $<HTMLButtonElement>('[data-song]');
+    const cardOpen = $<HTMLButtonElement>('[data-card-open]');
+    const layer = $('[data-card-layer]');
+    const closeEls = [...root.querySelectorAll<HTMLElement>('[data-card-close]')];
+    const loadPct = $('[data-load-pct]');
+    const loadBar = $('[data-load-bar]');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let box: MusicBox | null = null;
+    const music = () => (box ??= createMusicBox());
+
+    // ---- 贺卡开合（只由点击 / 吹灭触发，过渡走 --dur token） ----
+    let cardTimer = 0;
+    const isOpen = () => layer.classList.contains('is-open');
+    const showCard = (show: boolean) => {
+      window.clearTimeout(cardTimer);
+      cardOpen.setAttribute('aria-expanded', String(show));
+      cardOpen.setAttribute('aria-pressed', String(show));
+      if (show) {
+        layer.hidden = false;
+        requestAnimationFrame(() => layer.classList.add('is-open'));
+      } else {
+        layer.classList.remove('is-open');
+        cardTimer = window.setTimeout(() => {
+          layer.hidden = true;
+        }, 520);
+      }
+    };
+    cardOpen.addEventListener('click', () => showCard(!isOpen()));
+    closeEls.forEach((el) => el.addEventListener('click', () => showCard(false)));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen()) showCard(false);
+    };
+    document.addEventListener('keydown', onKey);
+
+    songBtn.addEventListener('click', () => {
+      const m = music();
+      if (m.playing) {
+        m.stopSong();
+        songBtn.setAttribute('aria-pressed', 'false');
+        return;
+      }
+      songBtn.setAttribute('aria-pressed', 'true');
+      m.playSong(() => songBtn.setAttribute('aria-pressed', 'false'));
+    });
+
+    if (!supportsWebGL2()) {
+      root.dataset.state = 'nogl';
+      $('[data-nogl]').hidden = false;
+      blowBtn.disabled = true;
+      viewBtn.disabled = true;
+      teardown = () => {
+        box?.dispose();
+        document.removeEventListener('keydown', onKey);
+      };
+      return;
+    }
+
+    let ctrl: BirthdayController | null = null;
+
+    const doBlow = () => {
+      if (!ctrl?.blow()) return;
+      music().chime();
+      root.dataset.lit = 'out';
+      blowBtn.hidden = true;
+      relightBtn.hidden = false;
+    };
+
+    ctrl = mountBirthday({
+      canvas,
+      container: root,
+      reducedMotion: reduced,
+      assets: {
+        scene: root.dataset.scene!,
+        ao: root.dataset.ao!,
+        nuonuo: root.dataset.nuonuo!,
+      },
+      onProgress: (r) => {
+        loadPct.textContent = `${Math.round(r * 100)}%`;
+        loadBar.style.transform = `scaleX(${r})`;
+      },
+      onReady: () => {
+        root.dataset.state = 'ready';
+      },
+      onCakeClick: doBlow,
+      onCandlesOut: () => showCard(true),
+      onError: () => {
+        root.dataset.state = 'error';
+        loadPct.textContent = '加载失败，请刷新重试';
+      },
+    });
+
+    blowBtn.addEventListener('click', doBlow);
+    viewBtn.addEventListener('click', () => ctrl?.resetView());
+    relightBtn.addEventListener('click', () => {
+      ctrl?.relight();
+      root.dataset.lit = 'on';
+      relightBtn.hidden = true;
+      blowBtn.hidden = false;
+      showCard(false);
+    });
+
+    teardown = () => {
+      box?.dispose();
+      ctrl?.dispose();
+      document.removeEventListener('keydown', onKey);
+      window.clearTimeout(cardTimer);
+    };
+  }
+
+  boot();
+  document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:before-swap', () => {
+    teardown?.();
+    teardown = null;
+  });
+</script>
+
+<style>
+  .bd {
+    --bd-ink: #05060f;
+    --bd-paper: #1d2547;
+    --bd-cream: #f4ecdc;
+    --bd-muted: #a9b0d6;
+    --bd-gold: #f2be5c;
+    --bd-sage: #8fb59a;
+    --bd-dash: rgba(196, 202, 240, 0.34);
+    --dock-surface: rgba(7, 11, 22, 0.82);
+    --dock-line: rgba(143, 212, 255, 0.2);
+    --dock-line-strong: rgba(143, 212, 255, 0.38);
+    --dock-ink: #eef3ff;
+    --dock-muted: rgba(214, 224, 245, 0.72);
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--bd-ink);
+    color: var(--bd-cream);
+  }
+
+  .bd__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+
+  /* ---------- 加载 ---------- */
+  .bd-load {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 0.9rem;
+    background: var(--bd-ink);
+    transition: opacity var(--dur-3) var(--ease-out), visibility 0s linear var(--dur-3);
+  }
+
+  .bd[data-state='ready'] .bd-load,
+  .bd[data-state='nogl'] .bd-load {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .bd-load__text {
+    margin: 0;
+    font-size: 0.8125rem;
+    letter-spacing: 0.24em;
+    color: var(--bd-muted);
+  }
+
+  .bd-load__bar {
+    position: relative;
+    width: min(14rem, 60vw);
+    height: var(--hair);
+    background: var(--bd-dash);
+    overflow: hidden;
+  }
+
+  .bd-load__bar i {
+    position: absolute;
+    inset: 0;
+    background: var(--bd-cream);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  /* ---------- 左上：寿星与日期 ---------- */
+  .bd-meta {
+    position: absolute;
+    z-index: 3;
+    left: var(--gut);
+    top: 1.5rem;
+    display: grid;
+    gap: 0.35rem;
+    pointer-events: none;
+    opacity: 0;
+    /* 背后可能正好是明亮的吸积盘，压一层柔和暗影保证字读得清 */
+    text-shadow: 0 1px 10px rgba(3, 4, 12, 0.9);
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+
+  .bd[data-state='ready'] .bd-meta,
+  .bd[data-state='nogl'] .bd-meta {
+    opacity: 1;
+  }
+
+  .bd-meta__date {
+    font-family: var(--font-serif);
+    font-size: 0.8125rem;
+    letter-spacing: 0.32em;
+    color: var(--bd-muted);
+  }
+
+  .bd-meta__name {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-serif);
+    font-size: 1.375rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--bd-cream);
+  }
+
+  .bd-meta__sep {
+    width: 1.75rem;
+    height: var(--hair);
+    background: var(--bd-dash);
+  }
+
+  /* ---------- 底部导航（对齐书房 .room-dock） ---------- */
+  .bd-dock {
+    position: absolute;
+    z-index: 3;
+    left: 50%;
+    bottom: max(0.95rem, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    max-width: calc(100vw - 1.25rem);
+    border: var(--hair) solid var(--dock-line-strong);
+    background: var(--dock-surface);
+    backdrop-filter: saturate(160%) blur(16px);
+    opacity: 0;
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+
+  .bd[data-state='ready'] .bd-dock,
+  .bd[data-state='nogl'] .bd-dock {
+    opacity: 1;
+  }
+
+  .bd-dock__c {
+    position: absolute;
+    width: 0.42rem;
+    height: 0.42rem;
+    border-color: var(--accent);
+    border-style: solid;
+    border-width: 0;
+    pointer-events: none;
+  }
+  .bd-dock__c--tl { top: -1px; left: -1px; border-top-width: 1.5px; border-left-width: 1.5px; }
+  .bd-dock__c--tr { top: -1px; right: -1px; border-top-width: 1.5px; border-right-width: 1.5px; }
+  .bd-dock__c--bl { bottom: -1px; left: -1px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+  .bd-dock__c--br { bottom: -1px; right: -1px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+
+  .bd-dock__nav {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .bd-dock__item {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    padding: 0.56rem 0.7rem;
+    border: 0;
+    background: transparent;
+    color: var(--dock-muted);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .bd-dock__item[hidden] {
+    display: none;
+  }
+
+  .bd-dock__item::after {
+    content: '';
+    position: absolute;
+    left: 0.6rem;
+    right: 0.6rem;
+    bottom: 0.24rem;
+    height: var(--hair);
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+
+  .bd-dock__item:hover,
+  .bd-dock__item:focus-visible {
+    color: var(--dock-ink);
+  }
+
+  .bd-dock__item[aria-pressed='true'] {
+    color: var(--accent);
+  }
+
+  .bd-dock__item:hover::after,
+  .bd-dock__item:focus-visible::after,
+  .bd-dock__item[aria-pressed='true']::after {
+    transform: scaleX(1);
+  }
+
+  .bd-dock__item:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .bd-dock__icon {
+    width: 1em;
+    height: 1em;
+    font-size: 1.05em;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform var(--dur-2) var(--ease-out);
+  }
+
+  .bd-dock__item:hover .bd-dock__icon {
+    transform: rotate(-8deg) scale(1.06);
+  }
+
+  .bd-dock__sep {
+    flex: none;
+    width: var(--hair);
+    height: 0.9rem;
+    margin-inline: 0.2rem;
+    background: var(--dock-line-strong);
+  }
+
+  .bd-dock__sep--tight {
+    margin-inline: 0.08rem;
+  }
+
+  .bd-dock__tools {
+    flex: none;
+    display: flex;
+    align-items: center;
+    padding: 0 0.25rem 0 0.3rem;
+    border-left: var(--hair) solid var(--dock-line);
+  }
+
+  .bd-dock__tool {
+    display: inline-grid;
+    place-items: center;
+    width: 2.05rem;
+    height: 2.1rem;
+    color: var(--dock-muted);
+    transition: color var(--dur-1) var(--ease-out);
+  }
+
+  .bd-dock__tool:hover,
+  .bd-dock__tool:focus-visible {
+    color: var(--accent);
+  }
+
+  .bd-dock__tool svg {
+    width: 1.06rem;
+    height: 1.06rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ---------- 贺卡：横版札记，居中展开 ---------- */
+  .bd-card-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: 1.25rem 1rem 4.75rem;
+  }
+
+  .bd-card-layer[hidden] {
+    display: none;
+  }
+
+  .bd-card-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(3, 4, 12, 0.46);
+    opacity: 0;
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+
+  .bd-card {
+    position: relative;
+    width: min(54rem, 100%);
+    max-height: 100%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bd-dash) transparent;
+    padding: 1.9rem 2.4rem 1.7rem;
+    background: var(--bd-paper);
+    border: var(--hair) dashed var(--bd-dash);
+    color: var(--bd-cream);
+    opacity: 0;
+    transform: translateY(1rem) scale(0.985);
+    transition:
+      opacity var(--dur-3) var(--ease-out),
+      transform var(--dur-3) var(--ease-out);
+  }
+
+  .bd-card-layer.is-open .bd-card-scrim {
+    opacity: 1;
+  }
+
+  .bd-card-layer.is-open .bd-card {
+    opacity: 1;
+    transform: none;
+  }
+
+  .bd-card__tape {
+    position: absolute;
+    top: -0.45rem;
+    width: 5rem;
+    height: 1.05rem;
+    opacity: 0.72;
+  }
+
+  .bd-card__tape--l {
+    left: 2.2rem;
+    background: rgba(176, 140, 72, 0.78);
+    transform: rotate(-2.5deg);
+  }
+
+  .bd-card__tape--r {
+    right: 2.2rem;
+    background: rgba(124, 150, 132, 0.72);
+    transform: rotate(2deg);
+  }
+
+  .bd-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .bd-card__date {
+    font-family: var(--font-serif);
+    font-size: 0.875rem;
+    letter-spacing: 0.32em;
+    color: var(--bd-muted);
+  }
+
+  .bd-card__sparks {
+    width: 3rem;
+    height: 0.9rem;
+  }
+
+  .bd-card__sparks .s-gold { fill: var(--bd-gold); }
+  .bd-card__sparks .s-cream { fill: var(--bd-cream); }
+  .bd-card__sparks .s-sage { fill: var(--bd-sage); }
+
+  .bd-card__body {
+    display: grid;
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 2.25rem;
+    margin-top: 0.9rem;
+  }
+
+  .bd-card__art {
+    display: block;
+    width: 100%;
+    max-width: 19rem;
+    height: auto;
+    justify-self: center;
+  }
+
+  .bd-card__title {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-bottom: 0.4rem;
+  }
+
+  .bd-card__rows {
+    margin: 0;
+  }
+
+  .bd-card__row {
+    display: grid;
+    grid-template-columns: 3.25rem 1fr;
+    gap: 0.9rem;
+    padding: 0.72rem 0;
+    border-top: var(--hair) dashed var(--bd-dash);
+    font-size: 0.9375rem;
+  }
+
+  .bd-card__row:last-child {
+    border-bottom: var(--hair) dashed var(--bd-dash);
+  }
+
+  .bd-card__row dt {
+    color: var(--bd-muted);
+  }
+
+  .bd-card__row dd {
+    margin: 0;
+    color: var(--bd-cream);
+  }
+
+  .bd-card__foot {
+    margin-top: 1.4rem;
+    padding-top: 1.2rem;
+    border-top: var(--hair) dashed var(--bd-dash);
+  }
+
+  .bd-card__wish {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.95;
+    letter-spacing: 0.05em;
+    color: var(--bd-cream);
+  }
+
+  .bd-nogl {
+    position: absolute;
+    z-index: 3;
+    left: 50%;
+    top: 45%;
+    transform: translate(-50%, -50%);
+    width: min(24rem, calc(100vw - 3rem));
+    margin: 0;
+    padding: 1.1rem 1.3rem;
+    border: var(--hair) dashed var(--bd-dash);
+    font-size: 0.9375rem;
+    line-height: 1.8;
+    color: var(--bd-cream);
+    text-align: center;
+  }
+
+  /* ---------- 中屏：贺卡改为竖排（插画在上） ---------- */
+  @media (max-width: 46rem) {
+    .bd-card {
+      padding: 1.7rem 1.3rem 1.3rem;
+    }
+
+    .bd-card__body {
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+    }
+
+    .bd-card__art {
+      max-width: 9.5rem;
+    }
+
+    .bd-card__wish {
+      font-size: 1rem;
+      line-height: 1.85;
+    }
+  }
+
+  /* ---------- 窄屏：导航只留图标 + 短字 ---------- */
+  @media (max-width: 40rem) {
+    .bd-meta {
+      top: 1rem;
+    }
+
+    .bd-meta__name {
+      font-size: 1.125rem;
+    }
+
+    .bd-dock__item {
+      padding: 0.55rem 0.5rem;
+      font-size: 0.75rem;
+      gap: 0.25rem;
+    }
+
+    .bd-card-layer {
+      padding: 0.9rem 0.75rem 4.4rem;
+    }
+  }
+
+  /* 360px 一档的安卓机：底栏 5 个功能 + 2 个图标要挤进一行，收紧内边距 */
+  @media (max-width: 25rem) {
+    .bd-dock__item {
+      padding: 0.5rem 0.34rem;
+      gap: 0.2rem;
+    }
+
+    .bd-dock__sep {
+      margin-inline: 0.1rem;
+    }
+
+    .bd-dock__tool {
+      width: 1.85rem;
+    }
+  }
+
+  @media (max-width: 22rem) {
+    /* 只是视觉上藏起文字，读屏仍能读到按钮名 */
+    .bd-dock__item span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .bd-dock__icon {
+      font-size: 1.2em;
+    }
+  }
+</style>

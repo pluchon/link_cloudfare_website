@@ -230,12 +230,13 @@ const shelfNav: { target: HotspotId; label: string; icon: 'project' | 'tool' | '
   { target: 'shelf-xiaomeng', label: '小萌', icon: 'xiaomeng' },
 ];
 
-const featureNav: { target: HotspotId; label: string; icon: 'game' | 'notice' | 'gallery' | 'tags' | 'about' }[] = [
+const featureNav: { target: HotspotId; label: string; icon: 'game' | 'notice' | 'gallery' | 'tags' | 'about' | 'cake' }[] = [
   { target: 'tv-game', label: '游戏', icon: 'game' },
   { target: 'calendar-notice', label: '公告', icon: 'notice' },
   { target: 'gallery-wall', label: '画廊', icon: 'gallery' },
   { target: 'board-tags', label: '标签', icon: 'tags' },
   { target: 'desk-about', label: '关于', icon: 'about' },
+  { target: 'desk-cake', label: '生日', icon: 'cake' },
 ];
 
 // 开场天球星图背景（构建期确定性生成，运行期零重绘开销）
@@ -3407,7 +3408,8 @@ const warpGalaxies = [
           return;
         }
         goLink.href = meta.id === 'scope-door' ? '#scope' : meta.href;
-        goLink.textContent = meta.id === 'scope-door' ? '望远镜观测黑洞 →' : `进入${meta.label} →`;
+        goLink.textContent =
+          meta.id === 'scope-door' ? '望远镜观测黑洞 →' : meta.id === 'desk-cake' ? '去生日小屋 →' : `进入${meta.label} →`;
         goLink.dataset.label = meta.label;
         goWrap.hidden = false;
       };

@@ -144,6 +144,18 @@ function isActive(href: string): boolean {
           <path d="M14.5 7.4 17.7 9.2v4.2l-3.2-1.8z"></path>
         </svg>
       </a>
+
+      <!-- 生日小屋：星空银河下的 3D 生日场景 /birthday/ -->
+      <a
+        class="icon-btn"
+        href="/birthday/"
+        data-astro-reload
+        aria-label="生日小屋"
+        title="生日小屋"
+        aria-current={isActive('/birthday/') ? 'page' : undefined}
+      >
+        <KindIcon name="cake" />
+      </a>
     </div>
   </div>
 </header>

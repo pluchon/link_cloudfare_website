@@ -20,6 +20,9 @@ from mathutils import Euler, Matrix, Vector
 OUT_DIR = Path(__file__).resolve().parent / "out"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 书桌阅读垫上的生日蛋糕盘底中心（Three.js 世界坐标，阅读垫顶面 y = 0.769）
+CAKE_DESK_ORIGIN = (-1.22, 0.769, -2.78)
+
 
 def to_bl(tx: float, ty: float, tz: float) -> Vector:
     """Three.js (X右, Y上, Z前) -> Blender (X右, Y后, Z上)。glTF +Y Up 导出后严丝合缝还原。"""
@@ -648,6 +651,322 @@ def add_botanical_leaf(
     return obj
 
 
+def cake_materials() -> dict[str, bpy.types.Material]:
+    """生日蛋糕专用材质（线性色值，对应参考贺卡的深蓝蛋糕体、奶油描边、橙色裱花与薄荷点缀）。书房与生日场景共用。"""
+    existing = bpy.data.materials.get("Mat_Cake_Frost")
+    if existing is not None:
+        names = {
+            "plate": "Mat_Cake_Plate",
+            "frost": "Mat_Cake_Frost",
+            "frost_top": "Mat_Cake_FrostTop",
+            "cream": "Mat_Cake_Cream",
+            "orange": "Mat_Cake_Orange",
+            "mint": "Mat_Cake_Mint",
+            "candle_mint": "Mat_Cake_CandleMint",
+            "candle_coral": "Mat_Cake_CandleCoral",
+            "wick": "Mat_Cake_Wick",
+            "leaf": "Mat_Cake_Leaf",
+            "flame": "Mat_Cake_Flame",
+        }
+        return {k: bpy.data.materials[v] for k, v in names.items()}
+    return {
+        "plate": make_mat("Mat_Cake_Plate", (0.93, 0.89, 0.80), roughness=0.24),
+        "frost": make_mat("Mat_Cake_Frost", (0.040, 0.058, 0.190), roughness=0.58),
+        "frost_top": make_mat("Mat_Cake_FrostTop", (0.068, 0.098, 0.300), roughness=0.56),
+        "cream": make_mat("Mat_Cake_Cream", (0.900, 0.780, 0.580), roughness=0.50),
+        "orange": make_mat("Mat_Cake_Orange", (0.760, 0.230, 0.090), roughness=0.46),
+        "mint": make_mat("Mat_Cake_Mint", (0.190, 0.440, 0.240), roughness=0.48),
+        "candle_mint": make_mat("Mat_Cake_CandleMint", (0.230, 0.500, 0.280), roughness=0.40),
+        "candle_coral": make_mat("Mat_Cake_CandleCoral", (0.800, 0.220, 0.085), roughness=0.40),
+        "wick": make_mat("Mat_Cake_Wick", (0.06, 0.05, 0.05), roughness=0.9),
+        "leaf": make_mat("Mat_Cake_Leaf", (0.212, 0.423, 0.238), roughness=0.52),
+        "flame": make_mat(
+            "Mat_Cake_Flame",
+            (1.0, 0.80, 0.45),
+            roughness=0.3,
+            emission=(1.0, 0.70, 0.30),
+            emission_strength=3.2,
+        ),
+    }
+
+
+def add_bead_ring(
+    name: str,
+    center: tuple[float, float, float],
+    major_r: float,
+    minor_r: float,
+    beads: int,
+    mat: bpy.types.Material,
+    minor_segs: int = 8,
+) -> bpy.types.Object:
+    """水平裱花珠链：单一连续环面，次半径按珠数起伏，避免几十个小球带来的碎边线。"""
+    major_segs = max(beads * 6, 48)
+    bm = bmesh.new()
+    rings = []
+    for i in range(major_segs):
+        theta = (i / major_segs) * math.tau
+        ct, st = math.cos(theta), math.sin(theta)
+        bead = abs(math.cos(theta * beads * 0.5)) ** 0.7
+        m_r = minor_r * (0.58 + 0.42 * bead)
+        ring = []
+        for j in range(minor_segs):
+            phi = (j / minor_segs) * math.tau
+            r_xy = major_r + math.cos(phi) * m_r
+            ring.append(bm.verts.new((ct * r_xy, st * r_xy, math.sin(phi) * m_r)))
+        rings.append(ring)
+    for i in range(major_segs):
+        ni = (i + 1) % major_segs
+        for j in range(minor_segs):
+            nj = (j + 1) % minor_segs
+            bm.faces.new((rings[i][j], rings[ni][j], rings[ni][nj], rings[i][nj]))
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    set_smooth(me, True)
+    me.materials.append(mat)
+    obj = bpy.data.objects.new(name, me)
+    obj.location = to_bl(*center)
+    return link_obj(obj)
+
+
+def add_drip_band(
+    name: str,
+    center: tuple[float, float, float],
+    radius: float,
+    thickness: float,
+    drips: int,
+    depth_max: float,
+    mat: bpy.types.Material,
+    phase: float = 0.35,
+) -> list[bpy.types.Object]:
+    """蛋糕顶缘奶油淋面：闭合环带，下缘按滴数呈长短错落的垂滴，并在滴尖补圆润小珠。center 为淋面顶缘中心。"""
+    amps = [0.55 + 0.45 * abs(math.sin(k * 2.17 + 0.6)) for k in range(drips)]
+    segs = drips * 56
+    depth_min = depth_max * 0.16
+
+    def drip_depth(theta: float) -> float:
+        u = drips * theta + phase
+        n = round(u / math.tau)
+        k = int(n) % drips
+        du = abs(u - n * math.tau)
+        # U 形垂滴：滴身两侧近乎竖直、底部圆润，滴与滴之间留出平缓的浅缘
+        t = min(1.0, max(0.0, (du - 0.42) / 0.40))
+        bulge = 1.0 - t * t * (3.0 - 2.0 * t)
+        bulge = math.sqrt(max(bulge, 0.0))
+        return depth_min + (depth_max - depth_min) * bulge * amps[k]
+
+    bm = bmesh.new()
+    r_in = radius - 0.0015
+    r_out = radius + thickness
+    sections = []
+    for i in range(segs):
+        theta = (i / segs) * math.tau
+        ct, st = math.cos(theta), math.sin(theta)
+        d = drip_depth(theta)
+        sections.append([
+            bm.verts.new((ct * r_in, st * r_in, 0.0)),
+            bm.verts.new((ct * r_out, st * r_out, 0.0)),
+            bm.verts.new((ct * r_out, st * r_out, -d)),
+            bm.verts.new((ct * r_in, st * r_in, -d)),
+        ])
+    for i in range(segs):
+        a, b = sections[i], sections[(i + 1) % segs]
+        for j in range(4):
+            nj = (j + 1) % 4
+            bm.faces.new((a[j], b[j], b[nj], a[nj]))
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    set_smooth(me, True)
+    me.materials.append(mat)
+    band = bpy.data.objects.new(name, me)
+    band.location = to_bl(*center)
+    link_obj(band)
+
+    out = [band]
+    cx, cy, cz = center
+    for k in range(drips):
+        theta = (math.tau * k - phase) / drips
+        d = depth_min + (depth_max - depth_min) * amps[k]
+        rr = radius + thickness * 0.55
+        tip_r = thickness * 1.75
+        tip = (cx + math.cos(theta) * rr, cy - d + tip_r * 0.45, cz - math.sin(theta) * rr)
+        # 滴尖小珠沿径向压扁（局部 Blender Y 轴对齐径向），贴合淋面而不外凸
+        out.append(add_sphere(
+            f"{name}_Tip_{k}",
+            tip,
+            tip_r,
+            mat,
+            scale=(1.0, 1.1, 0.6),
+            segs=12,
+            rings=8,
+            rot_y=theta - math.pi * 0.5,
+        ))
+    return out
+
+
+def add_number_candle(
+    name: str,
+    base: tuple[float, float, float],
+    char: str,
+    height: float,
+    depth: float,
+    mat: bpy.types.Material,
+) -> tuple[list[bpy.types.Object], tuple[float, float, float]]:
+    """圆润管状数字蜡烛（手绘笔画路径，不依赖任何字体文件）：底边中心落在 base，笔画在 XY 平面、正面朝 Three.js +Z。
+
+    返回 (网格列表, 顶端烛芯世界坐标)。depth 为笔画管径（直径）。
+    """
+    # 笔画中心线，单位为字高（x 居中，y 自下而上）；重复点用于让 NURBS 在拐角处收紧
+    strokes = {
+        "2": [
+            (-0.27, 0.70), (-0.22, 0.85), (-0.06, 0.95), (0.13, 0.94), (0.27, 0.82), (0.28, 0.66),
+            (0.17, 0.49), (-0.02, 0.31), (-0.20, 0.13), (-0.27, 0.05), (-0.27, 0.05),
+            (-0.27, 0.05), (0.03, 0.05), (0.31, 0.05),
+        ],
+        "1": [
+            (-0.20, 0.72), (-0.07, 0.83), (0.05, 0.95), (0.05, 0.95), (0.05, 0.95), (0.05, 0.50), (0.05, 0.05),
+        ],
+    }
+    wick_x = {"2": 0.02, "1": 0.05}
+    pts = strokes[char]
+    r = depth * 0.5
+    span = height - 2.0 * r
+    world = [(base[0] + x * height, base[1] + r + (y - 0.05) / 0.90 * span, base[2]) for x, y in pts]
+    tube = add_tube(name, world, r, mat, bevel_res=4)
+    objs = [tube]
+    for idx, end in enumerate((world[0], world[-1])):
+        objs.append(add_sphere(f"{name}_Cap_{idx}", end, r * 0.98, mat, segs=14, rings=8))
+    wick = (base[0] + wick_x[char] * height, base[1] + height - r * 0.4, base[2])
+    return objs, wick
+
+
+def add_birthday_cake(
+    origin: tuple[float, float, float],
+    s: float,
+    put: "callable",
+    put_dyn: "callable",
+    prefix: str = "Cake",
+) -> list[tuple[float, float, float]]:
+    """双层生日蛋糕（深蓝奶油 + 奶白淋面垂滴 + 橙色花边 + 双色圆点 + 「21」数字蜡烛 + 薄荷叶）。
+
+    origin 为蛋糕盘底中心（Three.js 世界坐标），s 为整体缩放（1.0 ≈ 直径 23cm 的盘）。
+    put 收集静态烘焙网格，put_dyn 收集不参与烘焙的自发光火苗。返回两簇火苗中心坐标，供补光/动画使用。
+    """
+    cm = cake_materials()
+    ox, oy, oz = origin
+
+    def P(lx: float, ly: float, lz: float) -> tuple[float, float, float]:
+        return (ox + lx * s, oy + ly * s, oz + lz * s)
+
+    def prof(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        return [(r * s, y * s) for r, y in pts]
+
+    # 奶白陶瓷蛋糕盘
+    put(add_lathe(f"{prefix}_Plate", P(0, 0, 0), prof([
+        (0.0, 0.0), (0.090, 0.0), (0.108, 0.003), (0.116, 0.008), (0.1165, 0.0105), (0.113, 0.0112), (0.100, 0.0085), (0.0, 0.0085),
+    ]), cm["plate"], segs=64))
+
+    y0 = 0.0085
+    h1 = 0.060
+    r1 = 0.0845
+    put(add_lathe(f"{prefix}_TierLow", P(0, 0, 0), prof([
+        (0.0, y0), (r1 - 0.001, y0), (r1, y0 + 0.003), (r1, y0 + h1), (0.0, y0 + h1),
+    ]), cm["frost"], segs=64))
+    # 底层奶油顶盖（圆角收边，压住淋面上缘）
+    put(add_lathe(f"{prefix}_TierLow_Cap", P(0, 0, 0), prof([
+        (0.0, y0 + h1 + 0.0035), (r1 - 0.004, y0 + h1 + 0.0035), (r1 + 0.0018, y0 + h1 + 0.0018), (r1 + 0.0024, y0 + h1 - 0.0012), (0.0, y0 + h1 - 0.0012),
+    ]), cm["cream"], segs=64))
+    for obj in add_drip_band(f"{prefix}_Drip", P(0, y0 + h1, 0), r1 * s, 0.0021 * s, 11, 0.027 * s, cm["cream"]):
+        put(obj)
+    put(add_bead_ring(f"{prefix}_BeadLow", P(0, y0 + 0.0042, 0), (r1 + 0.0022) * s, 0.0046 * s, 30, cm["cream"]))
+
+    # 底层侧面橙 / 薄荷交替圆点
+    dots = 12
+    for k in range(dots):
+        a = (k / dots) * math.tau + 0.12
+        mat = cm["orange"] if k % 2 == 0 else cm["mint"]
+        put(add_sphere(
+            f"{prefix}_Dot_{k}",
+            P(math.sin(a) * (r1 + 0.0006), y0 + 0.021, math.cos(a) * (r1 + 0.0006)),
+            0.0043 * s,
+            mat,
+            segs=12,
+            rings=8,
+        ))
+
+    # 上层
+    y1 = y0 + h1 + 0.0035
+    h2 = 0.040
+    r2 = 0.057
+    put(add_lathe(f"{prefix}_TierTop", P(0, 0, 0), prof([
+        (0.0, y1), (r2, y1), (r2, y1 + h2), (0.0, y1 + h2),
+    ]), cm["frost_top"], segs=56))
+    put(add_lathe(f"{prefix}_TierTop_Cap", P(0, 0, 0), prof([
+        (0.0, y1 + h2 + 0.0032), (r2 - 0.006, y1 + h2 + 0.0030), (r2 + 0.0006, y1 + h2 + 0.0010), (r2 + 0.0008, y1 + h2 - 0.0016), (0.0, y1 + h2 - 0.0016),
+    ]), cm["cream"], segs=56))
+    put(add_bead_ring(f"{prefix}_BeadTopRim", P(0, y1 + h2 + 0.0008, 0), (r2 - 0.0004) * s, 0.0033 * s, 24, cm["cream"]))
+    put(add_bead_ring(f"{prefix}_BeadTopBase", P(0, y1 + 0.0030, 0), (r2 + 0.0012) * s, 0.0035 * s, 24, cm["cream"]))
+
+    # 上层橙色垂花边（6 段弧形垂幔）
+    swags = 7
+    garland = []
+    n_pts = 168
+    for i in range(n_pts + 1):
+        a = (i / n_pts) * math.tau
+        drop = abs(math.sin(a * swags * 0.5))
+        rr = r2 + 0.0014
+        garland.append(P(math.sin(a) * rr, y1 + h2 - 0.0075 - 0.0105 * drop, math.cos(a) * rr))
+    put(add_tube(f"{prefix}_Garland", garland, 0.0019 * s, cm["orange"], bevel_res=2))
+    for i in range(swags):
+        a = (i / swags) * math.tau
+        put(add_sphere(
+            f"{prefix}_GarlandKnot_{i}",
+            P(math.sin(a) * (r2 + 0.0022), y1 + h2 - 0.0072, math.cos(a) * (r2 + 0.0022)),
+            0.0034 * s,
+            cm["orange"],
+            segs=10,
+            rings=6,
+        ))
+
+    # 「21」数字蜡烛：2 为薄荷绿、1 为珊瑚橙（呼应参考贺卡）
+    top_y = y1 + h2 + 0.0025
+    flames: list[tuple[float, float, float]] = []
+    for idx, (ch, lx, mat_key) in enumerate((("2", -0.0175, "candle_mint"), ("1", 0.0185, "candle_coral"))):
+        cobjs, wick_pt = add_number_candle(f"{prefix}_Candle_{ch}", P(lx, top_y - 0.002, 0.002), ch, 0.050 * s, 0.0118 * s, cm[mat_key])
+        for cobj in cobjs:
+            put(cobj)
+        wick_top = (wick_pt[0], wick_pt[1] + 0.0058 * s, wick_pt[2])
+        put(add_cylinder_between(f"{prefix}_Wick_{ch}", (wick_pt[0], wick_pt[1] - 0.0015 * s, wick_pt[2]), wick_top, 0.0008 * s, 0.0006 * s, cm["wick"], segs=6))
+        put_dyn(add_lathe(f"{prefix}_Flame_{idx}", (wick_top[0], wick_top[1] - 0.0012 * s, wick_top[2]), prof([
+            (0.0, 0.0), (0.0030, 0.0015), (0.0046, 0.0055), (0.0045, 0.0095), (0.0033, 0.0140), (0.0016, 0.0185), (0.0, 0.0215),
+        ]), cm["flame"], segs=16))
+        flames.append((wick_top[0], wick_top[1] + 0.009 * s, wick_top[2]))
+
+    # 盘沿两簇薄荷叶
+    for side in (-1, 1):
+        yaw0 = side * 1.25
+        for j, (dyaw, ln, wd) in enumerate(((0.0, 0.056, 0.026), (0.52 * side, 0.044, 0.021))):
+            tip = P(side * 0.080, 0.010, 0.026)
+            put(add_botanical_leaf(
+                f"{prefix}_Leaf_{side}_{j}",
+                tip,
+                yaw0 + dyaw,
+                0.18,
+                ln * s,
+                wd * s,
+                0.010 * s,
+                cm["leaf"],
+                arch_cup=0.005 * s,
+                thickness=0.0022 * s,
+                cols=6,
+                rows=8,
+            ))
+    return flames
+
+
 def add_mechanical_keyboard(
     origin: tuple[float, float, float],
     mats: dict[str, bpy.types.Material],
@@ -957,6 +1276,15 @@ def build_scene() -> None:
     ), 2))
     S("Hotspot_Desk_About", mark_uv_prio(add_cylinder("Pink_Mug_Latte", (-0.84, 0.842, -2.62), 0.034, 0.034, 0.004, mats["trim"], segs=20), 2))
     S("Hotspot_Desk_About", mark_uv_prio(add_tube("Pink_Mug_Handle", [(-0.80, 0.840, -2.62), (-0.77, 0.820, -2.62), (-0.80, 0.790, -2.62)], 0.007, mats["pink"], bevel_res=3), 2))
+
+    # 生日小蛋糕（Hotspot_Desk_Cake：阅读垫上的「21」双层蛋糕，点击进入 /birthday/）
+    cake_flames = add_birthday_cake(
+        CAKE_DESK_ORIGIN,
+        0.78,
+        lambda o: S("Hotspot_Desk_Cake", mark_uv_prio(o, 2)),
+        D,
+        prefix="Cake",
+    )
 
     S("Hotspot_Desk_About", mark_uv_prio(add_lathe("Desk_PenCup", (-2.50, 0.7625, -2.68), [(0.0, 0.0), (0.034, 0.0), (0.038, 0.092), (0.033, 0.094), (0.030, 0.086), (0.030, 0.012), (0.0, 0.012)], mats["ceramic"], segs=24), 2))
     for px, pz, rx, rz, mkey in [
@@ -1851,6 +2179,8 @@ def build_scene() -> None:
 
     add_bake_light("L_Desk_Down", "AREA", (-2.46, 1.02, -2.76), 28.0, (1.0, 0.82, 0.58), size=0.32, look_at=(-1.95, 0.74, -2.82), shape="DISK", spread_deg=112.0)
     add_bake_light("L_Desk_Bounce", "POINT", (-2.15, 1.18, -2.62), 14.0, (1.0, 0.80, 0.58), size=0.35)
+    for fi, fp in enumerate(cake_flames):
+        add_bake_light(f"L_Cake_Candle_{fi}", "POINT", fp, 0.9, (1.0, 0.70, 0.38), size=0.012)
 
     add_bake_light("L_Gal1", "AREA", (1.72, 2.46, -3.14), 30.0, (1.0, 0.85, 0.65), size=0.55, look_at=(1.72, 1.82, -3.38), shape="RECTANGLE", size_y=0.14, spread_deg=96.0)
     add_bake_light("L_Gal2", "AREA", (2.70, 2.65, -3.14), 32.0, (1.0, 0.85, 0.65), size=0.55, look_at=(2.70, 1.92, -3.38), shape="RECTANGLE", size_y=0.14, spread_deg=96.0)
@@ -1968,6 +2298,7 @@ def build_scene() -> None:
     shots = [
         ("preview_overview.png", (5.15, 3.05, 5.25), (-0.2, 0.95, -0.25)),
         ("preview_desk_mouse.png", (-1.52, 0.96, -2.55), (-1.82, 0.78, -2.87)),
+        ("preview_desk_cake.png", (-1.12, 0.93, -2.42), (-1.22, 0.83, -2.78)),
         ("preview_plant.png", (2.00, 1.08, -1.90), (2.90, 0.56, -2.80)),
         ("preview_railing_scope.png", (4.55, 1.42, 4.45), (2.25, 0.72, 1.95)),
         ("preview_kitty.png", (-2.55, 0.46, -0.34), (-3.12, 0.34, -0.62)),

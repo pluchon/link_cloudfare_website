@@ -107,6 +107,13 @@ export const STUDY_HOTSPOTS: Record<HotspotId, HotspotMeta> = {
     href: '/about/',
     preset: { pos: [-1.52, 1.56, -1.24], target: [-1.85, 1.0, -3.02], fov: 38 },
   },
+  'desk-cake': {
+    id: 'desk-cake',
+    label: '生日蛋糕',
+    href: '/birthday/',
+    // 书房模式 controls.minDistance = 1.15：机位需离目标 ≥ 1.15m，否则会被钳制推远而偏离构图，故用 1.2m + 窄视角拉近
+    preset: { pos: [-0.95, 1.28, -1.7], target: [-1.22, 0.84, -2.78], fov: 22 },
+  },
   'scope-door': {
     id: 'scope-door',
     label: '望远镜 · 观测黑洞',
@@ -167,6 +174,7 @@ function resolveHotspotId(obj: THREE.Object3D, stopAt: THREE.Object3D | null): H
     if (n.startsWith('Hotspot_Cal_Notice') || n.startsWith('Face_Calendar')) return 'calendar-notice';
     if (n.startsWith('Hotspot_Gallery_Wall') || n.startsWith('Art_Gallery_')) return 'gallery-wall';
     if (n.startsWith('Hotspot_Board_Tags') || n.startsWith('Face_Cork')) return 'board-tags';
+    if (n.startsWith('Hotspot_Desk_Cake') || n.startsWith('Cake_Flame')) return 'desk-cake';
     if (n.startsWith('Hotspot_Desk_About') || n.startsWith('Screen_Monitor')) return 'desk-about';
     if (n.startsWith('Hotspot_Scope_Door') || n.startsWith('Scope_ObjLens')) return 'scope-door';
     curr = curr.parent;
@@ -620,7 +628,8 @@ export function createStudyRoomModule(options: EmbeddedStudyRoomOptions): StudyR
           } else {
             hotspotPickMeshes.push(mesh);
             // 沿实体模型几何边缘生成 1px 轮廓线（绝不使用方块盒子！）
-            const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, 30);
+            // 蛋糕满是珠链、圆点与淋面细节，放宽阈值只勾大轮廓，避免悬停时描成一团碎线
+            const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, hotspotId === 'desk-cake' ? 58 : 30);
             extraGeos.push(edgesGeo);
             const edgeLine = new THREE.LineSegments(edgesGeo, getEdgeMaterial(hotspotId));
             edgeLine.raycast = () => {};
