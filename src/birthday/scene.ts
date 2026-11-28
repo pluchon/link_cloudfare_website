@@ -148,7 +148,9 @@ export function mountBirthday(opts: BirthdayOptions): BirthdayController {
     uCosmosMix: { value: 0 },
     uNucleusGlow: { value: 0 },
   };
-  const holeDefines: Record<string, number | string> = { STEPS: lite ? 30 : 52, NO_FRAG_DEPTH: '', STUDY_FAST: '' };
+  // 步数不分档：镜头离黑洞约 21Rs，穿过 16.5Rs 球的射线要约 50 步才走得到盘面；30 步会把吸积盘上缘截成一条硬边。
+  // 手机省算力靠低像素比与运行中降档，不靠砍步数
+  const holeDefines: Record<string, number | string> = { STEPS: 52, NO_FRAG_DEPTH: '', STUDY_FAST: '' };
   if (lite) holeDefines.LITE = '';
   const holeMat = new THREE.ShaderMaterial({
     vertexShader: holeVertex,

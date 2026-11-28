@@ -365,6 +365,11 @@ const description = `悬在黑洞旁的浮空岛上，吹灭蜡烛，许个愿�
     opacity: 1;
   }
 
+  /* 贺卡展开时左上角日期会从遮罩里透出来、压在胶带上，先隐去 */
+  .bd:has(.bd-card-layer.is-open) .bd-meta {
+    opacity: 0;
+  }
+
   .bd-meta__date {
     font-family: var(--font-serif);
     font-size: 0.8125rem;
@@ -402,6 +407,7 @@ const description = `悬在黑洞旁的浮空岛上，吹灭蜡烛，许个愿�
     max-width: calc(100vw - 1.25rem);
     border: var(--hair) solid var(--dock-line-strong);
     background: var(--dock-surface);
+    -webkit-backdrop-filter: saturate(160%) blur(16px);
     backdrop-filter: saturate(160%) blur(16px);
     opacity: 0;
     transition: opacity var(--dur-3) var(--ease-out);
@@ -554,8 +560,10 @@ const description = `悬在黑洞旁的浮空岛上，吹灭蜡烛，许个愿�
     position: absolute;
     inset: 0;
     z-index: 5;
-    display: grid;
-    place-items: center;
+    /* 用 flex 居中：贺卡的 max-height: 100% 才能稳定按图层高度解析（grid 的 auto 行会被内容撑高，Safari 上贺卡溢出屏幕） */
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 1.25rem 1rem 4.75rem;
   }
 
@@ -775,6 +783,99 @@ const description = `悬在黑洞旁的浮空岛上，吹灭蜡烛，许个愿�
 
     .bd-dock__tool {
       width: 1.85rem;
+    }
+  }
+
+  /* 竖屏但地址栏 / 工具栏占掉高度的真机（约 560–740px 高）：插画与标题收小，贺卡尽量一屏放下 */
+  @media (max-width: 40rem) and (max-height: 46rem) {
+    .bd-card {
+      padding: 1.35rem 1.15rem 1.05rem;
+    }
+
+    .bd-card__body {
+      margin-top: 0.4rem;
+      gap: 0.4rem;
+    }
+
+    .bd-card__art {
+      max-width: 6.75rem;
+    }
+
+    .bd-card__title {
+      width: auto;
+      max-width: min(100%, 15rem);
+      justify-self: center;
+      margin-inline: auto;
+    }
+
+    .bd-card__row {
+      padding: 0.5rem 0;
+      font-size: 0.875rem;
+    }
+
+    .bd-card__foot {
+      margin-top: 0.9rem;
+      padding-top: 0.8rem;
+    }
+
+    .bd-card__wish {
+      font-size: 0.9375rem;
+      line-height: 1.75;
+    }
+  }
+
+  /* 手机横屏等矮视口：贺卡压成一屏放得下的紧凑横版，插画与标题按高度收（只设 max-*、宽高 auto，保持原比例） */
+  @media (max-height: 32rem) and (min-width: 40.01rem) {
+    .bd-meta {
+      top: 0.8rem;
+    }
+
+    .bd-card-layer {
+      padding: 0.7rem 1rem 3.6rem;
+    }
+
+    .bd-card {
+      width: min(46rem, 100%);
+      padding: 0.95rem 1.5rem 0.85rem;
+    }
+
+    .bd-card__date {
+      font-size: 0.75rem;
+    }
+
+    .bd-card__body {
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 1.5rem;
+      margin-top: 0.35rem;
+    }
+
+    .bd-card__art {
+      width: auto;
+      max-width: 100%;
+      max-height: min(12rem, calc(100dvh - 14rem));
+    }
+
+    .bd-card__title {
+      width: auto;
+      max-width: 100%;
+      max-height: min(6.5rem, calc(100dvh - 19rem));
+      min-height: 3rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .bd-card__row {
+      padding: 0.38rem 0;
+      font-size: 0.8125rem;
+    }
+
+    .bd-card__foot {
+      margin-top: 0.55rem;
+      padding-top: 0.55rem;
+    }
+
+    .bd-card__wish {
+      font-size: 0.875rem;
+      line-height: 1.7;
     }
   }
 
